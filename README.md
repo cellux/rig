@@ -22,9 +22,11 @@ For each module, initialization is interleaved:
 - Run `rig_register_M(...)` from `M.c` if present.
 - Then execute embedded `M.lua` if present.
 
-Each Lua module chunk runs with the module table as its chunk environment,
-with `_G` fallback for unresolved names. This means plain assignments and
-function declarations in `M.lua` write into global module table `_G[M]`.
+Each Lua module chunk runs in the normal global environment (`_G`).
+The chunk must return a table containing module exports; Rig assigns that
+returned table to global `_G[M]`.
+Rig passes the current module table as the first chunk argument, so modules
+can preserve C exports with `local M = ... or {}`.
 
 Rig uses SDL3 callback entry points (`SDL_AppInit`, `SDL_AppEvent`, `SDL_AppIterate`, `SDL_AppQuit`) from `src/main.c`.
 The script is loaded in `SDL_AppInit`.

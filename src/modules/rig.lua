@@ -1,3 +1,4 @@
+local M = ... or {}
 local lua_tostring = _G.tostring
 
 local function is_identifier(key)
@@ -35,9 +36,11 @@ local function serialize_lua(value, seen)
    return "{" .. table.concat(parts, ", ") .. "}"
 end
 
-function tostring(value)
+function M.tostring(value)
    if type(value) == "table" then
       return serialize_lua(value, {})
    end
    return lua_tostring(value)
 end
+
+return M

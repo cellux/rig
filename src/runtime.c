@@ -4,13 +4,6 @@
 
 #include <lauxlib.h>
 
-static int abs_index(lua_State *L, int index) {
-  if (index > 0 || index <= LUA_REGISTRYINDEX) {
-    return index;
-  }
-  return lua_gettop(L) + index + 1;
-}
-
 void rig_push_module(lua_State *L, const char *module_name) {
   lua_getglobal(L, module_name);
   if (!lua_istable(L, -1)) {
@@ -36,38 +29,6 @@ int rig_push_global_function(lua_State *L, const char *function_name) {
     return 1;
   }
   lua_pop(L, 1);
-  return 0;
-}
-
-static int rig_set_chunk_env_to_module(lua_State *L, int chunk_index,
-                                       int module_index,
-                                       const char *module_name) {
-  int abs_chunk_index = abs_index(L, chunk_index);
-  int abs_module_index = abs_index(L, module_index);
-  int has_index;
-
-  lua_pushvalue(L, abs_module_index);
-  if (!lua_getmetatable(L, -1)) {
-    lua_newtable(L);
-  }
-
-  lua_getfield(L, -1, "__index");
-  has_index = !lua_isnil(L, -1);
-  lua_pop(L, 1);
-  if (!has_index) {
-    lua_pushliteral(L, "__index");
-    lua_getglobal(L, "_G");
-    lua_rawset(L, -3);
-  }
-
-  lua_setmetatable(L, -2);
-  if (!lua_setfenv(L, abs_chunk_index)) {
-    lua_pop(L, 1);
-    return luaL_error(L,
-                      "internal error: failed to set environment for module '%s'",
-                      module_name);
-  }
-
   return 0;
 }
 
@@ -104,13 +65,18 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
       return -1;
     }
 
-    if (rig_set_chunk_env_to_module(L, -1, -2, module->name) != 0) {
+    lua_pushvalue(L, -2);
+    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
       return -1;
     }
 
-    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-      return -1;
+    if (!lua_istable(L, -1)) {
+      return luaL_error(L, "module '%s' must return a table", module->name);
     }
+
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, module->name);
+    lua_replace(L, -2);
 
     if (lua_gettop(L) != top_with_context) {
       return luaL_error(L,
