@@ -30,6 +30,8 @@ int main(int argc, char **argv) {
     lua_pop(L, 1);
     luaopen_table(L);
     lua_pop(L, 1);
+    luaopen_math(L);
+    lua_pop(L, 1);
 
     if (rig_init_modules(L) != 0) {
         const char *msg = lua_tostring(L, -1);

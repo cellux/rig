@@ -4,43 +4,32 @@
 
 #include <lauxlib.h>
 
-static int abs_index(lua_State *L, int index) {
-  if (index > 0 || index <= LUA_REGISTRYINDEX) {
-    return index;
-  }
-  return lua_gettop(L) + index + 1;
-}
-
-void rig_push_global(lua_State *L) {
-  lua_getglobal(L, "rig");
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    lua_newtable(L);
-    lua_pushvalue(L, -1);
-    lua_setglobal(L, "rig");
-  }
-}
-
 void rig_push_module(lua_State *L, const char *module_name) {
-  rig_push_global(L);
-  lua_getfield(L, -1, module_name);
+  lua_getglobal(L, module_name);
   if (!lua_istable(L, -1)) {
     lua_pop(L, 1);
     lua_newtable(L);
     lua_pushvalue(L, -1);
-    lua_setfield(L, -3, module_name);
+    lua_setglobal(L, module_name);
   }
-  lua_remove(L, -2);
+}
+
+int rig_push_global_handler(lua_State *L, const char *handler_name) {
+  lua_getglobal(L, handler_name);
+  if (lua_isfunction(L, -1)) {
+    return 1;
+  }
+  lua_pop(L, 1);
+  return 0;
 }
 
 static int rig_load_module(lua_State *L, const rig_module_desc *module) {
   int top_before = lua_gettop(L);
 
-  rig_push_global(L);
   rig_push_module(L, module->name);
 
   int top_with_context = lua_gettop(L);
-  if (top_with_context != top_before + 2) {
+  if (top_with_context != top_before + 1) {
     return luaL_error(
         L, "internal error: failed to prepare module context for '%s'",
         module->name);
@@ -59,8 +48,6 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
   if (module->bytecode != NULL && module->bytecode_len != NULL) {
     char chunk_name[128];
     size_t bytecode_len = *module->bytecode_len;
-    int rig_index = abs_index(L, -2);
-    int module_index = abs_index(L, -1);
 
     (void)snprintf(chunk_name, sizeof(chunk_name), "@rig/%s.lua", module->name);
 
@@ -69,10 +56,9 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
       return -1;
     }
 
-    lua_pushvalue(L, rig_index);
-    lua_pushvalue(L, module_index);
+    lua_pushvalue(L, -2);
 
-    if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
       return -1;
     }
 
@@ -84,7 +70,7 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
     }
   }
 
-  lua_pop(L, 2);
+  lua_pop(L, 1);
   if (lua_gettop(L) != top_before) {
     return luaL_error(L, "internal error: module loader stack leak for '%s'",
                       module->name);

@@ -18,7 +18,7 @@ For a module name `M`:
 - `src/modules/M.c` (optional): compiled into the binary and initialized by calling `rig_register_M(lua_State *L)`.
 - `src/modules/M.lua` (optional): compiled to LuaJIT bytecode at build time, embedded into the binary, and executed at interpreter startup.
 
-Initialization order is deterministic by module name (sorted).
+Initialization order is deterministic and defined by `src/modules/modules.txt`.
 For each module, initialization is interleaved:
 - Run `rig_register_M(...)` from `M.c` if present.
 - Then execute embedded `M.lua` if present.
@@ -27,9 +27,13 @@ Each Lua module chunk is called like:
 
 ```lua
 -- inside M.lua
-local rig, M = ...
+local M = ...
 ```
 
 Where:
-- `rig` is the global rig table.
-- `M` is `rig.M` (created automatically before loading C/Lua parts).
+- `M` is the global module table `_G[M]` (created automatically before loading C/Lua parts).
+- global `rig` is available as `_G.rig`.
+
+The SDL backend module is also exposed globally as `sdl3` (for example `sdl3.loop()` and `sdl3.clear(...)`).
+
+If your script defines global `on_key(key_info)` and/or `on_render()`, they are automatically used by the SDL event/render loop.

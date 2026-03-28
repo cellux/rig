@@ -2,10 +2,25 @@ set(MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${GENERATED_DIR}")
 
-# Explicit module load order (interleaved init: C then Lua for each module).
-set(MODULE_NAMES
-    core
-)
+# Explicit module load order comes from modules.txt (one module per line).
+set(MODULE_LIST_FILE "${MODULE_DIR}/modules.txt")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MODULE_LIST_FILE}")
+if(NOT EXISTS "${MODULE_LIST_FILE}")
+    message(FATAL_ERROR "Module list file not found: ${MODULE_LIST_FILE}")
+endif()
+
+file(STRINGS "${MODULE_LIST_FILE}" MODULE_NAMES_RAW)
+set(MODULE_NAMES "")
+foreach(MODULE_LINE IN LISTS MODULE_NAMES_RAW)
+    string(STRIP "${MODULE_LINE}" MODULE_NAME)
+    if(MODULE_NAME STREQUAL "" OR MODULE_NAME MATCHES "^#")
+        continue()
+    endif()
+    list(APPEND MODULE_NAMES "${MODULE_NAME}")
+endforeach()
+if(MODULE_NAMES STREQUAL "")
+    message(FATAL_ERROR "No modules were found in ${MODULE_LIST_FILE}")
+endif()
 
 set(MODULE_C_FILES "")
 set(MODULE_LUA_FILES "")
