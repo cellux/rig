@@ -23,16 +23,9 @@ For each module, initialization is interleaved:
 - Run `rig_register_M(...)` from `M.c` if present.
 - Then execute embedded `M.lua` if present.
 
-Each Lua module chunk is called like:
-
-```lua
--- inside M.lua
-local M = ...
-```
-
-Where:
-- `M` is the global module table `_G[M]` (created automatically before loading C/Lua parts).
-- global `rig` is available as `_G.rig`.
+Each Lua module chunk runs with the module table as its chunk environment,
+with `_G` fallback for unresolved names. This means plain assignments and
+function declarations in `M.lua` write into global module table `_G[M]`.
 
 The SDL backend module is also exposed globally as `sdl3` (for example `sdl3.loop()` and `sdl3.clear(...)`).
 

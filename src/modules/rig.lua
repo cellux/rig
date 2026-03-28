@@ -1,4 +1,3 @@
-local rig = ...
 local lua_tostring = _G.tostring
 
 local function is_identifier(key)
@@ -36,18 +35,18 @@ local function serialize_lua(value, seen)
    return "{" .. table.concat(parts, ", ") .. "}"
 end
 
-function rig.tostring(value)
+function tostring(value)
    if type(value) == "table" then
       return serialize_lua(value, {})
    end
    return lua_tostring(value)
 end
 
-rig.clear = sdl3.clear
-rig.loop = sdl3.loop
+clear = sdl3.clear
+loop = sdl3.loop
 
 if _G.on_render == nil then
-   function on_render()
-      rig.clear(0, 0, 0, 1)
+   function _G.on_render()
+      clear(0, 0, 0, 1)
    end
 end
