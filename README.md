@@ -30,3 +30,4 @@ function declarations in `M.lua` write into global module table `_G[M]`.
 The SDL backend module is also exposed globally as `sdl3` (for example `sdl3.loop()` and `sdl3.clear(...)`).
 
 If your script defines global `on_key(key_info)` and/or `on_render()`, they are automatically used by the SDL event/render loop.
+After the script finishes loading, `sdl3.loop()` is invoked automatically if global `on_render` is defined.

@@ -41,12 +41,3 @@ function tostring(value)
    end
    return lua_tostring(value)
 end
-
-clear = sdl3.clear
-loop = sdl3.loop
-
-if _G.on_render == nil then
-   function _G.on_render()
-      clear(0, 0, 0, 1)
-   end
-end
