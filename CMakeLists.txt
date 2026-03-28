@@ -7,12 +7,27 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
+pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+find_program(LUAJIT_BIN NAMES luajit luajit-2.1 REQUIRED)
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/src/modules/modules.cmake")
 
 add_executable(rig
     src/main.c
+    src/runtime.c
+    ${MODULE_C_FILES}
+    ${BYTECODE_SOURCES}
+    "${MODULE_REGISTRY_C}"
 )
 
-target_link_libraries(rig PRIVATE PkgConfig::LUAJIT)
+target_include_directories(rig PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+target_link_libraries(rig PRIVATE
+    PkgConfig::LUAJIT
+    PkgConfig::SDL3
+)
 
 target_compile_options(rig PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
