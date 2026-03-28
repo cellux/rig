@@ -28,74 +28,31 @@ static SDL_AppResult report_lua_error(lua_State *L, const char *context) {
     return SDL_APP_FAILURE;
 }
 
-static void push_key_info(lua_State *L, const SDL_KeyboardEvent *key_event) {
-    const char *action_text = "up";
-    const char *key_text;
-    SDL_Keymod mods;
-
-    if (key_event->down) {
-        action_text = "down";
+static int push_sdl3_function(lua_State *L, const char *name) {
+    lua_getglobal(L, "sdl3");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_pushliteral(L, "global 'sdl3' module is not available");
+        return -1;
     }
 
-    key_text = SDL_GetKeyName(key_event->key);
-    if (key_text == NULL || key_text[0] == '\0') {
-        key_text = "Unknown";
+    lua_getfield(L, -1, name);
+    lua_remove(L, -2);
+    if (!lua_isfunction(L, -1)) {
+        lua_pop(L, 1);
+        lua_pushfstring(L, "sdl3.%s is not available", name);
+        return -1;
     }
-    mods = key_event->mod;
 
-    lua_newtable(L);
-
-    lua_pushliteral(L, "type");
-    lua_pushliteral(L, "key");
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "action");
-    lua_pushstring(L, action_text);
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "key");
-    lua_pushstring(L, key_text);
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "code");
-    lua_pushinteger(L, key_event->key);
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "scancode");
-    lua_pushinteger(L, key_event->scancode);
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "repeat");
-    lua_pushboolean(L, key_event->repeat);
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "timestamp_ms");
-    lua_pushinteger(L, key_event->timestamp);
-    lua_rawset(L, -3);
-
-    lua_pushliteral(L, "mods");
-    lua_newtable(L);
-    lua_pushliteral(L, "shift");
-    lua_pushboolean(L, (mods & SDL_KMOD_SHIFT) != 0);
-    lua_rawset(L, -3);
-    lua_pushliteral(L, "ctrl");
-    lua_pushboolean(L, (mods & SDL_KMOD_CTRL) != 0);
-    lua_rawset(L, -3);
-    lua_pushliteral(L, "alt");
-    lua_pushboolean(L, (mods & SDL_KMOD_ALT) != 0);
-    lua_rawset(L, -3);
-    lua_pushliteral(L, "super");
-    lua_pushboolean(L, (mods & SDL_KMOD_GUI) != 0);
-    lua_rawset(L, -3);
-    lua_rawset(L, -3);
+    return 0;
 }
 
 static int dispatch_key_event(lua_State *L, const SDL_KeyboardEvent *key_event) {
-    if (!rig_push_global_function(L, "on_key")) {
-        return 0;
+    if (push_sdl3_function(L, "_dispatch_key") != 0) {
+        return -1;
     }
 
-    push_key_info(L, key_event);
+    lua_pushlightuserdata(L, (void *)key_event);
     if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
         return -1;
     }
@@ -104,14 +61,28 @@ static int dispatch_key_event(lua_State *L, const SDL_KeyboardEvent *key_event) 
 }
 
 static int dispatch_render(lua_State *L) {
-    if (!rig_push_global_function(L, "on_render")) {
-        return 0;
+    if (push_sdl3_function(L, "_dispatch_render") != 0) {
+        return -1;
     }
 
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
         return -1;
     }
 
+    return 0;
+}
+
+static int should_run_render_loop(lua_State *L, int *out_should_run) {
+    if (push_sdl3_function(L, "_should_run") != 0) {
+        return -1;
+    }
+
+    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+        return -1;
+    }
+
+    *out_should_run = lua_toboolean(L, -1);
+    lua_pop(L, 1);
     return 0;
 }
 
@@ -211,7 +182,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return report_lua_error(app->L, "Error running script");
     }
 
-    app->has_render_handler = rig_has_global_function(app->L, "on_render");
+    if (should_run_render_loop(app->L, &app->has_render_handler) != 0) {
+        return report_lua_error(app->L, "Error checking render loop readiness");
+    }
     if (!app->has_render_handler) {
         return SDL_APP_SUCCESS;
     }

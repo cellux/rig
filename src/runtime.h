@@ -20,8 +20,6 @@ extern const rig_module_desc rig_modules[];
 extern const size_t rig_module_count;
 
 void rig_push_module(lua_State *L, const char *module_name);
-int rig_has_global_function(lua_State *L, const char *name);
-int rig_push_global_function(lua_State *L, const char *function_name);
 int rig_init_modules(lua_State *L);
 
 #ifdef __cplusplus
