@@ -21,8 +21,17 @@ void rig_push_module(lua_State *L, const char *module_name) {
   }
 }
 
-int rig_push_global_handler(lua_State *L, const char *handler_name) {
-  lua_getglobal(L, handler_name);
+int rig_has_global_function(lua_State *L, const char *name) {
+  int is_fn;
+
+  lua_getglobal(L, name);
+  is_fn = lua_isfunction(L, -1);
+  lua_pop(L, 1);
+  return is_fn;
+}
+
+int rig_push_global_function(lua_State *L, const char *function_name) {
+  lua_getglobal(L, function_name);
   if (lua_isfunction(L, -1)) {
     return 1;
   }
