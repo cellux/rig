@@ -27,6 +27,8 @@ The chunk must return a table containing module exports; Rig assigns that
 returned table to global `_G[M]`.
 Rig passes the current module table as the first chunk argument, so modules
 can preserve C exports with `local M = ... or {}`.
+Builtin module initialization has access to LuaJIT `ffi`; Rig removes global
+`ffi` before loading the user script.
 
 Rig uses SDL3 callback entry points (`SDL_AppInit`, `SDL_AppEvent`, `SDL_AppIterate`, `SDL_AppQuit`) from `src/main.c`.
 The script is loaded in `SDL_AppInit`.

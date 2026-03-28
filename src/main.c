@@ -131,12 +131,20 @@ static int init_lua_runtime(rig_app_state *app) {
     luaopen_math(app->L);
     lua_pop(app->L, 1);
 
+    luaopen_ffi(app->L);
+    lua_setglobal(app->L, "ffi");
+
     if (rig_init_modules(app->L) != 0) {
         const char *msg = lua_tostring(app->L, -1);
         fprintf(stderr, "Failed to initialize rig modules: %s\n", msg ? msg : "unknown error");
         lua_pop(app->L, 1);
+        lua_pushnil(app->L);
+        lua_setglobal(app->L, "ffi");
         return -1;
     }
+
+    lua_pushnil(app->L);
+    lua_setglobal(app->L, "ffi");
 
     return 0;
 }
