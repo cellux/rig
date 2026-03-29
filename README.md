@@ -33,6 +33,10 @@ Rig uses SDL3 callback entry points (`SDL_AppInit`, `SDL_AppEvent`, `SDL_AppIter
 The script is loaded in `SDL_AppInit`.
 
 Rig creates a global `hooks` table before loading the user script.
+`sdl3.lua` installs default implementations for:
+- `hooks.create_window() -> window_ud | nil, err`
+- `hooks.create_renderer(window_ud) -> renderer_ud | nil, err`
+User scripts can override either hook before entering the render loop.
 
 If `hooks.render` is defined, Rig continues running and:
 - `hooks.handle_key(key_info)` is called from SDL event dispatch.

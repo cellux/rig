@@ -37,6 +37,37 @@ local KMOD_CTRL = 0x00C0
 local KMOD_ALT = 0x0300
 local KMOD_GUI = 0x0C00
 
+local function ensure_creation_hooks()
+   local hooks = _G.hooks
+   if type(hooks) ~= "table" then
+      return
+   end
+
+   if type(hooks.create_window) ~= "function" then
+      hooks.create_window = function()
+         return M.create_window("rig", 640, 360, 0)
+      end
+   end
+
+   if type(hooks.create_renderer) ~= "function" then
+      hooks.create_renderer = function(window_ud)
+         local renderer_ud, create_error = M.create_renderer(window_ud, nil)
+         if renderer_ud == nil then
+            return nil, create_error
+         end
+
+         local ok, vsync_error = M.set_render_vsync(renderer_ud, true)
+         if not ok then
+            return nil, vsync_error
+         end
+
+         return renderer_ud
+      end
+   end
+end
+
+ensure_creation_hooks()
+
 local function color_component(value, default_value)
    local v = value
    if v == nil then
