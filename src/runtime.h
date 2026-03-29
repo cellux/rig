@@ -12,8 +12,10 @@ extern "C" {
 typedef struct rig_module_desc {
     const char *name;
     void (*register_fn)(lua_State *L);
-    const unsigned char *bytecode;
-    const size_t *bytecode_len;
+    const unsigned char *lua_bytecode;
+    const size_t *lua_bytecode_len;
+    const unsigned char *fennel_bytecode;
+    const size_t *fennel_bytecode_len;
 } rig_module_desc;
 
 extern const rig_module_desc rig_modules[];
