@@ -4,20 +4,6 @@
 
 #include <lauxlib.h>
 
-static char rig_registry_namespace_key;
-
-static void rig_push_registry_table(lua_State *L) {
-  lua_pushlightuserdata(L, (void *)&rig_registry_namespace_key);
-  lua_rawget(L, LUA_REGISTRYINDEX);
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    lua_newtable(L);
-    lua_pushlightuserdata(L, (void *)&rig_registry_namespace_key);
-    lua_pushvalue(L, -2);
-    lua_rawset(L, LUA_REGISTRYINDEX);
-  }
-}
-
 void rig_push_module(lua_State *L, const char *module_name) {
   lua_getglobal(L, module_name);
   if (!lua_istable(L, -1)) {
@@ -48,36 +34,31 @@ int rig_push_module_function(lua_State *L, const char *module_name,
   return 0;
 }
 
+int rig_invoke_module_function(lua_State *L, const char *module_name,
+                               const char *function_name) {
+  int nargs = lua_gettop(L);
+
+  if (rig_push_module_function(L, module_name, function_name) != 0) {
+    if (nargs > 0) {
+      lua_pop(L, nargs);
+    }
+    return -1;
+  }
+
+  if (nargs > 0) {
+    lua_insert(L, -1 - nargs);
+  }
+
+  if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
+    return -1;
+  }
+
+  return 0;
+}
+
 void rig_remove_global(lua_State *L, const char *name) {
   lua_pushnil(L);
   lua_setglobal(L, name);
-}
-
-void rig_registry_set_lightuserdata(lua_State *L, const char *key,
-                                    void *value) {
-  rig_push_registry_table(L);
-  lua_pushstring(L, key);
-  if (value == NULL) {
-    lua_pushnil(L);
-  } else {
-    lua_pushlightuserdata(L, value);
-  }
-  lua_rawset(L, -3);
-  lua_pop(L, 1);
-}
-
-void *rig_registry_get_lightuserdata(lua_State *L, const char *key) {
-  void *value = NULL;
-
-  rig_push_registry_table(L);
-  lua_pushstring(L, key);
-  lua_rawget(L, -2);
-  if (lua_islightuserdata(L, -1)) {
-    value = lua_touserdata(L, -1);
-  }
-  lua_pop(L, 2);
-
-  return value;
 }
 
 static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,

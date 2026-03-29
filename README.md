@@ -34,9 +34,17 @@ The script is loaded in `SDL_AppInit`.
 
 Rig creates a global `hooks` table before loading the user script.
 `sdl3.lua` installs default implementations for:
-- `hooks.create_window() -> window_ud | nil, err`
-- `hooks.create_renderer(window_ud) -> renderer_ud | nil, err`
+- `hooks.sdl_init_flags` (defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`)
+- `hooks.create_window() -> window_ptr | nil, err`
+- `hooks.create_renderer(window_ptr) -> renderer_ptr | nil, err`
 User scripts can override either hook before entering the render loop.
+By default, `hooks.create_window` uses `SDL_CreateWindowWithProperties` and
+merges:
+- `sdl3.default_window_props`
+- `hooks.window_props` (if set by the user script)
+Window property tables are converted to an `SDL_PropertiesID` via
+`sdl3.build_properties(...)`.
+The `window_ptr` / `renderer_ptr` values are LuaJIT FFI cdata pointers.
 
 If `hooks.render` is defined, Rig continues running and:
 - `hooks.handle_key(key_info)` is called from SDL event dispatch.

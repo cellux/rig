@@ -24,10 +24,9 @@ extern const size_t rig_module_count;
 void rig_push_module(lua_State *L, const char *module_name);
 int rig_push_module_function(lua_State *L, const char *module_name,
                              const char *function_name);
+int rig_invoke_module_function(lua_State *L, const char *module_name,
+                               const char *function_name);
 void rig_remove_global(lua_State *L, const char *name);
-void rig_registry_set_lightuserdata(lua_State *L, const char *key,
-                                    void *value);
-void *rig_registry_get_lightuserdata(lua_State *L, const char *key);
 int rig_init_modules(lua_State *L);
 
 #ifdef __cplusplus

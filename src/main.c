@@ -11,12 +11,8 @@
 
 #include "runtime.h"
 
-#define RIG_REGKEY_SDL3_RENDERER "sdl3.renderer"
-
 typedef struct rig_app_state {
   lua_State *L;
-  SDL_Window *window;
-  SDL_Renderer *renderer;
   int has_render_handler;
 } rig_app_state;
 
@@ -31,30 +27,18 @@ static SDL_AppResult report_lua_error(lua_State *L, const char *context) {
   return SDL_APP_FAILURE;
 }
 
-static int dispatch_key_event(lua_State *L,
-                              const SDL_KeyboardEvent *key_event) {
-  if (rig_push_module_function(L, "sdl3", "_dispatch_key") != 0) {
-    return -1;
-  }
-
+static int dispatch_keyboard_event(lua_State *L,
+                                   const SDL_KeyboardEvent *key_event) {
   lua_pushlightuserdata(L, (void *)key_event);
-  if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-    return -1;
-  }
-
-  return 0;
+  return rig_invoke_module_function(L, "sdl3", "_dispatch_keyboard_event");
 }
 
 static int dispatch_render(lua_State *L) {
-  if (rig_push_module_function(L, "sdl3", "_dispatch_render") != 0) {
-    return -1;
-  }
+  return rig_invoke_module_function(L, "sdl3", "_dispatch_render");
+}
 
-  if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-    return -1;
-  }
-
-  return 0;
+static int present_render(lua_State *L) {
+  return rig_invoke_module_function(L, "sdl3", "_present");
 }
 
 static void ensure_hooks_table(lua_State *L) {
@@ -71,54 +55,15 @@ static void ensure_hooks_table(lua_State *L) {
   lua_pop(L, 1);
 }
 
-static int call_create_window_hook(rig_app_state *app) {
-  lua_State *L = app->L;
-  const char *detail;
+static void shutdown_sdl(lua_State *L) {
+  const char *msg;
 
-  if (rig_push_module_function(L, "hooks", "create_window") != 0) {
-    return -1;
+  if (rig_invoke_module_function(L, "sdl3", "_shutdown_sdl") != 0) {
+    msg = lua_tostring(L, -1);
+    fprintf(stderr, "Error shutting down SDL: %s\n",
+            msg ? msg : "unknown error");
+    lua_pop(L, 1);
   }
-  if (lua_pcall(L, 0, 2, 0) != LUA_OK) {
-    return -1;
-  }
-
-  if (lua_islightuserdata(L, -2)) {
-    app->window = (SDL_Window *)lua_touserdata(L, -2);
-    lua_pop(L, 2);
-    return 0;
-  }
-
-  detail = lua_tostring(L, -1);
-  lua_pop(L, 2);
-  lua_pushfstring(L, "hooks.create_window failed: %s",
-                  detail ? detail : "expected SDL_Window lightuserdata");
-  return -1;
-}
-
-static int call_create_renderer_hook(rig_app_state *app) {
-  lua_State *L = app->L;
-  const char *detail;
-
-  if (rig_push_module_function(L, "hooks", "create_renderer") != 0) {
-    return -1;
-  }
-
-  lua_pushlightuserdata(L, app->window);
-  if (lua_pcall(L, 1, 2, 0) != LUA_OK) {
-    return -1;
-  }
-
-  if (lua_islightuserdata(L, -2)) {
-    app->renderer = (SDL_Renderer *)lua_touserdata(L, -2);
-    lua_pop(L, 2);
-    return 0;
-  }
-
-  detail = lua_tostring(L, -1);
-  lua_pop(L, 2);
-  lua_pushfstring(L, "hooks.create_renderer failed: %s",
-                  detail ? detail : "expected SDL_Renderer lightuserdata");
-  return -1;
 }
 
 static int run_user_script(lua_State *L, const char *script_path) {
@@ -184,6 +129,28 @@ static int run_user_script(lua_State *L, const char *script_path) {
   return -1;
 }
 
+static int open_lua_lib(lua_State *L, lua_CFunction open_fn,
+                        const char *lib_name, const char *label) {
+  const char *msg;
+  int nargs = 0;
+
+  lua_pushcfunction(L, open_fn);
+  if (lib_name != NULL) {
+    lua_pushstring(L, lib_name);
+    nargs = 1;
+  }
+
+  if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
+    msg = lua_tostring(L, -1);
+    fprintf(stderr, "Failed to initialize %s runtime: %s\n", label,
+            msg ? msg : "unknown error");
+    lua_pop(L, 1);
+    return -1;
+  }
+
+  return 0;
+}
+
 static int init_lua_runtime(rig_app_state *app) {
   app->L = luaL_newstate();
   if (app->L == NULL) {
@@ -191,27 +158,29 @@ static int init_lua_runtime(rig_app_state *app) {
     return -1;
   }
 
-  luaopen_base(app->L);
-  lua_pop(app->L, 1);
-  luaopen_string(app->L);
-  lua_pop(app->L, 1);
-  luaopen_table(app->L);
-  lua_pop(app->L, 1);
-  luaopen_math(app->L);
-  lua_pop(app->L, 1);
+  if (open_lua_lib(app->L, luaopen_base, NULL, "base") != 0) {
+    return -1;
+  }
+  if (open_lua_lib(app->L, luaopen_string, NULL, LUA_STRLIBNAME) != 0) {
+    return -1;
+  }
+  if (open_lua_lib(app->L, luaopen_table, NULL, LUA_TABLIBNAME) != 0) {
+    return -1;
+  }
+  if (open_lua_lib(app->L, luaopen_math, NULL, LUA_MATHLIBNAME) != 0) {
+    return -1;
+  }
+  if (open_lua_lib(app->L, luaopen_bit, LUA_BITLIBNAME, LUA_BITLIBNAME) != 0) {
+    return -1;
+  }
 
   ensure_hooks_table(app->L);
 
   // risky modules like `package` or `ffi` are loaded only until
   // all builtin modules have been initialized
 
-  lua_pushcfunction(app->L, luaopen_package);
-  lua_pushliteral(app->L, LUA_LOADLIBNAME);
-  if (lua_pcall(app->L, 1, 0, 0) != LUA_OK) {
-    const char *msg = lua_tostring(app->L, -1);
-    fprintf(stderr, "Failed to initialize package runtime: %s\n",
-            msg ? msg : "unknown error");
-    lua_pop(app->L, 1);
+  if (open_lua_lib(app->L, luaopen_package, LUA_LOADLIBNAME,
+                   LUA_LOADLIBNAME) != 0) {
     return -1;
   }
 
@@ -223,9 +192,6 @@ static int init_lua_runtime(rig_app_state *app) {
     fprintf(stderr, "Failed to initialize rig modules: %s\n",
             msg ? msg : "unknown error");
     lua_pop(app->L, 1);
-    rig_remove_global(app->L, "ffi");
-    rig_remove_global(app->L, "package");
-    rig_remove_global(app->L, "require");
     return -1;
   }
 
@@ -235,47 +201,8 @@ static int init_lua_runtime(rig_app_state *app) {
   return 0;
 }
 
-static int init_sdl_video(rig_app_state *app) {
-  Uint32 required = SDL_INIT_VIDEO | SDL_INIT_EVENTS;
-  const char *msg;
-
-  if ((SDL_WasInit(required) & required) != required) {
-    if (!SDL_Init(required)) {
-      lua_pushfstring(app->L, "failed to initialize SDL: %s", SDL_GetError());
-      return -1;
-    }
-  }
-
-  if (call_create_window_hook(app) != 0) {
-    return -1;
-  }
-  if (app->window == NULL) {
-    lua_pushliteral(app->L, "hooks.create_window returned NULL window");
-    return -1;
-  }
-
-  if (call_create_renderer_hook(app) != 0) {
-    msg = lua_tostring(app->L, -1);
-    if (msg == NULL) {
-      msg = "hooks.create_renderer failed";
-    }
-    SDL_DestroyWindow(app->window);
-    app->window = NULL;
-    lua_pushfstring(app->L, "%s", msg);
-    lua_remove(app->L, -2);
-    return -1;
-  }
-  if (app->renderer == NULL) {
-    SDL_DestroyWindow(app->window);
-    app->window = NULL;
-    lua_pushliteral(app->L, "hooks.create_renderer returned NULL renderer");
-    return -1;
-  }
-
-  rig_registry_set_lightuserdata(app->L, RIG_REGKEY_SDL3_RENDERER,
-                                 app->renderer);
-
-  return 0;
+static int init_sdl(lua_State *L) {
+  return rig_invoke_module_function(L, "sdl3", "_init_sdl");
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
@@ -297,8 +224,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return SDL_APP_FAILURE;
   }
 
-  ensure_hooks_table(app->L);
-
   if (run_user_script(app->L, argv[1]) != 0) {
     return report_lua_error(app->L, "Error running script");
   }
@@ -312,11 +237,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     app->has_render_handler = 0;
     lua_pop(app->L, 1);
   }
+
   if (!app->has_render_handler) {
     return SDL_APP_SUCCESS;
   }
 
-  if (init_sdl_video(app) != 0) {
+  if (init_sdl(app->L) != 0) {
     return report_lua_error(app->L, "Error initializing SDL video");
   }
 
@@ -335,7 +261,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   }
 
   if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) {
-    if (dispatch_key_event(app->L, &event->key) != 0) {
+    if (dispatch_keyboard_event(app->L, &event->key) != 0) {
       return report_lua_error(app->L, "Error in hooks.handle_key");
     }
   }
@@ -349,7 +275,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   if (app == NULL || app->L == NULL) {
     return SDL_APP_FAILURE;
   }
-  if (!app->has_render_handler || app->renderer == NULL) {
+  if (!app->has_render_handler) {
     return SDL_APP_SUCCESS;
   }
 
@@ -357,9 +283,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     return report_lua_error(app->L, "Error in hooks.render");
   }
 
-  if (!SDL_RenderPresent(app->renderer)) {
-    fprintf(stderr, "failed to present renderer: %s\n", SDL_GetError());
-    return SDL_APP_FAILURE;
+  if (present_render(app->L) != 0) {
+    return report_lua_error(app->L, "Error presenting frame");
   }
 
   return SDL_APP_CONTINUE;
@@ -374,15 +299,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   }
 
   if (app->L != NULL) {
-    rig_registry_set_lightuserdata(app->L, RIG_REGKEY_SDL3_RENDERER, NULL);
-  }
-  if (app->renderer != NULL) {
-    SDL_DestroyRenderer(app->renderer);
-  }
-  if (app->window != NULL) {
-    SDL_DestroyWindow(app->window);
-  }
-  if (app->L != NULL) {
+    shutdown_sdl(app->L);
     lua_close(app->L);
   }
 
