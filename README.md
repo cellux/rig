@@ -32,8 +32,10 @@ Builtin module initialization has access to LuaJIT `ffi`; Rig removes global `ff
 Rig uses SDL3 callback entry points (`SDL_AppInit`, `SDL_AppEvent`, `SDL_AppIterate`, `SDL_AppQuit`) from `src/main.c`.
 The script is loaded in `SDL_AppInit`.
 
-If global `on_render()` is defined, Rig continues running and:
-- `on_key(key_info)` is called from SDL event dispatch.
-- `on_render()` is called on each iterate tick.
+Rig creates a global `hooks` table before loading the user script.
 
-If `on_render()` is not defined, Rig exits after the script loads.
+If `hooks.render` is defined, Rig continues running and:
+- `hooks.handle_key(key_info)` is called from SDL event dispatch.
+- `hooks.render()` is called on each iterate tick.
+
+If `hooks.render` is not defined, Rig exits after the script loads.

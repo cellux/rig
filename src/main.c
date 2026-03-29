@@ -57,6 +57,20 @@ static int dispatch_render(lua_State *L) {
   return 0;
 }
 
+static void ensure_hooks_table(lua_State *L) {
+  lua_getglobal(L, "hooks");
+  if (lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return;
+  }
+  lua_pop(L, 1);
+
+  lua_newtable(L);
+  lua_pushvalue(L, -1);
+  lua_setglobal(L, "hooks");
+  lua_pop(L, 1);
+}
+
 static int run_user_script(lua_State *L, const char *script_path) {
   const char *ext = strrchr(script_path, '.');
 
@@ -219,13 +233,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return SDL_APP_FAILURE;
   }
 
+  ensure_hooks_table(app->L);
+
   if (run_user_script(app->L, argv[1]) != 0) {
     return report_lua_error(app->L, "Error running script");
   }
 
-  lua_getglobal(app->L, "on_render");
-  app->has_render_handler = lua_isfunction(app->L, -1);
-  lua_pop(app->L, 1);
+  lua_getglobal(app->L, "hooks");
+  if (lua_istable(app->L, -1)) {
+    lua_getfield(app->L, -1, "render");
+    app->has_render_handler = lua_isfunction(app->L, -1);
+    lua_pop(app->L, 2);
+  } else {
+    app->has_render_handler = 0;
+    lua_pop(app->L, 1);
+  }
   if (!app->has_render_handler) {
     return SDL_APP_SUCCESS;
   }
@@ -250,7 +272,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
   if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) {
     if (dispatch_key_event(app->L, &event->key) != 0) {
-      return report_lua_error(app->L, "Error in on_key");
+      return report_lua_error(app->L, "Error in hooks.handle_key");
     }
   }
 
@@ -268,7 +290,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   }
 
   if (dispatch_render(app->L) != 0) {
-    return report_lua_error(app->L, "Error in on_render");
+    return report_lua_error(app->L, "Error in hooks.render");
   }
 
   if (!SDL_RenderPresent(app->renderer)) {

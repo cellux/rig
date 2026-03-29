@@ -59,7 +59,7 @@ function M.clear(r, g, b, a)
    end
 
    if renderer_ud == nil then
-      error("sdl3.clear can only be called during on_render callback")
+      error("sdl3.clear can only be called during hooks.render callback")
    end
 
    local renderer = ffi.cast("SDL_Renderer *", renderer_ud)
@@ -92,7 +92,12 @@ local function has_any_bits(value, mask)
 end
 
 function M._dispatch_key(key_event_ptr)
-   local handler = _G.on_key
+   local hooks = _G.hooks
+   if type(hooks) ~= "table" then
+      return
+   end
+
+   local handler = hooks.handle_key
    if type(handler) ~= "function" then
       return
    end
@@ -128,7 +133,12 @@ function M._dispatch_key(key_event_ptr)
 end
 
 function M._dispatch_render()
-   local handler = _G.on_render
+   local hooks = _G.hooks
+   if type(hooks) ~= "table" then
+      return
+   end
+
+   local handler = hooks.render
    if type(handler) ~= "function" then
       return
    end

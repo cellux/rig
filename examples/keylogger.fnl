@@ -1,5 +1,5 @@
-(fn _G.on_key [key-info]
+(fn hooks.handle_key [key-info]
   (rig.println key-info))
 
-(fn _G.on_render []
+(fn hooks.render []
   (sdl3.clear 0 0 0 1))
