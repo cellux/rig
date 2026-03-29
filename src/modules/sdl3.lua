@@ -52,7 +52,12 @@ local function color_component(value, default_value)
 end
 
 function M.clear(r, g, b, a)
-   local renderer_ud = M.renderer
+   local renderer_ud = nil
+
+   if type(M.get_renderer) == "function" then
+      renderer_ud = M.get_renderer()
+   end
+
    if renderer_ud == nil then
       error("sdl3.clear can only be called during on_render callback")
    end
@@ -128,10 +133,6 @@ function M._dispatch_render()
       return
    end
    handler()
-end
-
-function M._should_run()
-   return type(_G.on_render) == "function"
 end
 
 return M

@@ -11,6 +11,8 @@
 
 #include "runtime.h"
 
+#define RIG_REGKEY_SDL3_RENDERER "sdl3.renderer"
+
 typedef struct rig_app_state {
   lua_State *L;
   SDL_Window *window;
@@ -29,28 +31,9 @@ static SDL_AppResult report_lua_error(lua_State *L, const char *context) {
   return SDL_APP_FAILURE;
 }
 
-static int push_sdl3_function(lua_State *L, const char *name) {
-  lua_getglobal(L, "sdl3");
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    lua_pushliteral(L, "global 'sdl3' module is not available");
-    return -1;
-  }
-
-  lua_getfield(L, -1, name);
-  lua_remove(L, -2);
-  if (!lua_isfunction(L, -1)) {
-    lua_pop(L, 1);
-    lua_pushfstring(L, "sdl3.%s is not available", name);
-    return -1;
-  }
-
-  return 0;
-}
-
 static int dispatch_key_event(lua_State *L,
                               const SDL_KeyboardEvent *key_event) {
-  if (push_sdl3_function(L, "_dispatch_key") != 0) {
+  if (rig_push_module_function(L, "sdl3", "_dispatch_key") != 0) {
     return -1;
   }
 
@@ -63,7 +46,7 @@ static int dispatch_key_event(lua_State *L,
 }
 
 static int dispatch_render(lua_State *L) {
-  if (push_sdl3_function(L, "_dispatch_render") != 0) {
+  if (rig_push_module_function(L, "sdl3", "_dispatch_render") != 0) {
     return -1;
   }
 
@@ -71,20 +54,6 @@ static int dispatch_render(lua_State *L) {
     return -1;
   }
 
-  return 0;
-}
-
-static int should_run_render_loop(lua_State *L, int *out_should_run) {
-  if (push_sdl3_function(L, "_should_run") != 0) {
-    return -1;
-  }
-
-  if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
-    return -1;
-  }
-
-  *out_should_run = lua_toboolean(L, -1);
-  lua_pop(L, 1);
   return 0;
 }
 
@@ -151,11 +120,6 @@ static int run_user_script(lua_State *L, const char *script_path) {
   return -1;
 }
 
-static void remove_global(lua_State *L, const char *name) {
-  lua_pushnil(L);
-  lua_setglobal(L, name);
-}
-
 static int init_lua_runtime(rig_app_state *app) {
   app->L = luaL_newstate();
   if (app->L == NULL) {
@@ -193,15 +157,15 @@ static int init_lua_runtime(rig_app_state *app) {
     fprintf(stderr, "Failed to initialize rig modules: %s\n",
             msg ? msg : "unknown error");
     lua_pop(app->L, 1);
-    remove_global(app->L, "ffi");
-    remove_global(app->L, "package");
-    remove_global(app->L, "require");
+    rig_remove_global(app->L, "ffi");
+    rig_remove_global(app->L, "package");
+    rig_remove_global(app->L, "require");
     return -1;
   }
 
-  remove_global(app->L, "ffi");
-  remove_global(app->L, "package");
-  remove_global(app->L, "require");
+  rig_remove_global(app->L, "ffi");
+  rig_remove_global(app->L, "package");
+  rig_remove_global(app->L, "require");
   return 0;
 }
 
@@ -230,16 +194,8 @@ static int init_sdl_video(rig_app_state *app) {
   }
 
   (void)SDL_SetRenderVSync(app->renderer, 1);
-
-  lua_getglobal(app->L, "sdl3");
-  if (!lua_istable(app->L, -1)) {
-    lua_pop(app->L, 1);
-    fprintf(stderr, "global 'sdl3' module is not available\n");
-    return -1;
-  }
-  lua_pushlightuserdata(app->L, app->renderer);
-  lua_setfield(app->L, -2, "renderer");
-  lua_pop(app->L, 1);
+  rig_registry_set_lightuserdata(app->L, RIG_REGKEY_SDL3_RENDERER,
+                                 app->renderer);
 
   return 0;
 }
@@ -267,9 +223,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return report_lua_error(app->L, "Error running script");
   }
 
-  if (should_run_render_loop(app->L, &app->has_render_handler) != 0) {
-    return report_lua_error(app->L, "Error checking render loop readiness");
-  }
+  lua_getglobal(app->L, "on_render");
+  app->has_render_handler = lua_isfunction(app->L, -1);
+  lua_pop(app->L, 1);
   if (!app->has_render_handler) {
     return SDL_APP_SUCCESS;
   }
@@ -332,12 +288,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   }
 
   if (app->L != NULL) {
-    lua_getglobal(app->L, "sdl3");
-    if (lua_istable(app->L, -1)) {
-      lua_pushnil(app->L);
-      lua_setfield(app->L, -2, "renderer");
-    }
-    lua_pop(app->L, 1);
+    rig_registry_set_lightuserdata(app->L, RIG_REGKEY_SDL3_RENDERER, NULL);
   }
   if (app->renderer != NULL) {
     SDL_DestroyRenderer(app->renderer);
