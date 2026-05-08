@@ -27,7 +27,8 @@ int rig_push_module_function(lua_State *L, const char *module_name,
 int rig_invoke_module_function(lua_State *L, const char *module_name,
                                const char *function_name);
 void rig_remove_global(lua_State *L, const char *name);
-int rig_init_modules(lua_State *L);
+int rig_register_preloaded_modules(lua_State *L);
+int rig_require_module(lua_State *L, const char *module_name);
 
 #ifdef __cplusplus
 }

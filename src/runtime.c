@@ -1,6 +1,7 @@
 #include "runtime.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include <lauxlib.h>
 
@@ -102,6 +103,20 @@ static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,
   return 0;
 }
 
+static int rig_find_module(const char *module_name,
+                           const rig_module_desc **out_module) {
+  size_t i;
+
+  for (i = 0; i < rig_module_count; ++i) {
+    if (strcmp(rig_modules[i].name, module_name) == 0) {
+      *out_module = &rig_modules[i];
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
 static int rig_load_module(lua_State *L, const rig_module_desc *module) {
   int top_before = lua_gettop(L);
 
@@ -140,8 +155,38 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
     }
   }
 
+  lua_getglobal(L, "package");
+  if (!lua_istable(L, -1)) {
+    return luaL_error(L,
+                      "internal error: global 'package' library is not available");
+  }
+  lua_getfield(L, -1, "loaded");
+  lua_remove(L, -2);
+  if (!lua_istable(L, -1)) {
+    return luaL_error(L,
+                      "internal error: package.loaded is not available");
+  }
+  lua_pushvalue(L, -2);
+  lua_setfield(L, -2, module->name);
   lua_pop(L, 1);
-  if (lua_gettop(L) != top_before) {
+
+  if (lua_gettop(L) != top_before + 1) {
+    return luaL_error(L,
+                      "internal error: module loader stack leak for '%s' "
+                      "(expected %d, got %d)",
+                      module->name, top_before + 1, lua_gettop(L));
+  }
+
+  if (!lua_istable(L, -1)) {
+    return luaL_error(L, "internal error: loaded module '%s' is not a table",
+                      module->name);
+  }
+
+  if (top_before != 0) {
+    lua_insert(L, top_before + 1);
+  }
+
+  if (lua_gettop(L) != top_before + 1) {
     return luaL_error(L, "internal error: module loader stack leak for '%s'",
                       module->name);
   }
@@ -149,12 +194,76 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
   return 0;
 }
 
-int rig_init_modules(lua_State *L) {
-  for (size_t i = 0; i < rig_module_count; ++i) {
-    if (rig_load_module(L, &rig_modules[i]) != 0) {
-      return -1;
-    }
+static int rig_preload_module(lua_State *L) {
+  const rig_module_desc *module =
+      (const rig_module_desc *)lua_touserdata(L, lua_upvalueindex(1));
+
+  if (module == NULL) {
+    return luaL_error(L, "internal error: missing module preload descriptor");
   }
 
+  if (rig_load_module(L, module) != 0) {
+    return lua_error(L);
+  }
+
+  return 1;
+}
+
+int rig_register_preloaded_modules(lua_State *L) {
+  int top_before = lua_gettop(L);
+  size_t i;
+
+  lua_getglobal(L, "package");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    lua_pushliteral(L, "global 'package' library is not available");
+    return -1;
+  }
+
+  lua_getfield(L, -1, "preload");
+  lua_remove(L, -2);
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    lua_pushliteral(L, "package.preload is not available");
+    return -1;
+  }
+
+  for (i = 0; i < rig_module_count; ++i) {
+    lua_pushlightuserdata(L, (void *)&rig_modules[i]);
+    lua_pushcclosure(L, rig_preload_module, 1);
+    lua_setfield(L, -2, rig_modules[i].name);
+  }
+
+  lua_pop(L, 1);
+  if (lua_gettop(L) != top_before) {
+    lua_pushliteral(L,
+                    "internal error: preload registration changed stack depth");
+    return -1;
+  }
+
+  return 0;
+}
+
+int rig_require_module(lua_State *L, const char *module_name) {
+  const rig_module_desc *module = NULL;
+
+  if (rig_find_module(module_name, &module) != 0) {
+    lua_pushfstring(L, "unknown rig module '%s'", module_name);
+    return -1;
+  }
+
+  lua_getglobal(L, "require");
+  if (!lua_isfunction(L, -1)) {
+    lua_pop(L, 1);
+    lua_pushliteral(L, "global 'require' function is not available");
+    return -1;
+  }
+
+  lua_pushstring(L, module->name);
+  if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+    return -1;
+  }
+
+  lua_pop(L, 1);
   return 0;
 }
