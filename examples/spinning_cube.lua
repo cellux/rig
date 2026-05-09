@@ -1,6 +1,7 @@
 local ffi = ffi
 
 local math3d = require("math3d")
+local mesh3d = require("mesh3d")
 local sdl3 = require("sdl3")
 local shader = require("shader")
 local time = require("time")
@@ -58,57 +59,6 @@ void main()
 }
 ]]
 
-local vertex_values = {
-   -- front
-   -1, -1, -1, 1, 0, 0,
-    1, -1, -1, 1, 0, 0,
-    1,  1, -1, 1, 0, 0,
-   -1, -1, -1, 1, 0, 0,
-    1,  1, -1, 1, 0, 0,
-   -1,  1, -1, 1, 0, 0,
-   -- back
-   -1, -1,  1, 0, 1, 0,
-    1,  1,  1, 0, 1, 0,
-    1, -1,  1, 0, 1, 0,
-   -1, -1,  1, 0, 1, 0,
-   -1,  1,  1, 0, 1, 0,
-    1,  1,  1, 0, 1, 0,
-   -- left
-   -1, -1, -1, 0, 0, 1,
-   -1,  1, -1, 0, 0, 1,
-   -1,  1,  1, 0, 0, 1,
-   -1, -1, -1, 0, 0, 1,
-   -1,  1,  1, 0, 0, 1,
-   -1, -1,  1, 0, 0, 1,
-   -- right
-    1, -1, -1, 1, 1, 0,
-    1, -1,  1, 1, 1, 0,
-    1,  1,  1, 1, 1, 0,
-    1, -1, -1, 1, 1, 0,
-    1,  1,  1, 1, 1, 0,
-    1,  1, -1, 1, 1, 0,
-   -- top
-   -1,  1, -1, 1, 0, 1,
-    1,  1, -1, 1, 0, 1,
-    1,  1,  1, 1, 0, 1,
-   -1,  1, -1, 1, 0, 1,
-    1,  1,  1, 1, 0, 1,
-   -1,  1,  1, 1, 0, 1,
-   -- bottom
-   -1, -1, -1, 0, 1, 1,
-    1, -1,  1, 0, 1, 1,
-    1, -1, -1, 0, 1, 1,
-   -1, -1, -1, 0, 1, 1,
-   -1, -1,  1, 0, 1, 1,
-    1, -1,  1, 0, 1, 1,
-}
-
-local function fill_array(array, values)
-   for i = 1, #values do
-      array[i - 1] = values[i]
-   end
-end
-
 local rotation_x = math3d.mat4()
 local rotation_y = math3d.mat4()
 local model = math3d.mat4()
@@ -143,18 +93,16 @@ local fragment_compiled = assert_ok(shader.compile({
    source = fragment_shader_source,
 }))
 
-local vertex_array = ffi.new("float[?]", #vertex_values)
-fill_array(vertex_array, vertex_values)
-local vertex_blob = ffi.string(
-   ffi.cast("const char *", vertex_array),
-   ffi.sizeof(vertex_array)
-)
+local cube_mesh = mesh3d.make_cube({
+   size = 2.0,
+   colors = "face",
+})
 
 local vertex_uniform_data = math3d.mat4()
 
 local vertex_buffer_description = ffi.new("SDL_GPUVertexBufferDescription[1]")
 vertex_buffer_description[0].slot = 0
-vertex_buffer_description[0].pitch = 24
+vertex_buffer_description[0].pitch = cube_mesh.vertex_stride
 vertex_buffer_description[0].input_rate = sdl3.GPU_VERTEXINPUTRATE_VERTEX
 vertex_buffer_description[0].instance_step_rate = 0
 
@@ -162,11 +110,11 @@ local vertex_attributes = ffi.new("SDL_GPUVertexAttribute[2]")
 vertex_attributes[0].location = 0
 vertex_attributes[0].buffer_slot = 0
 vertex_attributes[0].format = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
-vertex_attributes[0].offset = 0
+vertex_attributes[0].offset = cube_mesh.attribute_offsets.position
 vertex_attributes[1].location = 1
 vertex_attributes[1].buffer_slot = 0
 vertex_attributes[1].format = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
-vertex_attributes[1].offset = 12
+vertex_attributes[1].offset = cube_mesh.attribute_offsets.color
 
 local resources = {
    depth_texture = nil,
@@ -223,13 +171,17 @@ local ok, err = pcall(function()
 
    local vertex_buffer_info = ffi.new("SDL_GPUBufferCreateInfo[1]")
    vertex_buffer_info[0].usage = sdl3.GPU_BUFFERUSAGE_VERTEX
-   vertex_buffer_info[0].size = #vertex_blob
+   vertex_buffer_info[0].size = #cube_mesh.vertex_blob
    vertex_buffer_info[0].props = 0
    resources.vertex_buffer = sdl3.CreateGPUBuffer(device, vertex_buffer_info)
    if resources.vertex_buffer == nil then
       fail(sdl_error("failed to create GPU vertex buffer"))
    end
-   assert_ok(sdl3.upload_to_gpu_buffer(device, resources.vertex_buffer, vertex_blob))
+   assert_ok(sdl3.upload_to_gpu_buffer(
+      device,
+      resources.vertex_buffer,
+      cube_mesh.vertex_blob
+   ))
 
    local color_target_description = ffi.new("SDL_GPUColorTargetDescription[1]")
    color_target_description[0].format = swapchain_format
@@ -364,7 +316,7 @@ local ok, err = pcall(function()
          )
          sdl3.BindGPUGraphicsPipeline(render_pass, resources.pipeline)
          sdl3.BindGPUVertexBuffers(render_pass, 0, vertex_binding, 1)
-         sdl3.DrawGPUPrimitives(render_pass, 36, 1, 0, 0)
+         sdl3.DrawGPUPrimitives(render_pass, cube_mesh.vertex_count, 1, 0, 0)
          sdl3.EndGPURenderPass(render_pass)
       end
 
