@@ -21,8 +21,8 @@ if(MODULE_NAMES STREQUAL "")
     message(FATAL_ERROR "No modules were found in ${MODULE_LIST_FILE}")
 endif()
 
-set(MODULE_BUILD_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/scripts/build_embedded_module.lua")
-set(MODULE_REGISTRY_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/scripts/generate_module_registry.lua")
+set(MODULE_BUILD_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/build_embedded_module.lua")
+set(MODULE_REGISTRY_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/generate_module_registry.lua")
 set(FENNEL_MODULE_SOURCE "${MODULE_DIR}/fennel.lua")
 
 set(MODULE_C_FILES "")
