@@ -1,8 +1,6 @@
 local M = ... or {}
 local lua_tostring = _G.tostring
 
-_G.hooks = _G.hooks or {}
-
 local function is_identifier(key)
    return type(key) == "string" and key:match("^[_%a][_%w]*$") ~= nil
 end

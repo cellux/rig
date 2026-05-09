@@ -25,5 +25,4 @@ Core runtime helpers that are always loaded at interpreter startup.
 
 ## Notes
 
-- The global `hooks` table is created during `rig` module load if it does not already exist.
 - Custom script languages can be added by appending loader functions to `rig.script_loaders`.

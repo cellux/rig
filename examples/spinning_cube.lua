@@ -4,7 +4,7 @@ local sdl3 = require("sdl3")
 local shader = require("shader")
 local time = require("time")
 
-hooks.window_props = {
+sdl3.config.window_props = {
    [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
    [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 960,
    [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = 540,

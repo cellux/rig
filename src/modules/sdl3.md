@@ -14,33 +14,33 @@ The SDL shared library is loaded only when the module is required.
   - Dispatches queued SDL events.
   - Returns `false` after a quit event.
 - `sdl3.render_frame()`
-  - Calls `hooks.render()` and presents the frame.
+  - Calls `sdl3.callback.on_render()` and presents the frame.
 - `sdl3.shutdown()`
   - Destroys owned renderer/window state and releases initialized SDL subsystems.
 - `sdl3.run()`
   - Convenience wrapper around `setup`, the event/render loop, and `shutdown`.
 
-## Hooks
+## Extension Points
 
-The module uses the global `hooks` table for application policy.
+The module exposes SDL-specific user extension points through nested tables:
 
-- `hooks.sdl_init_flags`
+- `sdl3.config.init_flags`
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
-- `hooks.create_window() -> window_ptr | nil, err`
+- `sdl3.config.window_props`
+  - Optional window property overrides merged into `sdl3.default_window_props`.
+- `sdl3.factory.create_window() -> window_ptr | nil, err`
   - Defaults to `SDL_CreateWindowWithProperties`.
-- `hooks.create_renderer(window_ptr) -> renderer_ptr | nil, err`
+- `sdl3.factory.create_renderer(window_ptr) -> renderer_ptr | nil, err`
   - Defaults to the normal SDL renderer path.
-- `hooks.render()`
+- `sdl3.callback.on_render()`
   - Called by `sdl3.render_frame()`.
-- `hooks.handle_key(key_info)`
+- `sdl3.callback.on_key(key_info)`
   - Called by `sdl3.pump_events()` for keyboard events.
-
-User scripts may override these before entering the loop.
 
 ## Window Properties
 
 - `sdl3.default_window_props`
-  - Default property table used by the builtin `hooks.create_window`.
+  - Default property table used by the builtin `sdl3.factory.create_window`.
 - `sdl3.build_properties(props)`
   - Converts a Lua table into `SDL_PropertiesID`.
 - `sdl3.destroy_properties(properties_id)`

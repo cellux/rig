@@ -431,6 +431,10 @@ M._renderer = nil
 M._gpu_device = nil
 M._owned_init_flags = nil
 
+M.config = M.config or {}
+M.factory = M.factory or {}
+M.callback = M.callback or {}
+
 M.default_window_props = {
    [M.PROP_WINDOW_CREATE_TITLE_STRING] = "rig",
    [M.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 640,
@@ -458,56 +462,53 @@ local function merge_props(base_props, override_props)
    return merged
 end
 
-local function ensure_creation_hooks()
-   local hooks = _G.hooks
-
-   if type(hooks) ~= "table" then
-      hooks = {}
-      _G.hooks = hooks
+local function default_create_window()
+   local merged_props, merge_error =
+      merge_props(M.default_window_props, M.config.window_props)
+   if merged_props == nil then
+      return nil, merge_error
    end
 
-   if hooks.sdl_init_flags == nil then
-      hooks.sdl_init_flags = M.INIT_VIDEO + M.INIT_EVENTS
+   local properties_id, props_error = M.build_properties(merged_props)
+   if properties_id == nil then
+      return nil, props_error
    end
 
-   if type(hooks.create_window) ~= "function" then
-      hooks.create_window = function()
-         local merged_props, merge_error =
-            merge_props(M.default_window_props, hooks.window_props)
-         if merged_props == nil then
-            return nil, merge_error
-         end
+   local window_ptr = M.CreateWindowWithProperties(properties_id)
+   M.destroy_properties(properties_id)
 
-         local properties_id, props_error = M.build_properties(merged_props)
-         if properties_id == nil then
-            return nil, props_error
-         end
-
-         local window_ptr = M.CreateWindowWithProperties(properties_id)
-         M.destroy_properties(properties_id)
-
-         if window_ptr == nil then
-            return nil, ffi.string(M.GetError())
-         end
-
-         return window_ptr
-      end
+   if window_ptr == nil then
+      return nil, ffi.string(M.GetError())
    end
 
-   if type(hooks.create_renderer) ~= "function" then
-      hooks.create_renderer = function(window_ptr)
-         local renderer_ptr = M.CreateRenderer(window_ptr, nil)
-         if renderer_ptr == nil then
-            return nil, ffi.string(M.GetError())
-         end
+   return window_ptr
+end
 
-         if not M.SetRenderVSync(renderer_ptr, 1) then
-            M.DestroyRenderer(renderer_ptr)
-            return nil, ffi.string(M.GetError())
-         end
+local function default_create_renderer(window_ptr)
+   local renderer_ptr = M.CreateRenderer(window_ptr, nil)
+   if renderer_ptr == nil then
+      return nil, ffi.string(M.GetError())
+   end
 
-         return renderer_ptr
-      end
+   if not M.SetRenderVSync(renderer_ptr, 1) then
+      M.DestroyRenderer(renderer_ptr)
+      return nil, ffi.string(M.GetError())
+   end
+
+   return renderer_ptr
+end
+
+local function ensure_extension_points()
+   if M.config.init_flags == nil then
+      M.config.init_flags = M.INIT_VIDEO + M.INIT_EVENTS
+   end
+
+   if type(M.factory.create_window) ~= "function" then
+      M.factory.create_window = default_create_window
+   end
+
+   if type(M.factory.create_renderer) ~= "function" then
+      M.factory.create_renderer = default_create_renderer
    end
 end
 
@@ -682,15 +683,15 @@ end
 
 local function normalize_init_flags(flags_number)
    if type(flags_number) ~= "number" then
-      error("hooks.sdl_init_flags must be a number")
+      error("sdl3.config.init_flags must be a number")
    end
 
    local flags_integer = math.floor(flags_number)
    if flags_number < 0.0 or flags_number ~= flags_integer then
-      error("hooks.sdl_init_flags must be a non-negative integer")
+      error("sdl3.config.init_flags must be a non-negative integer")
    end
    if flags_number > 4294967295.0 then
-      error("hooks.sdl_init_flags exceeds Uint32 range")
+      error("sdl3.config.init_flags exceeds Uint32 range")
    end
 
    return ffi.cast("Uint32", flags_integer)
@@ -709,10 +710,9 @@ function M.setup()
       M.shutdown()
    end
 
-   ensure_creation_hooks()
+   ensure_extension_points()
 
-   local hooks = _G.hooks
-   local required = normalize_init_flags(hooks.sdl_init_flags)
+   local required = normalize_init_flags(M.config.init_flags)
    local initialized = M.WasInit(required)
    local owned_init_flags = nil
 
@@ -723,20 +723,20 @@ function M.setup()
       owned_init_flags = required
    end
 
-   local create_window = hooks.create_window
+   local create_window = M.factory.create_window
    if type(create_window) ~= "function" then
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("hooks.create_window is not available")
+      error("sdl3.factory.create_window is not available")
    end
 
-   local create_renderer = hooks.create_renderer
+   local create_renderer = M.factory.create_renderer
    if type(create_renderer) ~= "function" then
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("hooks.create_renderer is not available")
+      error("sdl3.factory.create_renderer is not available")
    end
 
    local window_ptr, window_err = create_window()
@@ -745,7 +745,7 @@ function M.setup()
          M.QuitSubSystem(owned_init_flags)
       end
          error(format_hook_error(
-            "hooks.create_window",
+            "sdl3.factory.create_window",
             window_err,
             "expected SDL_Window* cdata"
          ))
@@ -754,7 +754,7 @@ function M.setup()
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("hooks.create_window must return SDL_Window* cdata")
+      error("sdl3.factory.create_window must return SDL_Window* cdata")
    end
 
    local renderer_ptr, renderer_err = create_renderer(window_ptr)
@@ -764,7 +764,7 @@ function M.setup()
          M.QuitSubSystem(owned_init_flags)
       end
          error(format_hook_error(
-            "hooks.create_renderer",
+            "sdl3.factory.create_renderer",
             renderer_err,
             "expected SDL_Renderer* cdata"
          ))
@@ -774,7 +774,7 @@ function M.setup()
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("hooks.create_renderer must return SDL_Renderer* cdata")
+      error("sdl3.factory.create_renderer must return SDL_Renderer* cdata")
    end
 
    M._window = window_ptr
@@ -791,10 +791,9 @@ function M.setup_gpu(options)
       M.shutdown()
    end
 
-   ensure_creation_hooks()
+   ensure_extension_points()
 
-   local hooks = _G.hooks
-   local required = normalize_init_flags(hooks.sdl_init_flags)
+   local required = normalize_init_flags(M.config.init_flags)
    local initialized = M.WasInit(required)
    local owned_init_flags = nil
 
@@ -805,12 +804,12 @@ function M.setup_gpu(options)
       owned_init_flags = required
    end
 
-   local create_window = hooks.create_window
+   local create_window = M.factory.create_window
    if type(create_window) ~= "function" then
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("hooks.create_window is not available")
+      error("sdl3.factory.create_window is not available")
    end
 
    local window_ptr, window_err = create_window()
@@ -819,7 +818,7 @@ function M.setup_gpu(options)
          M.QuitSubSystem(owned_init_flags)
       end
       error(format_hook_error(
-         "hooks.create_window",
+         "sdl3.factory.create_window",
          window_err,
          "expected SDL_Window* cdata"
       ))
@@ -828,7 +827,7 @@ function M.setup_gpu(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("hooks.create_window must return SDL_Window* cdata")
+      error("sdl3.factory.create_window must return SDL_Window* cdata")
    end
 
    local format_flags = options and options.shader_formats
@@ -1047,8 +1046,7 @@ function M.clear(r, g, b, a)
 end
 
 local function dispatch_keyboard_event(event)
-   local hooks = _G.hooks
-   local handler = hooks.handle_key
+   local handler = M.callback.on_key
    if type(handler) ~= "function" then
       return
    end
@@ -1103,8 +1101,7 @@ function M.pump_events()
 end
 
 function M.render_frame()
-   local hooks = _G.hooks
-   local handler = hooks.render
+   local handler = M.callback.on_render
    if type(handler) ~= "function" then
       return false
    end
@@ -1115,9 +1112,8 @@ function M.render_frame()
 end
 
 function M.run()
-   local hooks = _G.hooks
-   if type(hooks.render) ~= "function" then
-      error("hooks.render must be a function before calling sdl3.run")
+   if type(M.callback.on_render) ~= "function" then
+      error("sdl3.callback.on_render must be a function before calling sdl3.run")
    end
 
    M.setup()
