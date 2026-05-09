@@ -56,6 +56,8 @@ The module exposes SDL-specific user extension points through nested tables:
   - Returns the current `SDL_GPUDevice*`.
 - `sdl3.upload_to_gpu_buffer(device, buffer, data_string)`
   - Uploads raw byte data into an SDL GPU buffer.
+- `sdl3.create_gpu_shader(device, compiled, props?)`
+  - Builds an `SDL_GPUShader` from a compiled shader descriptor returned by `shader.compile(...)`.
 - `sdl3.build_vertex_buffer_descriptions(buffers)`
   - Builds `SDL_GPUVertexBufferDescription[]` from Lua tables.
 - `sdl3.build_vertex_attributes(attributes)`

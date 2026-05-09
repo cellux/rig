@@ -619,6 +619,11 @@ local function normalize_vertex_attribute_format(value)
    return value
 end
 
+local STAGE_TO_SDL = {
+   vertex = M.GPU_SHADERSTAGE_VERTEX,
+   fragment = M.GPU_SHADERSTAGE_FRAGMENT,
+}
+
 function M.build_vertex_buffer_descriptions(buffers)
    if type(buffers) ~= "table" then
       error("sdl3.build_vertex_buffer_descriptions expects a table")
@@ -706,6 +711,52 @@ function M.build_vertex_input_state(layout)
       vertex_buffer_descriptions = descriptions,
       vertex_attributes = attributes,
    }
+end
+
+function M.create_gpu_shader(device, compiled, props)
+   if device == nil then
+      error("sdl3.create_gpu_shader requires an SDL_GPUDevice*")
+   end
+   if type(compiled) ~= "table" then
+      error("sdl3.create_gpu_shader requires a compiled shader table")
+   end
+
+   local shader_stage = STAGE_TO_SDL[compiled.stage]
+   if shader_stage == nil then
+      error(("shader stage '%s' is not a graphics shader stage"):format(
+         tostring(compiled.stage)
+      ), 0)
+   end
+
+   local reflection = compiled.reflection
+   if type(reflection) ~= "table" or type(reflection.resource_info) ~= "table" then
+      error("compiled shader is missing reflection.resource_info", 0)
+   end
+
+   local code_buffer = ffi.new("Uint8[?]", #compiled.bytecode)
+   ffi.copy(code_buffer, compiled.bytecode, #compiled.bytecode)
+
+   local create_info = ffi.new("SDL_GPUShaderCreateInfo[1]")
+   create_info[0].code_size = #compiled.bytecode
+   create_info[0].code = code_buffer
+   create_info[0].entrypoint = compiled.entrypoint or "main"
+   create_info[0].format = compiled.format or M.GPU_SHADERFORMAT_SPIRV
+   create_info[0].stage = shader_stage
+   create_info[0].num_samplers = reflection.resource_info.num_samplers or 0
+   create_info[0].num_storage_textures =
+      reflection.resource_info.num_storage_textures or 0
+   create_info[0].num_storage_buffers =
+      reflection.resource_info.num_storage_buffers or 0
+   create_info[0].num_uniform_buffers =
+      reflection.resource_info.num_uniform_buffers or 0
+   create_info[0].props = props or 0
+
+   local shader_handle = M.CreateGPUShader(device, create_info)
+   if shader_handle == nil then
+      error(ffi.string(M.GetError()), 0)
+   end
+
+   return shader_handle
 end
 
 local function get_error_string()

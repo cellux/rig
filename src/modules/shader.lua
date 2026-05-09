@@ -4,12 +4,6 @@ local dxc = require("dxc")
 local shaderc = require("shaderc")
 local spirvcross = require("spirvcross")
 local sdl3 = require("sdl3")
-local ffi = ffi
-
-local STAGE_TO_SDL = {
-   vertex = sdl3.GPU_SHADERSTAGE_VERTEX,
-   fragment = sdl3.GPU_SHADERSTAGE_FRAGMENT,
-}
 
 local GRAPHICS_SPIRV_EXPECTED_SETS = {
    vertex = {
@@ -162,52 +156,6 @@ function M.compile(options)
    end
 
    return compiled
-end
-
-function M.create_sdl_shader(device, compiled, props)
-   if device == nil then
-      error("shader.create_sdl_shader requires an SDL_GPUDevice*")
-   end
-   if type(compiled) ~= "table" then
-      error("shader.create_sdl_shader requires a compiled shader table")
-   end
-
-   local shader_stage = STAGE_TO_SDL[compiled.stage]
-   if shader_stage == nil then
-      error(("shader stage '%s' is not a graphics shader stage"):format(
-         tostring(compiled.stage)
-      ), 0)
-   end
-
-   local reflection = compiled.reflection
-   if type(reflection) ~= "table" or type(reflection.resource_info) ~= "table" then
-      error("compiled shader is missing reflection.resource_info", 0)
-   end
-
-   local code_buffer = ffi.new("Uint8[?]", #compiled.bytecode)
-   ffi.copy(code_buffer, compiled.bytecode, #compiled.bytecode)
-
-   local create_info = ffi.new("SDL_GPUShaderCreateInfo[1]")
-   create_info[0].code_size = #compiled.bytecode
-   create_info[0].code = code_buffer
-   create_info[0].entrypoint = compiled.entrypoint or "main"
-   create_info[0].format = compiled.format or sdl3.GPU_SHADERFORMAT_SPIRV
-   create_info[0].stage = shader_stage
-   create_info[0].num_samplers = reflection.resource_info.num_samplers or 0
-   create_info[0].num_storage_textures =
-      reflection.resource_info.num_storage_textures or 0
-   create_info[0].num_storage_buffers =
-      reflection.resource_info.num_storage_buffers or 0
-   create_info[0].num_uniform_buffers =
-      reflection.resource_info.num_uniform_buffers or 0
-   create_info[0].props = props or 0
-
-   local shader_handle = sdl3.CreateGPUShader(device, create_info)
-   if shader_handle == nil then
-      error(ffi.string(sdl3.GetError()), 0)
-   end
-
-   return shader_handle
 end
 
 return M

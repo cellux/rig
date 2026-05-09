@@ -148,8 +148,8 @@ local ok, err = pcall(function()
       fail("sdl3.setup_gpu did not produce a device and window")
    end
 
-   resources.vertex_shader = shader.create_sdl_shader(device, vertex_compiled)
-   resources.fragment_shader = shader.create_sdl_shader(device, fragment_compiled)
+   resources.vertex_shader = sdl3.create_gpu_shader(device, vertex_compiled)
+   resources.fragment_shader = sdl3.create_gpu_shader(device, fragment_compiled)
 
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)
    local depth_format = assert_ok(sdl3.choose_depth_format(device))

@@ -10,9 +10,6 @@ High-level shader helper layered on top of `dxc`, `shaderc`, `spirvcross`, and `
   - Reflects the result through `spirvcross`.
   - Returns a normalized compiled shader table.
   - Raises on compilation, reflection, or layout-validation failure.
-- `shader.create_sdl_shader(device, compiled, props?)`
-  - Builds an `SDL_GPUShader` from a compiled shader result.
-  - Raises if SDL shader creation fails.
 
 ## Notes
 
