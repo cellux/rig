@@ -42,6 +42,7 @@ Available modules:
 - `rig`: [`src/modules/rig.md`](src/modules/rig.md)
 - `sdl3`: [`src/modules/sdl3.md`](src/modules/sdl3.md)
 - `shadercross`: [`src/modules/shadercross.md`](src/modules/shadercross.md)
+- `shaderc`: [`src/modules/shaderc.md`](src/modules/shaderc.md)
 - `dxc`: [`src/modules/dxc.md`](src/modules/dxc.md)
 - `spirvcross`: [`src/modules/spirvcross.md`](src/modules/spirvcross.md)
 - `shader`: [`src/modules/shader.md`](src/modules/shader.md)

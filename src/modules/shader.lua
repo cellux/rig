@@ -1,6 +1,7 @@
 local M = ... or {}
 
 local dxc = require("dxc")
+local shaderc = require("shaderc")
 local spirvcross = require("spirvcross")
 local sdl3 = require("sdl3")
 local ffi = ffi
@@ -103,8 +104,8 @@ function M.compile(options)
    end
 
    local language = options.language or "hlsl"
-   if language ~= "hlsl" then
-      error("shader.compile currently supports only language='hlsl'")
+   if language ~= "hlsl" and language ~= "glsl" then
+      error("shader.compile currently supports only language='hlsl' or language='glsl'")
    end
 
    local stage = options.stage
@@ -117,15 +118,31 @@ function M.compile(options)
       return nil, source_err
    end
 
-   local compiled, compile_err = dxc.compile_spirv({
-      source = source,
-      stage = stage,
-      entrypoint = options.entrypoint,
-      source_name = options.source_name or options.path or "shader.hlsl",
-      extra_args = options.extra_args,
-      preserve_bindings = options.preserve_bindings,
-      preserve_interface = options.preserve_interface,
-   })
+   local compiled
+   local compile_err
+   if language == "hlsl" then
+      compiled, compile_err = dxc.compile_spirv({
+         source = source,
+         stage = stage,
+         entrypoint = options.entrypoint,
+         source_name = options.source_name or options.path or "shader.hlsl",
+         extra_args = options.extra_args,
+         preserve_bindings = options.preserve_bindings,
+         preserve_interface = options.preserve_interface,
+      })
+   else
+      compiled, compile_err = shaderc.compile_spirv({
+         source = source,
+         stage = stage,
+         entrypoint = options.entrypoint,
+         source_name = options.source_name or options.path or "shader.glsl",
+         glsl_version = options.glsl_version,
+         optimization = options.optimization,
+         debug_info = options.debug_info,
+         preserve_bindings = options.preserve_bindings,
+         macro_definitions = options.macro_definitions,
+      })
+   end
    if compiled == nil then
       return nil, compile_err
    end

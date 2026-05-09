@@ -28,39 +28,33 @@ local function assert_ok(value, err)
 end
 
 local vertex_shader_source = [[
-cbuffer Camera : register(b0, space1)
+#version 450
+
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
+
+layout(location = 0) out vec3 out_color;
+
+layout(set = 1, binding = 0) uniform Camera {
+   mat4 mvp;
+} camera;
+
+void main()
 {
-   row_major float4x4 mvp;
-};
-
-struct VSInput {
-   float3 position : POSITION;
-   float3 color : COLOR0;
-};
-
-struct VSOutput {
-   float4 position : SV_Position;
-   float3 color : TEXCOORD0;
-};
-
-VSOutput main(VSInput input)
-{
-   VSOutput output;
-   output.position = mul(float4(input.position, 1.0), mvp);
-   output.color = input.color;
-   return output;
+   gl_Position = camera.mvp * vec4(in_position, 1.0);
+   out_color = in_color;
 }
 ]]
 
 local fragment_shader_source = [[
-struct PSInput {
-   float4 position : SV_Position;
-   float3 color : TEXCOORD0;
-};
+#version 450
 
-float4 main(PSInput input) : SV_Target0
+layout(location = 0) in vec3 in_color;
+layout(location = 0) out vec4 out_color;
+
+void main()
 {
-   return float4(input.color, 1.0);
+   out_color = vec4(in_color, 1.0);
 }
 ]]
 
@@ -136,16 +130,16 @@ local function build_mvp(out, aspect, time_seconds)
 end
 
 local vertex_compiled = assert_ok(shader.compile({
-   language = "hlsl",
+   language = "glsl",
    stage = "vertex",
-   source_name = "spinning_cube.vert.hlsl",
+   source_name = "spinning_cube.vert.glsl",
    source = vertex_shader_source,
 }))
 
 local fragment_compiled = assert_ok(shader.compile({
-   language = "hlsl",
+   language = "glsl",
    stage = "fragment",
-   source_name = "spinning_cube.frag.hlsl",
+   source_name = "spinning_cube.frag.glsl",
    source = fragment_shader_source,
 }))
 
