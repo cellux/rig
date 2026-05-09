@@ -51,6 +51,7 @@ through LuaJIT FFI only when required.
 The `dxc` module also loads `libdxcompiler` lazily through LuaJIT FFI when required.
 The `spirvcross` module also loads `libspirv-cross-c-shared` lazily through LuaJIT FFI when required.
 The `shader` module layers on top of `dxc`, `spirvcross`, and `sdl3`.
+The `time` module exposes wall-clock and monotonic clocks.
 
 The builtin `rig` module defines `rig.script_loaders` at module load time with Lua and Fennel script loaders, in that order.
 
@@ -90,6 +91,12 @@ The first version returns:
 Its first entrypoints are:
 - `shader.compile{ language="hlsl", stage=..., source=... }`
 - `shader.create_sdl_shader(device, compiled[, props])`
+
+`time.lua` provides:
+- `time.now()` -> epoch seconds as a Lua number
+- `time.monotonic()` -> monotonic seconds as a Lua number
+- `time.now_ns()` -> epoch nanoseconds as a Lua number
+- `time.monotonic_ns()` -> monotonic nanoseconds as a Lua number
 
 The builtin `rig` module also ensures a global `hooks` table exists before the user script runs.
 `sdl3.lua` installs default implementations for:
@@ -134,4 +141,5 @@ It demonstrates:
 - SDL GPU shader/pipeline creation
 - vertex buffer upload
 - pushed vertex uniform data for the transform matrix
+- monotonic animation timing via `time.monotonic()`
 - depth-tested rendering to the SDL swapchain

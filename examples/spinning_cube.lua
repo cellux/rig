@@ -1,17 +1,8 @@
 local ffi = ffi
 
-ffi.cdef[[
-typedef long time_t;
-typedef long suseconds_t;
-typedef struct timeval {
-   time_t tv_sec;
-   suseconds_t tv_usec;
-} timeval;
-int gettimeofday(struct timeval *tv, void *tz);
-]]
-
 local sdl3 = require("sdl3")
 local shader = require("shader")
+local time = require("time")
 
 hooks.window_props = {
    [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
@@ -192,12 +183,6 @@ local function write_mat4(dst, values)
    for i = 1, 16 do
       dst[i - 1] = values[i]
    end
-end
-
-local function wall_time_seconds()
-   local tv = ffi.new("timeval[1]")
-   ffi.C.gettimeofday(tv, nil)
-   return tonumber(tv[0].tv_sec) + tonumber(tv[0].tv_usec) / 1000000.0
 end
 
 local function build_mvp(aspect, time_seconds)
@@ -405,7 +390,7 @@ local ok, err = pcall(function()
 
          write_mat4(
             vertex_uniform_data,
-            build_mvp(width / height, wall_time_seconds())
+            build_mvp(width / height, time.monotonic())
          )
          sdl3.PushGPUVertexUniformData(
             command_buffer,
