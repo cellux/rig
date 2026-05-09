@@ -115,7 +115,7 @@ function M.compile(options)
    local compiled
    local compile_err
    if language == "hlsl" then
-      compiled, compile_err = dxc.compile_spirv({
+      compiled, compile_err = dxc.compile_spirv {
          source = source,
          stage = stage,
          entrypoint = options.entrypoint,
@@ -123,9 +123,9 @@ function M.compile(options)
          extra_args = options.extra_args,
          preserve_bindings = options.preserve_bindings,
          preserve_interface = options.preserve_interface,
-      })
+      }
    else
-      compiled, compile_err = shaderc.compile_spirv({
+      compiled, compile_err = shaderc.compile_spirv {
          source = source,
          stage = stage,
          entrypoint = options.entrypoint,
@@ -135,7 +135,7 @@ function M.compile(options)
          debug_info = options.debug_info,
          preserve_bindings = options.preserve_bindings,
          macro_definitions = options.macro_definitions,
-      })
+      }
    end
    if compiled == nil then
       error(tostring(compile_err or "shader compilation failed"), 0)

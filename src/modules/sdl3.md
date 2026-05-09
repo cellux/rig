@@ -56,8 +56,33 @@ The module exposes SDL-specific user extension points through nested tables:
   - Returns the current `SDL_GPUDevice*`.
 - `sdl3.upload_to_gpu_buffer(device, buffer, data_string)`
   - Uploads raw byte data into an SDL GPU buffer.
+  - Raises an error if upload staging or submission fails.
 - `sdl3.create_gpu_shader(device, compiled, props?)`
   - Builds an `SDL_GPUShader` from a compiled shader descriptor returned by `shader.compile(...)`.
+- `sdl3.build_gpu_buffer_create_info(spec)`
+  - Builds `SDL_GPUBufferCreateInfo[1]` from a Lua table.
+- `sdl3.build_color_target_descriptions(specs)`
+  - Builds `SDL_GPUColorTargetDescription[]` from Lua tables.
+- `sdl3.build_graphics_pipeline_create_info(spec)`
+  - Builds `SDL_GPUGraphicsPipelineCreateInfo[1]` from a Lua table and keeps any backing arrays alive in the returned bundle.
+- `sdl3.resource_scope(device)`
+  - Creates a scope object that tracks SDL GPU resources and releases them in reverse creation order.
+- `scope:create_gpu_shader(compiled, props?)`
+  - Creates an `SDL_GPUShader` and attaches it to the scope.
+- `scope:create_gpu_buffer(create_info)`
+  - Creates an `SDL_GPUBuffer` and attaches it to the scope.
+  - Accepts either `SDL_GPUBufferCreateInfo[1]` or a Lua table matching `sdl3.build_gpu_buffer_create_info(...)`.
+- `scope:create_graphics_pipeline(create_info)`
+  - Creates an `SDL_GPUGraphicsPipeline` and attaches it to the scope.
+  - Accepts either `SDL_GPUGraphicsPipelineCreateInfo[1]` or a Lua table matching `sdl3.build_graphics_pipeline_create_info(...)`.
+- `scope:create_depth_texture(width, height, format?)`
+  - Creates a depth texture and attaches it to the scope.
+- `scope:adopt(resource, release_fn)`
+  - Attaches an existing resource to the scope with a custom release function.
+- `scope:replace(key, resource, release_fn)`
+  - Replaces a previously tracked named resource, releasing the old one immediately before storing the new one.
+- `scope:release()`
+  - Releases all tracked resources in reverse order.
 - `sdl3.build_vertex_buffer_descriptions(buffers)`
   - Builds `SDL_GPUVertexBufferDescription[]` from Lua tables.
 - `sdl3.build_vertex_attributes(attributes)`
@@ -66,8 +91,10 @@ The module exposes SDL-specific user extension points through nested tables:
   - Builds a full `SDL_GPUVertexInputState` plus the backing FFI arrays it points to.
 - `sdl3.choose_depth_format(device)`
   - Selects a supported depth format for the current device.
+  - Raises an error if no supported depth format exists.
 - `sdl3.create_depth_texture(device, width, height, format?)`
   - Creates a depth texture suitable for render passes.
+  - Raises an error if no suitable format exists or SDL texture creation fails.
 
 ## Notes
 

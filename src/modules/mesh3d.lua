@@ -147,7 +147,7 @@ function sdl3.build_vertex_input_state_from_mesh(mesh)
    end
 
    if mesh.layout == "position_color_f32" then
-      return sdl3.build_vertex_input_state({
+      return sdl3.build_vertex_input_state {
          buffers = {
             {
                slot = 0,
@@ -167,7 +167,7 @@ function sdl3.build_vertex_input_state_from_mesh(mesh)
                },
             },
          },
-      })
+      }
    end
 
    error("unsupported mesh layout '" .. tostring(mesh.layout) .. "'", 0)

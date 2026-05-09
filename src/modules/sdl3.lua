@@ -713,6 +713,200 @@ function M.build_vertex_input_state(layout)
    }
 end
 
+function M.build_gpu_buffer_create_info(spec)
+   if type(spec) ~= "table" then
+      error("sdl3.build_gpu_buffer_create_info expects a table", 0)
+   end
+
+   local create_info = ffi.new("SDL_GPUBufferCreateInfo[1]")
+   create_info[0].usage =
+      assert(tonumber(spec.usage), "GPU buffer usage must be a number")
+   create_info[0].size =
+      assert(tonumber(spec.size), "GPU buffer size must be a number")
+   create_info[0].props = tonumber(spec.props or 0) or 0
+   return create_info
+end
+
+function M.build_color_target_descriptions(specs)
+   if type(specs) ~= "table" then
+      error("sdl3.build_color_target_descriptions expects a table", 0)
+   end
+
+   local descriptions = ffi.new("SDL_GPUColorTargetDescription[?]", #specs)
+   for i, spec in ipairs(specs) do
+      if type(spec) ~= "table" then
+         error("color target descriptions must be tables", 0)
+      end
+
+      local description = descriptions[i - 1]
+      description.format =
+         assert(tonumber(spec.format), "color target format must be a number")
+
+      local blend_state = spec.blend_state
+      if type(blend_state) == "table" then
+         if blend_state.src_color_blendfactor ~= nil then
+            description.blend_state.src_color_blendfactor =
+               tonumber(blend_state.src_color_blendfactor) or 0
+         end
+         if blend_state.dst_color_blendfactor ~= nil then
+            description.blend_state.dst_color_blendfactor =
+               tonumber(blend_state.dst_color_blendfactor) or 0
+         end
+         if blend_state.color_blend_op ~= nil then
+            description.blend_state.color_blend_op =
+               tonumber(blend_state.color_blend_op) or 0
+         end
+         if blend_state.src_alpha_blendfactor ~= nil then
+            description.blend_state.src_alpha_blendfactor =
+               tonumber(blend_state.src_alpha_blendfactor) or 0
+         end
+         if blend_state.dst_alpha_blendfactor ~= nil then
+            description.blend_state.dst_alpha_blendfactor =
+               tonumber(blend_state.dst_alpha_blendfactor) or 0
+         end
+         if blend_state.alpha_blend_op ~= nil then
+            description.blend_state.alpha_blend_op =
+               tonumber(blend_state.alpha_blend_op) or 0
+         end
+         if blend_state.color_write_mask ~= nil then
+            description.blend_state.color_write_mask =
+               tonumber(blend_state.color_write_mask) or 0
+         end
+         if blend_state.enable_blend ~= nil then
+            description.blend_state.enable_blend = not not blend_state.enable_blend
+         end
+         if blend_state.enable_color_write_mask ~= nil then
+            description.blend_state.enable_color_write_mask =
+               not not blend_state.enable_color_write_mask
+         end
+      end
+   end
+
+   return descriptions
+end
+
+function M.build_graphics_pipeline_create_info(spec)
+   if type(spec) ~= "table" then
+      error("sdl3.build_graphics_pipeline_create_info expects a table", 0)
+   end
+
+   local create_info = ffi.new("SDL_GPUGraphicsPipelineCreateInfo[1]")
+   create_info[0].vertex_shader = spec.vertex_shader
+   create_info[0].fragment_shader = spec.fragment_shader
+   create_info[0].primitive_type =
+      assert(tonumber(spec.primitive_type), "graphics pipeline primitive_type must be a number")
+
+   local vertex_input = spec.vertex_input
+   if vertex_input ~= nil then
+      if type(vertex_input) == "table" and vertex_input.state ~= nil then
+         create_info[0].vertex_input_state = vertex_input.state[0]
+      else
+         create_info[0].vertex_input_state = vertex_input
+      end
+   end
+
+   local rasterizer_state = spec.rasterizer_state
+   if type(rasterizer_state) == "table" then
+      local state = create_info[0].rasterizer_state
+      if rasterizer_state.fill_mode ~= nil then
+         state.fill_mode = tonumber(rasterizer_state.fill_mode) or 0
+      end
+      if rasterizer_state.cull_mode ~= nil then
+         state.cull_mode = tonumber(rasterizer_state.cull_mode) or 0
+      end
+      if rasterizer_state.front_face ~= nil then
+         state.front_face = tonumber(rasterizer_state.front_face) or 0
+      end
+      if rasterizer_state.depth_bias_constant_factor ~= nil then
+         state.depth_bias_constant_factor =
+            tonumber(rasterizer_state.depth_bias_constant_factor) or 0
+      end
+      if rasterizer_state.depth_bias_clamp ~= nil then
+         state.depth_bias_clamp =
+            tonumber(rasterizer_state.depth_bias_clamp) or 0
+      end
+      if rasterizer_state.depth_bias_slope_factor ~= nil then
+         state.depth_bias_slope_factor =
+            tonumber(rasterizer_state.depth_bias_slope_factor) or 0
+      end
+      if rasterizer_state.enable_depth_bias ~= nil then
+         state.enable_depth_bias = not not rasterizer_state.enable_depth_bias
+      end
+      if rasterizer_state.enable_depth_clip ~= nil then
+         state.enable_depth_clip = not not rasterizer_state.enable_depth_clip
+      end
+   end
+
+   local multisample_state = spec.multisample_state
+   if type(multisample_state) == "table" then
+      local state = create_info[0].multisample_state
+      if multisample_state.sample_count ~= nil then
+         state.sample_count = tonumber(multisample_state.sample_count) or 0
+      end
+      if multisample_state.sample_mask ~= nil then
+         state.sample_mask = tonumber(multisample_state.sample_mask) or 0
+      end
+      if multisample_state.enable_mask ~= nil then
+         state.enable_mask = not not multisample_state.enable_mask
+      end
+      if multisample_state.enable_alpha_to_coverage ~= nil then
+         state.enable_alpha_to_coverage =
+            not not multisample_state.enable_alpha_to_coverage
+      end
+   end
+
+   local depth_stencil_state = spec.depth_stencil_state
+   if type(depth_stencil_state) == "table" then
+      local state = create_info[0].depth_stencil_state
+      if depth_stencil_state.compare_op ~= nil then
+         state.compare_op = tonumber(depth_stencil_state.compare_op) or 0
+      end
+      if depth_stencil_state.enable_depth_test ~= nil then
+         state.enable_depth_test = not not depth_stencil_state.enable_depth_test
+      end
+      if depth_stencil_state.enable_depth_write ~= nil then
+         state.enable_depth_write = not not depth_stencil_state.enable_depth_write
+      end
+      if depth_stencil_state.enable_stencil_test ~= nil then
+         state.enable_stencil_test = not not depth_stencil_state.enable_stencil_test
+      end
+      if depth_stencil_state.compare_mask ~= nil then
+         state.compare_mask = tonumber(depth_stencil_state.compare_mask) or 0
+      end
+      if depth_stencil_state.write_mask ~= nil then
+         state.write_mask = tonumber(depth_stencil_state.write_mask) or 0
+      end
+   end
+
+   local color_target_descriptions = nil
+   local target_info = spec.target_info
+   if type(target_info) == "table" then
+      if type(target_info.color_target_descriptions) == "table" then
+         color_target_descriptions =
+            M.build_color_target_descriptions(target_info.color_target_descriptions)
+         create_info[0].target_info.color_target_descriptions =
+            color_target_descriptions
+         create_info[0].target_info.num_color_targets =
+            #target_info.color_target_descriptions
+      end
+      if target_info.depth_stencil_format ~= nil then
+         create_info[0].target_info.depth_stencil_format =
+            tonumber(target_info.depth_stencil_format) or 0
+      end
+      if target_info.has_depth_stencil_target ~= nil then
+         create_info[0].target_info.has_depth_stencil_target =
+            not not target_info.has_depth_stencil_target
+      end
+   end
+
+   create_info[0].props = tonumber(spec.props or 0) or 0
+
+   return {
+      create_info = create_info,
+      color_target_descriptions = color_target_descriptions,
+   }
+end
+
 function M.create_gpu_shader(device, compiled, props)
    if device == nil then
       error("sdl3.create_gpu_shader requires an SDL_GPUDevice*")
@@ -761,6 +955,145 @@ end
 
 local function get_error_string()
    return ffi.string(M.GetError())
+end
+
+local resource_scope_mt = {}
+resource_scope_mt.__index = resource_scope_mt
+
+local function add_scope_entry(scope, resource, release_fn)
+   local entry = {
+      resource = resource,
+      release_fn = release_fn,
+      key = nil,
+   }
+   scope._entries[#scope._entries + 1] = entry
+   return entry
+end
+
+function resource_scope_mt:adopt(resource, release_fn)
+   if self._released then
+      error("cannot adopt a resource into a released SDL resource scope", 0)
+   end
+   if resource == nil then
+      error("sdl3.resource_scope:adopt requires a resource", 0)
+   end
+   if type(release_fn) ~= "function" then
+      error("sdl3.resource_scope:adopt requires a release function", 0)
+   end
+
+   add_scope_entry(self, resource, release_fn)
+   return resource
+end
+
+function resource_scope_mt:replace(key, resource, release_fn)
+   if self._released then
+      error("cannot replace a resource in a released SDL resource scope", 0)
+   end
+   if type(key) ~= "string" or key == "" then
+      error("sdl3.resource_scope:replace requires a non-empty string key", 0)
+   end
+   if resource == nil then
+      error("sdl3.resource_scope:replace requires a resource", 0)
+   end
+   if type(release_fn) ~= "function" then
+      error("sdl3.resource_scope:replace requires a release function", 0)
+   end
+
+   local existing = self._named_entries[key]
+   if existing ~= nil then
+      if existing.resource ~= nil then
+         existing.release_fn(self.device, existing.resource)
+      end
+      existing.resource = nil
+      existing.release_fn = nil
+      self._named_entries[key] = nil
+   end
+
+   local entry = add_scope_entry(self, resource, release_fn)
+   entry.key = key
+   self._named_entries[key] = entry
+   return resource
+end
+
+function resource_scope_mt:create_gpu_shader(compiled, props)
+   local shader = M.create_gpu_shader(self.device, compiled, props)
+   return self:adopt(shader, function(device, resource)
+      M.ReleaseGPUShader(device, resource)
+   end)
+end
+
+function resource_scope_mt:create_gpu_buffer(create_info)
+   local normalized = create_info
+   if type(create_info) == "table" then
+      normalized = M.build_gpu_buffer_create_info(create_info)
+   end
+
+   local buffer = M.CreateGPUBuffer(self.device, normalized)
+   if buffer == nil then
+      error("failed to create GPU buffer: " .. get_error_string(), 0)
+   end
+
+   return self:adopt(buffer, function(device, resource)
+      M.ReleaseGPUBuffer(device, resource)
+   end)
+end
+
+function resource_scope_mt:create_graphics_pipeline(create_info)
+   local normalized = create_info
+   if type(create_info) == "table" then
+      local bundle = M.build_graphics_pipeline_create_info(create_info)
+      normalized = bundle.create_info
+   end
+
+   local pipeline = M.CreateGPUGraphicsPipeline(self.device, normalized)
+   if pipeline == nil then
+      error("failed to create GPU graphics pipeline: " .. get_error_string(), 0)
+   end
+
+   return self:adopt(pipeline, function(device, resource)
+      M.ReleaseGPUGraphicsPipeline(device, resource)
+   end)
+end
+
+function resource_scope_mt:create_depth_texture(width, height, format)
+   local texture, chosen_format =
+      M.create_depth_texture(self.device, width, height, format)
+   self:adopt(texture, function(device, resource)
+      M.ReleaseGPUTexture(device, resource)
+   end)
+   return texture, chosen_format
+end
+
+function resource_scope_mt:release()
+   if self._released then
+      return
+   end
+
+   for index = #self._entries, 1, -1 do
+      local entry = self._entries[index]
+      if entry.resource ~= nil then
+         entry.release_fn(self.device, entry.resource)
+      end
+      if entry.key ~= nil and self._named_entries[entry.key] == entry then
+         self._named_entries[entry.key] = nil
+      end
+      self._entries[index] = nil
+   end
+
+   self._released = true
+end
+
+function M.resource_scope(device)
+   if device == nil then
+      error("sdl3.resource_scope requires an SDL_GPUDevice*", 0)
+   end
+
+   return setmetatable({
+      device = device,
+      _entries = {},
+      _named_entries = {},
+      _released = false,
+   }, resource_scope_mt)
 end
 
 local function has_all_bits(value, mask)
@@ -1086,13 +1419,13 @@ end
 
 function M.upload_to_gpu_buffer(device, buffer, data)
    if device == nil then
-      error("sdl3.upload_to_gpu_buffer requires an SDL_GPUDevice*")
+      error("sdl3.upload_to_gpu_buffer requires an SDL_GPUDevice*", 0)
    end
    if buffer == nil then
-      error("sdl3.upload_to_gpu_buffer requires an SDL_GPUBuffer*")
+      error("sdl3.upload_to_gpu_buffer requires an SDL_GPUBuffer*", 0)
    end
    if type(data) ~= "string" then
-      error("sdl3.upload_to_gpu_buffer requires data to be a string")
+      error("sdl3.upload_to_gpu_buffer requires data to be a string", 0)
    end
 
    local transfer_info = ffi.new("SDL_GPUTransferBufferCreateInfo[1]")
@@ -1102,13 +1435,13 @@ function M.upload_to_gpu_buffer(device, buffer, data)
 
    local transfer_buffer = M.CreateGPUTransferBuffer(device, transfer_info)
    if transfer_buffer == nil then
-      return nil, "failed to create GPU transfer buffer: " .. get_error_string()
+      error("failed to create GPU transfer buffer: " .. get_error_string(), 0)
    end
 
    local mapped = M.MapGPUTransferBuffer(device, transfer_buffer, false)
    if mapped == nil then
       M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-      return nil, "failed to map GPU transfer buffer: " .. get_error_string()
+      error("failed to map GPU transfer buffer: " .. get_error_string(), 0)
    end
    ffi.copy(mapped, data, #data)
    M.UnmapGPUTransferBuffer(device, transfer_buffer)
@@ -1116,7 +1449,7 @@ function M.upload_to_gpu_buffer(device, buffer, data)
    local command_buffer = M.AcquireGPUCommandBuffer(device)
    if command_buffer == nil then
       M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-      return nil, "failed to acquire GPU command buffer: " .. get_error_string()
+      error("failed to acquire GPU command buffer: " .. get_error_string(), 0)
    end
 
    local copy_pass = M.BeginGPUCopyPass(command_buffer)
@@ -1134,14 +1467,17 @@ function M.upload_to_gpu_buffer(device, buffer, data)
 
    if not M.SubmitGPUCommandBuffer(command_buffer) then
       M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-      return nil, "failed to submit GPU upload command buffer: " .. get_error_string()
+      error("failed to submit GPU upload command buffer: " .. get_error_string(), 0)
    end
 
    M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-   return true
 end
 
 function M.choose_depth_format(device)
+   if device == nil then
+      error("sdl3.choose_depth_format requires an SDL_GPUDevice*", 0)
+   end
+
    local candidates = {
       M.GPU_TEXTUREFORMAT_D32_FLOAT,
       M.GPU_TEXTUREFORMAT_D24_UNORM,
@@ -1159,16 +1495,16 @@ function M.choose_depth_format(device)
       end
    end
 
-   return nil, "no supported depth texture format found"
+   error("no supported depth texture format found", 0)
 end
 
 function M.create_depth_texture(device, width, height, format)
+   if device == nil then
+      error("sdl3.create_depth_texture requires an SDL_GPUDevice*", 0)
+   end
+
    if format == nil then
-      local chosen, err = M.choose_depth_format(device)
-      if chosen == nil then
-         return nil, err
-      end
-      format = chosen
+      format = M.choose_depth_format(device)
    end
 
    local create_info = ffi.new("SDL_GPUTextureCreateInfo[1]")
@@ -1184,7 +1520,7 @@ function M.create_depth_texture(device, width, height, format)
 
    local texture = M.CreateGPUTexture(device, create_info)
    if texture == nil then
-      return nil, "failed to create GPU depth texture: " .. get_error_string()
+      error("failed to create GPU depth texture: " .. get_error_string(), 0)
    end
 
    return texture, format
