@@ -79,19 +79,19 @@ local function build_mvp(out, aspect, time_seconds)
    return math3d.mat4_multiply(out, model, projection)
 end
 
-local vertex_compiled = assert_ok(shader.compile({
+local vertex_compiled = shader.compile({
    language = "glsl",
    stage = "vertex",
    source_name = "spinning_cube.vert.glsl",
    source = vertex_shader_source,
-}))
+})
 
-local fragment_compiled = assert_ok(shader.compile({
+local fragment_compiled = shader.compile({
    language = "glsl",
    stage = "fragment",
    source_name = "spinning_cube.frag.glsl",
    source = fragment_shader_source,
-}))
+})
 
 local cube_mesh = mesh3d.make_cube({
    size = 2.0,
@@ -148,8 +148,8 @@ local ok, err = pcall(function()
       fail("sdl3.setup_gpu did not produce a device and window")
    end
 
-   resources.vertex_shader = assert_ok(shader.create_sdl_shader(device, vertex_compiled))
-   resources.fragment_shader = assert_ok(shader.create_sdl_shader(device, fragment_compiled))
+   resources.vertex_shader = shader.create_sdl_shader(device, vertex_compiled)
+   resources.fragment_shader = shader.create_sdl_shader(device, fragment_compiled)
 
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)
    local depth_format = assert_ok(sdl3.choose_depth_format(device))

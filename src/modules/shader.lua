@@ -115,7 +115,7 @@ function M.compile(options)
 
    local source, source_err = load_source(options)
    if source == nil then
-      return nil, source_err
+      error(source_err, 0)
    end
 
    local compiled
@@ -144,12 +144,12 @@ function M.compile(options)
       })
    end
    if compiled == nil then
-      return nil, compile_err
+      error(tostring(compile_err or "shader compilation failed"), 0)
    end
 
    local reflection, reflection_err = spirvcross.reflect_spirv(compiled)
    if reflection == nil then
-      return nil, reflection_err
+      error(tostring(reflection_err or "SPIR-V reflection failed"), 0)
    end
 
    compiled.language = language
@@ -158,7 +158,7 @@ function M.compile(options)
 
    local valid_layout, layout_err = validate_graphics_spirv_layout(compiled)
    if not valid_layout then
-      return nil, layout_err
+      error(tostring(layout_err or "shader layout validation failed"), 0)
    end
 
    return compiled
@@ -174,14 +174,14 @@ function M.create_sdl_shader(device, compiled, props)
 
    local shader_stage = STAGE_TO_SDL[compiled.stage]
    if shader_stage == nil then
-      return nil, ("shader stage '%s' is not a graphics shader stage"):format(
+      error(("shader stage '%s' is not a graphics shader stage"):format(
          tostring(compiled.stage)
-      )
+      ), 0)
    end
 
    local reflection = compiled.reflection
    if type(reflection) ~= "table" or type(reflection.resource_info) ~= "table" then
-      return nil, "compiled shader is missing reflection.resource_info"
+      error("compiled shader is missing reflection.resource_info", 0)
    end
 
    local code_buffer = ffi.new("Uint8[?]", #compiled.bytecode)
@@ -204,7 +204,7 @@ function M.create_sdl_shader(device, compiled, props)
 
    local shader_handle = sdl3.CreateGPUShader(device, create_info)
    if shader_handle == nil then
-      return nil, ffi.string(sdl3.GetError())
+      error(ffi.string(sdl3.GetError()), 0)
    end
 
    return shader_handle
