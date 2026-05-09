@@ -7,3 +7,4 @@ dxc
 spirvcross
 shader
 time
+math3d

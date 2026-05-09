@@ -1,5 +1,6 @@
 local ffi = ffi
 
+local math3d = require("math3d")
 local sdl3 = require("sdl3")
 local shader = require("shader")
 local time = require("time")
@@ -114,87 +115,24 @@ local function fill_array(array, values)
    end
 end
 
-local function mat4_identity()
-   return {
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 1, 0,
-      0, 0, 0, 1,
-   }
-end
+local rotation_x = math3d.mat4()
+local rotation_y = math3d.mat4()
+local model = math3d.mat4()
+local view = math3d.mat4()
+local projection = math3d.mat4()
+local mvp = math3d.mat4()
+local eye = math3d.vec3(0.0, 0.0, -4.5)
+local target = math3d.vec3(0.0, 0.0, 0.0)
+local up = math3d.vec3(0.0, 1.0, 0.0)
 
-local function mat4_multiply(a, b)
-   local out = {}
-   for row = 0, 3 do
-      for col = 0, 3 do
-         local sum = 0.0
-         for k = 0, 3 do
-            sum = sum + a[row * 4 + k + 1] * b[k * 4 + col + 1]
-         end
-         out[row * 4 + col + 1] = sum
-      end
-   end
-   return out
-end
-
-local function mat4_rotation_x(angle)
-   local c = math.cos(angle)
-   local s = math.sin(angle)
-   return {
-      1, 0, 0, 0,
-      0, c, s, 0,
-      0, -s, c, 0,
-      0, 0, 0, 1,
-   }
-end
-
-local function mat4_rotation_y(angle)
-   local c = math.cos(angle)
-   local s = math.sin(angle)
-   return {
-      c, 0, -s, 0,
-      0, 1, 0, 0,
-      s, 0, c, 0,
-      0, 0, 0, 1,
-   }
-end
-
-local function mat4_translation(x, y, z)
-   return {
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 1, 0,
-      x, y, z, 1,
-   }
-end
-
-local function mat4_perspective_lh(fov_y, aspect, near_z, far_z)
-   local y_scale = 1.0 / math.tan(fov_y * 0.5)
-   local x_scale = y_scale / aspect
-   return {
-      x_scale, 0, 0, 0,
-      0, y_scale, 0, 0,
-      0, 0, far_z / (far_z - near_z), 1,
-      0, 0, (-near_z * far_z) / (far_z - near_z), 0,
-   }
-end
-
-local function write_mat4(dst, values)
-   for i = 1, 16 do
-      dst[i - 1] = values[i]
-   end
-end
-
-local function build_mvp(aspect, time_seconds)
-   local model = mat4_multiply(
-      mat4_rotation_x(time_seconds * 0.7),
-      mat4_rotation_y(time_seconds)
-   )
-   model = mat4_multiply(model, mat4_translation(0.0, 0.0, 4.5))
-   return mat4_multiply(
-      model,
-      mat4_perspective_lh(math.rad(60.0), aspect, 0.1, 100.0)
-   )
+local function build_mvp(out, aspect, time_seconds)
+   math3d.mat4_rotation_x(rotation_x, time_seconds * 0.7)
+   math3d.mat4_rotation_y(rotation_y, time_seconds)
+   math3d.mat4_multiply(model, rotation_x, rotation_y)
+   math3d.mat4_look_at_lh(view, eye, target, up)
+   math3d.mat4_multiply(model, model, view)
+   math3d.mat4_perspective_lh(projection, math.rad(60.0), aspect, 0.1, 100.0)
+   return math3d.mat4_multiply(out, model, projection)
 end
 
 local vertex_compiled = assert_ok(shader.compile({
@@ -218,7 +156,7 @@ local vertex_blob = ffi.string(
    ffi.sizeof(vertex_array)
 )
 
-local vertex_uniform_data = ffi.new("float[16]")
+local vertex_uniform_data = math3d.mat4()
 
 local vertex_buffer_description = ffi.new("SDL_GPUVertexBufferDescription[1]")
 vertex_buffer_description[0].slot = 0
@@ -388,10 +326,7 @@ local ok, err = pcall(function()
          local height = tonumber(height_out[0])
          ensure_depth_texture(width, height)
 
-         write_mat4(
-            vertex_uniform_data,
-            build_mvp(width / height, time.monotonic())
-         )
+         build_mvp(vertex_uniform_data, width / height, time.monotonic())
          sdl3.PushGPUVertexUniformData(
             command_buffer,
             0,
