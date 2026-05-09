@@ -56,6 +56,12 @@ The module exposes SDL-specific user extension points through nested tables:
   - Returns the current `SDL_GPUDevice*`.
 - `sdl3.upload_to_gpu_buffer(device, buffer, data_string)`
   - Uploads raw byte data into an SDL GPU buffer.
+- `sdl3.build_vertex_buffer_descriptions(buffers)`
+  - Builds `SDL_GPUVertexBufferDescription[]` from Lua tables.
+- `sdl3.build_vertex_attributes(attributes)`
+  - Builds `SDL_GPUVertexAttribute[]` from Lua tables.
+- `sdl3.build_vertex_input_state(layout)`
+  - Builds a full `SDL_GPUVertexInputState` plus the backing FFI arrays it points to.
 - `sdl3.choose_depth_format(device)`
   - Selects a supported depth format for the current device.
 - `sdl3.create_depth_texture(device, width, height, format?)`

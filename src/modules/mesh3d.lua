@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = ffi
+local sdl3 = require("sdl3")
 
 local DEFAULT_FACE_COLORS = {
    { 1, 0, 0 },
@@ -138,6 +139,38 @@ function M.make_cube(options)
          ffi.sizeof(vertex_array)
       ),
    }
+end
+
+function sdl3.build_vertex_input_state_from_mesh(mesh)
+   if type(mesh) ~= "table" then
+      error("sdl3.build_vertex_input_state_from_mesh expects a mesh table")
+   end
+
+   if mesh.layout == "position_color_f32" then
+      return sdl3.build_vertex_input_state({
+         buffers = {
+            {
+               slot = 0,
+               pitch = mesh.vertex_stride,
+               input_rate = "vertex",
+               attributes = {
+                  {
+                     location = 0,
+                     format = "float3",
+                     offset = mesh.attribute_offsets.position,
+                  },
+                  {
+                     location = 1,
+                     format = "float3",
+                     offset = mesh.attribute_offsets.color,
+                  },
+               },
+            },
+         },
+      })
+   end
+
+   error("unsupported mesh layout '" .. tostring(mesh.layout) .. "'", 0)
 end
 
 return M

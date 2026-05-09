@@ -15,6 +15,8 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
     - `attribute_offsets`
     - `vertex_blob`
 
+When `mesh3d` is loaded, it also installs `sdl3.build_vertex_input_state_from_mesh(mesh)` as a convenience bridge for known `mesh3d` layouts.
+
 ## `make_cube` Options
 
 - `size`

@@ -99,22 +99,7 @@ local cube_mesh = mesh3d.make_cube({
 })
 
 local vertex_uniform_data = math3d.mat4()
-
-local vertex_buffer_description = ffi.new("SDL_GPUVertexBufferDescription[1]")
-vertex_buffer_description[0].slot = 0
-vertex_buffer_description[0].pitch = cube_mesh.vertex_stride
-vertex_buffer_description[0].input_rate = sdl3.GPU_VERTEXINPUTRATE_VERTEX
-vertex_buffer_description[0].instance_step_rate = 0
-
-local vertex_attributes = ffi.new("SDL_GPUVertexAttribute[2]")
-vertex_attributes[0].location = 0
-vertex_attributes[0].buffer_slot = 0
-vertex_attributes[0].format = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
-vertex_attributes[0].offset = cube_mesh.attribute_offsets.position
-vertex_attributes[1].location = 1
-vertex_attributes[1].buffer_slot = 0
-vertex_attributes[1].format = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
-vertex_attributes[1].offset = cube_mesh.attribute_offsets.color
+local vertex_input = sdl3.build_vertex_input_state_from_mesh(cube_mesh)
 
 local resources = {
    depth_texture = nil,
@@ -190,10 +175,13 @@ local ok, err = pcall(function()
    pipeline_info[0].vertex_shader = resources.vertex_shader
    pipeline_info[0].fragment_shader = resources.fragment_shader
    pipeline_info[0].vertex_input_state.vertex_buffer_descriptions =
-      vertex_buffer_description
-   pipeline_info[0].vertex_input_state.num_vertex_buffers = 1
-   pipeline_info[0].vertex_input_state.vertex_attributes = vertex_attributes
-   pipeline_info[0].vertex_input_state.num_vertex_attributes = 2
+      vertex_input.state[0].vertex_buffer_descriptions
+   pipeline_info[0].vertex_input_state.num_vertex_buffers =
+      vertex_input.state[0].num_vertex_buffers
+   pipeline_info[0].vertex_input_state.vertex_attributes =
+      vertex_input.state[0].vertex_attributes
+   pipeline_info[0].vertex_input_state.num_vertex_attributes =
+      vertex_input.state[0].num_vertex_attributes
    pipeline_info[0].primitive_type = sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST
    pipeline_info[0].rasterizer_state.fill_mode = sdl3.GPU_FILLMODE_FILL
    pipeline_info[0].rasterizer_state.cull_mode = sdl3.GPU_CULLMODE_NONE

@@ -579,6 +579,135 @@ function M.build_properties(props)
    return properties_id, nil
 end
 
+local VERTEX_INPUT_RATES = {
+   vertex = M.GPU_VERTEXINPUTRATE_VERTEX,
+   instance = M.GPU_VERTEXINPUTRATE_INSTANCE,
+}
+
+local VERTEX_ATTRIBUTE_FORMATS = {
+   float = M.GPU_VERTEXELEMENTFORMAT_FLOAT,
+   float2 = M.GPU_VERTEXELEMENTFORMAT_FLOAT2,
+   float3 = M.GPU_VERTEXELEMENTFORMAT_FLOAT3,
+   float4 = M.GPU_VERTEXELEMENTFORMAT_FLOAT4,
+}
+
+local function normalize_vertex_input_rate(value)
+   if type(value) == "string" then
+      local normalized = VERTEX_INPUT_RATES[value]
+      if normalized == nil then
+         error("unsupported vertex input rate '" .. value .. "'", 0)
+      end
+      return normalized
+   end
+   if type(value) ~= "number" then
+      error("vertex input rate must be a string or number", 0)
+   end
+   return value
+end
+
+local function normalize_vertex_attribute_format(value)
+   if type(value) == "string" then
+      local normalized = VERTEX_ATTRIBUTE_FORMATS[value]
+      if normalized == nil then
+         error("unsupported vertex attribute format '" .. value .. "'", 0)
+      end
+      return normalized
+   end
+   if type(value) ~= "number" then
+      error("vertex attribute format must be a string or number", 0)
+   end
+   return value
+end
+
+function M.build_vertex_buffer_descriptions(buffers)
+   if type(buffers) ~= "table" then
+      error("sdl3.build_vertex_buffer_descriptions expects a table")
+   end
+
+   local descriptions = ffi.new("SDL_GPUVertexBufferDescription[?]", #buffers)
+   for i, buffer in ipairs(buffers) do
+      if type(buffer) ~= "table" then
+         error("vertex buffer descriptions must be tables", 0)
+      end
+      descriptions[i - 1].slot = tonumber(buffer.slot or (i - 1)) or 0
+      descriptions[i - 1].pitch = assert(tonumber(buffer.pitch), "vertex buffer pitch must be a number")
+      descriptions[i - 1].input_rate = normalize_vertex_input_rate(
+         buffer.input_rate or "vertex"
+      )
+      descriptions[i - 1].instance_step_rate =
+         tonumber(buffer.instance_step_rate or 0) or 0
+   end
+
+   return descriptions
+end
+
+function M.build_vertex_attributes(attributes)
+   if type(attributes) ~= "table" then
+      error("sdl3.build_vertex_attributes expects a table")
+   end
+
+   local ffi_attributes = ffi.new("SDL_GPUVertexAttribute[?]", #attributes)
+   for i, attribute in ipairs(attributes) do
+      if type(attribute) ~= "table" then
+         error("vertex attributes must be tables", 0)
+      end
+      ffi_attributes[i - 1].location =
+         assert(tonumber(attribute.location), "vertex attribute location must be a number")
+      ffi_attributes[i - 1].buffer_slot =
+         tonumber(attribute.buffer_slot or attribute.slot or 0) or 0
+      ffi_attributes[i - 1].format = normalize_vertex_attribute_format(
+         attribute.format
+      )
+      ffi_attributes[i - 1].offset =
+         assert(tonumber(attribute.offset), "vertex attribute offset must be a number")
+   end
+
+   return ffi_attributes
+end
+
+function M.build_vertex_input_state(layout)
+   if type(layout) ~= "table" then
+      error("sdl3.build_vertex_input_state expects a table")
+   end
+   if type(layout.buffers) ~= "table" then
+      error("sdl3.build_vertex_input_state requires a buffers table")
+   end
+
+   local attribute_specs = {}
+   for i, buffer in ipairs(layout.buffers) do
+      if type(buffer) ~= "table" then
+         error("vertex input buffers must be tables", 0)
+      end
+      local buffer_slot = tonumber(buffer.slot or (i - 1)) or 0
+      local attributes = buffer.attributes
+      if type(attributes) ~= "table" then
+         error("each vertex input buffer requires an attributes table", 0)
+      end
+      for _, attribute in ipairs(attributes) do
+         local spec = {}
+         for key, value in pairs(attribute) do
+            spec[key] = value
+         end
+         spec.buffer_slot = buffer_slot
+         attribute_specs[#attribute_specs + 1] = spec
+      end
+   end
+
+   local descriptions = M.build_vertex_buffer_descriptions(layout.buffers)
+   local attributes = M.build_vertex_attributes(attribute_specs)
+   local state = ffi.new("SDL_GPUVertexInputState[1]")
+   state[0].vertex_buffer_descriptions = descriptions
+   state[0].num_vertex_buffers = #layout.buffers
+   state[0].vertex_attributes = attributes
+   state[0].num_vertex_attributes = #attribute_specs
+
+   return {
+      state = state,
+      vertex_buffer_descriptions = descriptions,
+      vertex_attributes = attributes,
+   }
+end
+
 local function get_error_string()
    return ffi.string(M.GetError())
 end
