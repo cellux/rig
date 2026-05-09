@@ -2,3 +2,7 @@
 fennel
 rig
 sdl3
+shadercross
+dxc
+spirvcross
+shader

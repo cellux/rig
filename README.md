@@ -46,11 +46,50 @@ Rig also loads the standard `io` library.
 At interpreter startup Rig registers every module from `modules.txt` into `package.preload`.
 Then it explicitly loads the builtin `fennel` and `rig` modules.
 Any other module, such as `sdl3`, is loaded only when the script calls `require(...)`.
+The `shadercross` module follows the same pattern and loads `libSDL3_shadercross`
+through LuaJIT FFI only when required.
+The `dxc` module also loads `libdxcompiler` lazily through LuaJIT FFI when required.
+The `spirvcross` module also loads `libspirv-cross-c-shared` lazily through LuaJIT FFI when required.
+The `shader` module layers on top of `dxc`, `spirvcross`, and `sdl3`.
 
 The builtin `rig` module defines `rig.script_loaders` at module load time with Lua and Fennel script loaders, in that order.
 
 Rig loads the SDL3 shared library lazily through LuaJIT FFI from `src/modules/sdl3.lua`.
 If a script never calls `require("sdl3")`, SDL is never loaded.
+
+`shadercross.lua` provides runtime shader compilation helpers on top of
+`SDL3_shadercross`, including HLSL-to-SPIR-V compilation and SPIR-V reflection.
+Its main entrypoints are:
+- `shadercross.init()` / `shadercross.quit()`
+- `shadercross.compile_spirv_from_hlsl{ ... }`
+- `shadercross.reflect_graphics_spirv(bytecode[, props])`
+- `shadercross.reflect_compute_spirv(bytecode[, props])`
+
+`dxc.lua` provides a direct runtime HLSL-to-SPIR-V path via `libdxcompiler`.
+Its first entrypoint is:
+- `dxc.compile_spirv{ source=..., stage=..., entrypoint?=..., extra_args?=... }`
+
+Current `dxc` limitations:
+- no `#include` support yet
+- command-line argument strings are currently ASCII-only
+
+`spirvcross.lua` provides direct SPIR-V reflection via `spirv-cross-c-shared`.
+Its first entrypoints are:
+- `spirvcross.reflect_spirv(bytecode_or_compile_result)`
+- `spirvcross.reflect_graphics_spirv(bytecode_or_compile_result)`
+- `spirvcross.reflect_compute_spirv(bytecode_or_compile_result)`
+
+The first version returns:
+- shader stage / execution model
+- SDL-relevant resource counts
+- stage input/output metadata
+- descriptor set / binding data for reflected resources
+- compute local size metadata
+
+`shader.lua` provides a small user-facing shader pipeline.
+Its first entrypoints are:
+- `shader.compile{ language="hlsl", stage=..., source=... }`
+- `shader.create_sdl_shader(device, compiled[, props])`
 
 The builtin `rig` module also ensures a global `hooks` table exists before the user script runs.
 `sdl3.lua` installs default implementations for:
@@ -68,10 +107,31 @@ The `window_ptr` / `renderer_ptr` values are LuaJIT FFI cdata pointers.
 
 The SDL lifecycle is explicit:
 - `sdl3.setup()` initializes SDL and creates the window/renderer.
+- `sdl3.setup_gpu()` initializes SDL, creates the window, creates an SDL GPU device, and claims the window for it.
 - `sdl3.pump_events()` dispatches queued SDL events and returns `false` after a quit event.
 - `sdl3.render_frame()` runs `hooks.render()` and presents the frame.
 - `sdl3.shutdown()` destroys the renderer/window and releases any SDL subsystems initialized by `sdl3.setup()`.
 - `sdl3.run()` is the convenience entrypoint that wraps `setup`, a `pump_events`/`render_frame` loop, and `shutdown`.
 
+Additional GPU helpers currently exposed from `sdl3.lua`:
+- `sdl3.get_window()`
+- `sdl3.get_gpu_device()`
+- `sdl3.upload_to_gpu_buffer(device, buffer, data_string)`
+- `sdl3.choose_depth_format(device)`
+- `sdl3.create_depth_texture(device, width, height[, format])`
+
 `hooks.handle_key(key_info)` is called from `sdl3.pump_events()` for keyboard events.
 Rig exits after the script finishes running; scripts that need an SDL loop must call `sdl3.run()` or drive the loop explicitly.
+
+## GPU Example
+
+The first SDL GPU example is:
+- `examples/spinning_cube.lua`
+
+It demonstrates:
+- runtime HLSL -> SPIR-V compilation via `dxc`
+- SPIR-V reflection via `spirvcross`
+- SDL GPU shader/pipeline creation
+- vertex buffer upload
+- pushed vertex uniform data for the transform matrix
+- depth-tested rendering to the SDL swapchain
