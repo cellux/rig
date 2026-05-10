@@ -321,10 +321,6 @@ bool SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *command_buffer);
 bool SDL_WaitForGPUIdle(SDL_GPUDevice *device);
 ]]
 
-local SDL_EVENT_QUIT = 0x100
-local SDL_EVENT_KEY_DOWN = 0x300
-local SDL_EVENT_KEY_UP = 0x301
-
 local sdl_library = nil
 local sdl_library_error = nil
 
@@ -1604,11 +1600,11 @@ function M.pump_events()
       local current = event[0]
       local event_type = tonumber(current.type) or 0
 
-      if event_type == SDL_EVENT_QUIT then
+      if event_type == M.EVENT_QUIT then
          return false
       end
 
-      if event_type == SDL_EVENT_KEY_DOWN or event_type == SDL_EVENT_KEY_UP then
+      if event_type == M.EVENT_KEY_DOWN or event_type == M.EVENT_KEY_UP then
          dispatch_keyboard_event(current.key)
       end
    end

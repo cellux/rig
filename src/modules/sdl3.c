@@ -18,6 +18,10 @@ static void set_string_constant(lua_State *L, const char *name,
 #define SET_PROP_CONST(name) set_string_constant(L, #name, SDL_##name)
 
 void rig_register_sdl3(lua_State *L) {
+  SET_U32_CONST(EVENT_QUIT);
+  SET_U32_CONST(EVENT_KEY_DOWN);
+  SET_U32_CONST(EVENT_KEY_UP);
+
   SET_U32_CONST(KMOD_SHIFT);
   SET_U32_CONST(KMOD_CTRL);
   SET_U32_CONST(KMOD_ALT);
