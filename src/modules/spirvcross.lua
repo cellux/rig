@@ -217,7 +217,7 @@ local function load_library()
          spirvcross_state.library = lib
          return lib
       end
-      failures[#failures + 1] = tostring(lib)
+      table.insert(failures, tostring(lib))
    end
 
    spirvcross_state.error = "failed to load spirv-cross-c-shared library: "
@@ -265,10 +265,10 @@ local function describe_type(lib, compiler, type_id)
 
    for i = 0, array_rank - 1 do
       local literal = lib.spvc_type_array_dimension_is_literal(handle, i) ~= 0
-      array_dimensions[#array_dimensions + 1] = {
+      table.insert(array_dimensions, {
          literal = literal,
          value = tonumber(lib.spvc_type_get_array_dimension(handle, i)),
-      }
+      })
    end
 
    return {
@@ -316,7 +316,7 @@ local function copy_resource_list(lib, compiler, resources, resource_type)
 
    for i = 0, count - 1 do
       local resource = resource_ptr[i]
-      list[#list + 1] = {
+      table.insert(list, {
          id = tonumber(resource.id),
          name = (
             resource.name ~= nil and resource.name ~= ffi.NULL
@@ -341,7 +341,7 @@ local function copy_resource_list(lib, compiler, resources, resource_type)
          ),
          base_type = describe_type(lib, compiler, resource.base_type_id),
          type = describe_type(lib, compiler, resource.type_id),
-      }
+      })
    end
 
    return list
@@ -399,10 +399,10 @@ local function build_resource_summary(reflection)
    if reflection.stage == "compute" then
       local storage_texture_resources = {}
       for i = 1, #storage_images do
-         storage_texture_resources[#storage_texture_resources + 1] = storage_images[i]
+         table.insert(storage_texture_resources, storage_images[i])
       end
       for i = num_separate_samplers + 1, #separate_images do
-         storage_texture_resources[#storage_texture_resources + 1] = separate_images[i]
+         table.insert(storage_texture_resources, separate_images[i])
       end
 
       local storage_texture_counts, err = classify_compute_storage(

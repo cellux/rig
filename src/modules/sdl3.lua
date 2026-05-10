@@ -347,7 +347,7 @@ local function load_sdl_library()
          sdl_library = lib
          return lib
       end
-      failures[#failures + 1] = tostring(lib)
+      table.insert(failures, tostring(lib))
    end
 
    sdl_library_error = "failed to load SDL3 library: "
@@ -690,7 +690,7 @@ function M.build_vertex_input_state(layout)
             spec[key] = value
          end
          spec.buffer_slot = buffer_slot
-         attribute_specs[#attribute_specs + 1] = spec
+         table.insert(attribute_specs, spec)
       end
    end
 
@@ -1123,7 +1123,7 @@ local function format_gpu_shader_formats(flags)
 
    for _, entry in ipairs(mapping) do
       if has_any_bits(value, entry[1]) then
-         names[#names + 1] = entry[2]
+         table.insert(names, entry[2])
       end
    end
 
@@ -1140,7 +1140,7 @@ function M.get_gpu_driver_names()
    for i = 0, count - 1 do
       local ptr = M.GetGPUDriver(i)
       if ptr ~= nil and ptr ~= ffi.NULL and ptr[0] ~= 0 then
-         names[#names + 1] = ffi.string(ptr)
+         table.insert(names, ffi.string(ptr))
       end
    end
 
@@ -1149,35 +1149,42 @@ end
 
 local function build_gpu_support_error(format_flags, backend_name, detail)
    local lines = {}
-   lines[#lines + 1] = "no supported SDL_GPU backend is available"
-   lines[#lines + 1] = "requested shader formats: "
-      .. format_gpu_shader_formats(format_flags)
+   table.insert(lines, "no supported SDL_GPU backend is available")
+   table.insert(
+      lines,
+      "requested shader formats: " .. format_gpu_shader_formats(format_flags)
+   )
 
    if backend_name ~= nil then
-      lines[#lines + 1] = "requested backend: " .. tostring(backend_name)
+      table.insert(lines, "requested backend: " .. tostring(backend_name))
    else
-      lines[#lines + 1] = "requested backend: automatic"
+      table.insert(lines, "requested backend: automatic")
    end
 
    local driver_names = M.get_gpu_driver_names()
    if #driver_names > 0 then
-      lines[#lines + 1] = "SDL compiled GPU drivers: "
-         .. table.concat(driver_names, ", ")
+      table.insert(
+         lines,
+         "SDL compiled GPU drivers: " .. table.concat(driver_names, ", ")
+      )
    else
-      lines[#lines + 1] = "SDL compiled GPU drivers: none reported"
+      table.insert(lines, "SDL compiled GPU drivers: none reported")
    end
 
    if detail ~= nil and detail ~= "" then
-      lines[#lines + 1] = "SDL error: " .. tostring(detail)
+      table.insert(lines, "SDL error: " .. tostring(detail))
    end
 
    if has_any_bits(format_flags, M.GPU_SHADERFORMAT_SPIRV) then
-      lines[#lines + 1] =
-         "SPIR-V requires a Vulkan-capable SDL_GPU backend."
-      lines[#lines + 1] =
+      table.insert(lines, "SPIR-V requires a Vulkan-capable SDL_GPU backend.")
+      table.insert(
+         lines,
          "Check that a Vulkan ICD is installed and that the GPU exposes enough Vulkan support."
-      lines[#lines + 1] =
+      )
+      table.insert(
+         lines,
          "Older Intel Haswell GPUs often expose only incomplete Vulkan support through Mesa hasvk and may still be rejected by SDL_GPU."
+      )
    end
 
    return table.concat(lines, "\n")

@@ -200,7 +200,7 @@ local function load_library(candidates, state, label)
          state.library = lib
          return lib
       end
-      failures[#failures + 1] = tostring(lib)
+      table.insert(failures, tostring(lib))
    end
 
    state.error = ("failed to load %s library: %s"):format(
@@ -315,10 +315,10 @@ local function build_define_entries(defines)
          if define.value ~= nil and type(define.value) ~= "string" then
             error(("defines[%d].value must be a string if set"):format(i))
          end
-         entries[#entries + 1] = {
+         table.insert(entries, {
             name = define.name,
             value = define.value,
-         }
+         })
       end
    else
       for name, value in pairs(defines) do
@@ -328,10 +328,10 @@ local function build_define_entries(defines)
          if value ~= nil and type(value) ~= "string" then
             error(("define '%s' must have a string value if set"):format(name))
          end
-         entries[#entries + 1] = {
+         table.insert(entries, {
             name = name,
             value = value,
-         }
+         })
       end
    end
 
@@ -339,9 +339,9 @@ local function build_define_entries(defines)
    for i, entry in ipairs(entries) do
       define_array[i - 1].name = entry.name
       define_array[i - 1].value = entry.value
-      keepalive[#keepalive + 1] = entry.name
+      table.insert(keepalive, entry.name)
       if entry.value ~= nil then
-         keepalive[#keepalive + 1] = entry.value
+         table.insert(keepalive, entry.value)
       end
    end
 
@@ -432,13 +432,13 @@ local function copy_iovar_metadata(items_ptr, count)
    for index = 0, total - 1 do
       local item = items_ptr[index]
       local vector_type = tonumber(item.vector_type) or M.IOVAR_TYPE_UNKNOWN
-      items[#items + 1] = {
+      table.insert(items, {
          name = item.name ~= nil and ffi.string(item.name) or nil,
          location = tonumber(item.location) or 0,
          vector_type = vector_type,
          vector_type_name = IOVAR_TYPE_NAMES[vector_type] or "unknown",
          vector_size = tonumber(item.vector_size) or 0,
-      }
+      })
    end
 
    return items

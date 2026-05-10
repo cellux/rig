@@ -29,7 +29,7 @@ local function serialize_lua(value, seen)
       else
          key_repr = "[" .. serialize_lua(k, seen) .. "]"
       end
-      parts[#parts + 1] = key_repr .. " = " .. val_repr
+      table.insert(parts, key_repr .. " = " .. val_repr)
    end
 
    seen[value] = nil

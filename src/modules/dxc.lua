@@ -249,7 +249,7 @@ local function load_dxc_library()
          dxc_state.library = lib
          return lib
       end
-      failures[#failures + 1] = tostring(lib)
+      table.insert(failures, tostring(lib))
    end
 
    dxc_state.error = "failed to load dxcompiler library: "
@@ -362,15 +362,15 @@ function M.compile_spirv(options)
    }
 
    if options.preserve_bindings ~= false then
-      wide_args[#wide_args + 1] = ascii_wide("-fspv-preserve-bindings", "internal argument")
+      table.insert(wide_args, ascii_wide("-fspv-preserve-bindings", "internal argument"))
    end
    if options.preserve_interface ~= false then
-      wide_args[#wide_args + 1] = ascii_wide("-fspv-preserve-interface", "internal argument")
+      table.insert(wide_args, ascii_wide("-fspv-preserve-interface", "internal argument"))
    end
 
    if type(options.extra_args) == "table" then
       for i, arg in ipairs(options.extra_args) do
-         wide_args[#wide_args + 1] = ascii_wide(arg, ("extra_args[%d]"):format(i))
+         table.insert(wide_args, ascii_wide(arg, ("extra_args[%d]"):format(i)))
       end
    elseif options.extra_args ~= nil then
       release_com(compiler)

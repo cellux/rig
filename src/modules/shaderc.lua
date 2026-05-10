@@ -176,7 +176,7 @@ local function load_library()
          library_state.library = lib
          return lib
       end
-      failures[#failures + 1] = tostring(lib)
+      table.insert(failures, tostring(lib))
    end
 
    library_state.error = "failed to load shaderc library: "
