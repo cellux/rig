@@ -13,12 +13,16 @@ The SDL shared library is loaded only when the module is required.
 - `sdl3.pump_events()`
   - Dispatches queued SDL events.
   - Returns `false` after a quit event.
-- `sdl3.render_frame()`
-  - Calls `sdl3.callback.on_render()` and presents the frame.
+- `sdl3.render_frame(render_fn)`
+  - Calls `render_fn()` and then presents through the SDL renderer.
+- `sdl3.render_gpu_frame(render_fn)`
+  - Acquires a GPU command buffer and swapchain texture, calls `render_fn(command_buffer, swapchain_texture, width, height)`, and submits the frame.
 - `sdl3.shutdown()`
   - Destroys owned renderer/window state and releases initialized SDL subsystems.
-- `sdl3.run()`
-  - Convenience wrapper around `setup`, the event/render loop, and `shutdown`.
+- `sdl3.run(options?)`
+  - Convenience wrapper around setup, the event loop, and shutdown.
+  - `mode = "renderer"` uses `sdl3.setup()` and `sdl3.render_frame(sdl3.callback.on_render)` each frame.
+  - `mode = "gpu"` uses `sdl3.setup_gpu(options.gpu)` and calls `sdl3.render_gpu_frame(sdl3.callback.on_render)` each frame.
 
 ## Extension Points
 

@@ -194,28 +194,7 @@ local ok, err = pcall(function()
    vertex_binding[0].offset = 0
 
    while sdl3.pump_events() do
-      local command_buffer = sdl3.AcquireGPUCommandBuffer(device)
-      if command_buffer == nil then
-         fail(sdl_error("failed to acquire GPU command buffer"))
-      end
-
-      local swapchain_texture_out = ffi.new("SDL_GPUTexture *[1]")
-      local width_out = ffi.new("Uint32[1]")
-      local height_out = ffi.new("Uint32[1]")
-      if not sdl3.WaitAndAcquireGPUSwapchainTexture(
-         command_buffer,
-         window,
-         swapchain_texture_out,
-         width_out,
-         height_out
-      ) then
-         fail(sdl_error("failed to acquire swapchain texture"))
-      end
-
-      local swapchain_texture = swapchain_texture_out[0]
-      if swapchain_texture ~= nil then
-         local width = tonumber(width_out[0])
-         local height = tonumber(height_out[0])
+      sdl3.render_gpu_frame(function(command_buffer, swapchain_texture, width, height)
          ensure_depth_texture(width, height)
 
          build_mvp(vertex_uniform_data, width / height, time.monotonic())
@@ -264,11 +243,7 @@ local ok, err = pcall(function()
          sdl3.BindGPUVertexBuffers(render_pass, 0, vertex_binding, 1)
          sdl3.DrawGPUPrimitives(render_pass, cube_mesh.vertex_count, 1, 0, 0)
          sdl3.EndGPURenderPass(render_pass)
-      end
-
-      if not sdl3.SubmitGPUCommandBuffer(command_buffer) then
-         fail(sdl_error("failed to submit GPU command buffer"))
-      end
+      end)
    end
 end)
 

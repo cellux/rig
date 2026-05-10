@@ -1589,27 +1589,97 @@ function M.pump_events()
    return true
 end
 
-function M.render_frame()
-   local handler = M.callback.on_render
-   if type(handler) ~= "function" then
-      return false
+function M.render_frame(render_fn)
+   if type(render_fn) ~= "function" then
+      error("sdl3.render_frame requires a render function", 0)
+   end
+   if M._renderer == nil then
+      error("an SDL renderer must be initialized before sdl3.render_frame", 0)
    end
 
-   handler()
+   render_fn()
    M.present()
-   return true
 end
 
-function M.run()
+function M.render_gpu_frame(render_fn)
+   if type(render_fn) ~= "function" then
+      error("sdl3.render_gpu_frame requires a render function", 0)
+   end
+   if M._gpu_device == nil then
+      error("an SDL GPU device must be initialized before sdl3.render_gpu_frame", 0)
+   end
+   if M._window == nil then
+      error("an SDL window must be initialized before sdl3.render_gpu_frame", 0)
+   end
+
+   local command_buffer = M.AcquireGPUCommandBuffer(M._gpu_device)
+   if command_buffer == nil then
+      error("failed to acquire GPU command buffer: " .. get_error_string(), 0)
+   end
+
+   local swapchain_texture_out = ffi.new("SDL_GPUTexture *[1]")
+   local width_out = ffi.new("Uint32[1]")
+   local height_out = ffi.new("Uint32[1]")
+   if not M.WaitAndAcquireGPUSwapchainTexture(
+      command_buffer,
+      M._window,
+      swapchain_texture_out,
+      width_out,
+      height_out
+   ) then
+      error("failed to acquire swapchain texture: " .. get_error_string(), 0)
+   end
+
+   local swapchain_texture = swapchain_texture_out[0]
+   if swapchain_texture ~= nil then
+      render_fn(
+         command_buffer,
+         swapchain_texture,
+         tonumber(width_out[0]) or 0,
+         tonumber(height_out[0]) or 0
+      )
+   end
+
+   if not M.SubmitGPUCommandBuffer(command_buffer) then
+      error("failed to submit GPU command buffer: " .. get_error_string(), 0)
+   end
+
+   return swapchain_texture ~= nil
+end
+
+function M.run(options)
+   if options ~= nil and type(options) ~= "table" then
+      error("sdl3.run expects a table if options are provided")
+   end
    if type(M.callback.on_render) ~= "function" then
       error("sdl3.callback.on_render must be a function before calling sdl3.run")
    end
 
-   M.setup()
+   local mode = options and options.mode or "renderer"
+   local setup_fn
+   local frame_fn
+
+   if mode == "renderer" then
+      setup_fn = M.setup
+      frame_fn = function()
+         M.render_frame(M.callback.on_render)
+      end
+   elseif mode == "gpu" then
+      setup_fn = function()
+         M.setup_gpu(options and options.gpu)
+      end
+      frame_fn = function()
+         M.render_gpu_frame(M.callback.on_render)
+      end
+   else
+      error(("unsupported sdl3.run mode '%s'"):format(tostring(mode)), 0)
+   end
+
+   setup_fn()
 
    local ok, err = pcall(function()
       while M.pump_events() do
-         M.render_frame()
+         frame_fn()
       end
    end)
 
