@@ -1221,88 +1221,7 @@ function M.get_gpu_device()
    return M._gpu_device
 end
 
-function M.setup()
-   if M._renderer ~= nil or M._window ~= nil or M._gpu_device ~= nil then
-      M.shutdown()
-   end
-
-   ensure_extension_points()
-
-   local required = normalize_init_flags(M.config.init_flags)
-   local initialized = M.WasInit(required)
-   local owned_init_flags = nil
-
-   if not has_all_bits(initialized, required) then
-      if not M.Init(required) then
-         error("failed to initialize SDL: " .. get_error_string())
-      end
-      owned_init_flags = required
-   end
-
-   local create_window = M.factory.create_window
-   if type(create_window) ~= "function" then
-      if owned_init_flags ~= nil then
-         M.QuitSubSystem(owned_init_flags)
-      end
-      error("sdl3.factory.create_window is not available")
-   end
-
-   local create_renderer = M.factory.create_renderer
-   if type(create_renderer) ~= "function" then
-      if owned_init_flags ~= nil then
-         M.QuitSubSystem(owned_init_flags)
-      end
-      error("sdl3.factory.create_renderer is not available")
-   end
-
-   local window_ptr, window_err = create_window()
-   if window_ptr == nil then
-      if owned_init_flags ~= nil then
-         M.QuitSubSystem(owned_init_flags)
-      end
-         error(format_factory_error(
-            "sdl3.factory.create_window",
-            window_err,
-            "expected SDL_Window* cdata"
-         ))
-   end
-   if type(window_ptr) ~= "cdata" then
-      if owned_init_flags ~= nil then
-         M.QuitSubSystem(owned_init_flags)
-      end
-      error("sdl3.factory.create_window must return SDL_Window* cdata")
-   end
-
-   local renderer_ptr, renderer_err = create_renderer(window_ptr)
-   if renderer_ptr == nil then
-      M.DestroyWindow(window_ptr)
-      if owned_init_flags ~= nil then
-         M.QuitSubSystem(owned_init_flags)
-      end
-         error(format_factory_error(
-            "sdl3.factory.create_renderer",
-            renderer_err,
-            "expected SDL_Renderer* cdata"
-         ))
-   end
-   if type(renderer_ptr) ~= "cdata" then
-      M.DestroyWindow(window_ptr)
-      if owned_init_flags ~= nil then
-         M.QuitSubSystem(owned_init_flags)
-      end
-      error("sdl3.factory.create_renderer must return SDL_Renderer* cdata")
-   end
-
-   M._window = window_ptr
-   M._renderer = renderer_ptr
-   M._owned_init_flags = owned_init_flags
-end
-
-function M.setup_gpu(options)
-   if options ~= nil and type(options) ~= "table" then
-      error("sdl3.setup_gpu expects a table if options are provided")
-   end
-
+local function setup_common()
    if M._renderer ~= nil or M._window ~= nil or M._gpu_device ~= nil then
       M.shutdown()
    end
@@ -1346,6 +1265,53 @@ function M.setup_gpu(options)
       error("sdl3.factory.create_window must return SDL_Window* cdata")
    end
 
+   return window_ptr, owned_init_flags
+end
+
+function M.setup()
+   local window_ptr, owned_init_flags = setup_common()
+
+   local create_renderer = M.factory.create_renderer
+   if type(create_renderer) ~= "function" then
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
+      error("sdl3.factory.create_renderer is not available")
+   end
+
+   local renderer_ptr, renderer_err = create_renderer(window_ptr)
+   if renderer_ptr == nil then
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
+      error(format_factory_error(
+         "sdl3.factory.create_renderer",
+         renderer_err,
+         "expected SDL_Renderer* cdata"
+      ))
+   end
+   if type(renderer_ptr) ~= "cdata" then
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
+      error("sdl3.factory.create_renderer must return SDL_Renderer* cdata")
+   end
+
+   M._window = window_ptr
+   M._renderer = renderer_ptr
+   M._owned_init_flags = owned_init_flags
+end
+
+function M.setup_gpu(options)
+   if options ~= nil and type(options) ~= "table" then
+      error("sdl3.setup_gpu expects a table if options are provided")
+   end
+
+   local window_ptr, owned_init_flags = setup_common()
+
    local format_flags = options and options.shader_formats
    if format_flags == nil then
       format_flags = M.GPU_SHADERFORMAT_SPIRV
@@ -1354,6 +1320,10 @@ function M.setup_gpu(options)
    local backend_name = options and options.backend_name or nil
 
    if not M.GPUSupportsShaderFormats(format_flags, backend_name) then
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
       error(build_gpu_support_error(
          format_flags,
          backend_name,
