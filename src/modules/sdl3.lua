@@ -1190,11 +1190,11 @@ local function build_gpu_support_error(format_flags, backend_name, detail)
    return table.concat(lines, "\n")
 end
 
-local function format_hook_error(hook_name, detail, fallback)
+local function format_factory_error(factory_name, detail, fallback)
    if detail == nil then
-      return ("%s failed: %s"):format(hook_name, fallback)
+      return ("%s failed: %s"):format(factory_name, fallback)
    end
-   return ("%s failed: %s"):format(hook_name, tostring(detail))
+   return ("%s failed: %s"):format(factory_name, tostring(detail))
 end
 
 local function normalize_init_flags(flags_number)
@@ -1260,7 +1260,7 @@ function M.setup()
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-         error(format_hook_error(
+         error(format_factory_error(
             "sdl3.factory.create_window",
             window_err,
             "expected SDL_Window* cdata"
@@ -1279,7 +1279,7 @@ function M.setup()
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-         error(format_hook_error(
+         error(format_factory_error(
             "sdl3.factory.create_renderer",
             renderer_err,
             "expected SDL_Renderer* cdata"
@@ -1333,7 +1333,7 @@ function M.setup_gpu(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error(format_hook_error(
+      error(format_factory_error(
          "sdl3.factory.create_window",
          window_err,
          "expected SDL_Window* cdata"
