@@ -80,6 +80,100 @@ function M.println(...)
    write_values(true, ...)
 end
 
+local resource_scope_mt = {}
+resource_scope_mt.__index = resource_scope_mt
+
+local function add_scope_entry(scope, resource, release_fn)
+   local entry = {
+      resource = resource,
+      release_fn = release_fn,
+      key = nil,
+   }
+   table.insert(scope._entries, entry)
+   return entry
+end
+
+function resource_scope_mt:adopt(resource, release_fn)
+   if self._released then
+      error("cannot adopt a resource into a released " .. self._scope_label, 0)
+   end
+   if resource == nil then
+      error("rig.resource_scope:adopt requires a resource", 0)
+   end
+   if type(release_fn) ~= "function" then
+      error("rig.resource_scope:adopt requires a release function", 0)
+   end
+
+   add_scope_entry(self, resource, release_fn)
+   return resource
+end
+
+function resource_scope_mt:replace(key, resource, release_fn)
+   if self._released then
+      error("cannot replace a resource in a released " .. self._scope_label, 0)
+   end
+   if type(key) ~= "string" or key == "" then
+      error("rig.resource_scope:replace requires a non-empty string key", 0)
+   end
+   if resource == nil then
+      error("rig.resource_scope:replace requires a resource", 0)
+   end
+   if type(release_fn) ~= "function" then
+      error("rig.resource_scope:replace requires a release function", 0)
+   end
+
+   local existing = self._named_entries[key]
+   if existing ~= nil then
+      if existing.resource ~= nil then
+         existing.release_fn(self.context, existing.resource)
+      end
+      existing.resource = nil
+      existing.release_fn = nil
+      self._named_entries[key] = nil
+   end
+
+   local entry = add_scope_entry(self, resource, release_fn)
+   entry.key = key
+   self._named_entries[key] = entry
+   return resource
+end
+
+function resource_scope_mt:release()
+   if self._released then
+      return
+   end
+
+   for index = #self._entries, 1, -1 do
+      local entry = self._entries[index]
+      if entry.resource ~= nil then
+         entry.release_fn(self.context, entry.resource)
+      end
+      if entry.key ~= nil and self._named_entries[entry.key] == entry then
+         self._named_entries[entry.key] = nil
+      end
+      self._entries[index] = nil
+   end
+
+   self._released = true
+end
+
+function M.resource_scope(context, label)
+   if context == nil then
+      error("rig.resource_scope requires a context value", 0)
+   end
+   if label ~= nil and (type(label) ~= "string" or label == "") then
+      error("rig.resource_scope expects label to be a non-empty string if provided", 0)
+   end
+
+   return setmetatable({
+      context = context,
+      _entries = {},
+      _named_entries = {},
+      _released = false,
+      _scope_label = label or "resource scope",
+   }, resource_scope_mt)
+end
+
 M._runtime_modes = M._runtime_modes or {}
 M._runtime_hooks = M._runtime_hooks or {}
 

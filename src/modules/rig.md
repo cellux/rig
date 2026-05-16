@@ -33,6 +33,12 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Optional per-run hooks may be passed under `options.hooks`.
   - `options.hooks.<phase>` may be either a function or an array of functions.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
+- `rig.resource_scope(context, label?)`
+  - Creates a generic ownership scope.
+  - `scope:adopt(resource, release_fn)` tracks a resource with a custom release function.
+  - `scope:replace(key, resource, release_fn)` replaces a named resource, releasing the old one immediately.
+  - `scope:release()` releases tracked resources in reverse order.
+  - `release_fn` receives `(context, resource)`.
 - `rig.script_loaders`
   - Ordered list of script loader functions.
   - Built in with Lua first and Fennel second.

@@ -954,78 +954,22 @@ local function get_error_string()
    return ffi.string(M.GetError())
 end
 
-local resource_scope_mt = {}
-resource_scope_mt.__index = resource_scope_mt
+local sdl3_resource_scope_methods = {}
 
-local function add_scope_entry(scope, resource, release_fn)
-   local entry = {
-      resource = resource,
-      release_fn = release_fn,
-      key = nil,
-   }
-   scope._entries[#scope._entries + 1] = entry
-   return entry
-end
-
-function resource_scope_mt:adopt(resource, release_fn)
-   if self._released then
-      error("cannot adopt a resource into a released SDL resource scope", 0)
-   end
-   if resource == nil then
-      error("sdl3.resource_scope:adopt requires a resource", 0)
-   end
-   if type(release_fn) ~= "function" then
-      error("sdl3.resource_scope:adopt requires a release function", 0)
-   end
-
-   add_scope_entry(self, resource, release_fn)
-   return resource
-end
-
-function resource_scope_mt:replace(key, resource, release_fn)
-   if self._released then
-      error("cannot replace a resource in a released SDL resource scope", 0)
-   end
-   if type(key) ~= "string" or key == "" then
-      error("sdl3.resource_scope:replace requires a non-empty string key", 0)
-   end
-   if resource == nil then
-      error("sdl3.resource_scope:replace requires a resource", 0)
-   end
-   if type(release_fn) ~= "function" then
-      error("sdl3.resource_scope:replace requires a release function", 0)
-   end
-
-   local existing = self._named_entries[key]
-   if existing ~= nil then
-      if existing.resource ~= nil then
-         existing.release_fn(self.device, existing.resource)
-      end
-      existing.resource = nil
-      existing.release_fn = nil
-      self._named_entries[key] = nil
-   end
-
-   local entry = add_scope_entry(self, resource, release_fn)
-   entry.key = key
-   self._named_entries[key] = entry
-   return resource
-end
-
-function resource_scope_mt:create_gpu_shader(compiled, props)
-   local shader = M.create_gpu_shader(self.device, compiled, props)
+function sdl3_resource_scope_methods:create_gpu_shader(compiled, props)
+   local shader = M.create_gpu_shader(self.context, compiled, props)
    return self:adopt(shader, function(device, resource)
       M.ReleaseGPUShader(device, resource)
    end)
 end
 
-function resource_scope_mt:create_gpu_buffer(create_info)
+function sdl3_resource_scope_methods:create_gpu_buffer(create_info)
    local normalized = create_info
    if type(create_info) == "table" then
       normalized = M.build_gpu_buffer_create_info(create_info)
    end
 
-   local buffer = M.CreateGPUBuffer(self.device, normalized)
+   local buffer = M.CreateGPUBuffer(self.context, normalized)
    if buffer == nil then
       error("failed to create GPU buffer: " .. get_error_string(), 0)
    end
@@ -1035,14 +979,14 @@ function resource_scope_mt:create_gpu_buffer(create_info)
    end)
 end
 
-function resource_scope_mt:create_graphics_pipeline(create_info)
+function sdl3_resource_scope_methods:create_graphics_pipeline(create_info)
    local normalized = create_info
    if type(create_info) == "table" then
       local bundle = M.build_graphics_pipeline_create_info(create_info)
       normalized = bundle.create_info
    end
 
-   local pipeline = M.CreateGPUGraphicsPipeline(self.device, normalized)
+   local pipeline = M.CreateGPUGraphicsPipeline(self.context, normalized)
    if pipeline == nil then
       error("failed to create GPU graphics pipeline: " .. get_error_string(), 0)
    end
@@ -1052,32 +996,13 @@ function resource_scope_mt:create_graphics_pipeline(create_info)
    end)
 end
 
-function resource_scope_mt:create_depth_texture(width, height, format)
+function sdl3_resource_scope_methods:create_depth_texture(width, height, format)
    local texture, chosen_format =
-      M.create_depth_texture(self.device, width, height, format)
+      M.create_depth_texture(self.context, width, height, format)
    self:adopt(texture, function(device, resource)
       M.ReleaseGPUTexture(device, resource)
    end)
    return texture, chosen_format
-end
-
-function resource_scope_mt:release()
-   if self._released then
-      return
-   end
-
-   for index = #self._entries, 1, -1 do
-      local entry = self._entries[index]
-      if entry.resource ~= nil then
-         entry.release_fn(self.device, entry.resource)
-      end
-      if entry.key ~= nil and self._named_entries[entry.key] == entry then
-         self._named_entries[entry.key] = nil
-      end
-      self._entries[index] = nil
-   end
-
-   self._released = true
 end
 
 function M.resource_scope(device)
@@ -1085,12 +1010,11 @@ function M.resource_scope(device)
       error("sdl3.resource_scope requires an SDL_GPUDevice*", 0)
    end
 
-   return setmetatable({
-      device = device,
-      _entries = {},
-      _named_entries = {},
-      _released = false,
-   }, resource_scope_mt)
+   local scope = rig.resource_scope(device, "sdl3 resource scope")
+   for name, method in pairs(sdl3_resource_scope_methods) do
+      scope[name] = method
+   end
+   return scope
 end
 
 local function has_all_bits(value, mask)

@@ -102,7 +102,8 @@ Additional fields accepted by `options.sdl3_gpu`:
 - `sdl3.build_graphics_pipeline_create_info(spec)`
   - Builds `SDL_GPUGraphicsPipelineCreateInfo[1]` from a Lua table and keeps any backing arrays alive in the returned bundle.
 - `sdl3.resource_scope(device)`
-  - Creates a scope object that tracks SDL GPU resources and releases them in reverse creation order.
+  - Creates an SDL GPU-specific wrapper over `rig.resource_scope(device, "sdl3 resource scope")`.
+  - The returned scope still supports the generic `adopt`, `replace`, and `release` methods, plus the SDL-specific helpers below.
 - `scope:create_gpu_shader(compiled, props?)`
   - Creates an `SDL_GPUShader` and attaches it to the scope.
 - `scope:create_gpu_buffer(create_info)`
