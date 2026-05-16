@@ -37,6 +37,12 @@ int rig_uv_scandir(
    const char *path,
    rig_uv_scandir_cb on_done
 );
+int rig_uv_clock_read(
+   int clock_id,
+   int64_t *seconds,
+   int32_t *nanoseconds
+);
+int rig_uv_hrtime_read(uint64_t *value);
 ]]
 
 M._loop = M._loop or nil
@@ -60,6 +66,17 @@ local function normalize_runtime_options(options)
       error("uv runtime options must be a table if provided", 0)
    end
    return options
+end
+
+local function read_clock(clock_id, label)
+   local seconds = ffi.new("int64_t[1]")
+   local nanoseconds = ffi.new("int32_t[1]")
+   local rc = ffi.C.rig_uv_clock_read(clock_id, seconds, nanoseconds)
+   if rc ~= 0 then
+      error(label .. " failed: " .. uv_error_string(rc), 0)
+   end
+
+   return tonumber(seconds[0]), tonumber(nanoseconds[0])
 end
 
 local function clear_callback_references()
@@ -229,6 +246,31 @@ end
 
 function M.scandir(path)
    return sched.await("uv.scandir", normalize_scandir_path(path))
+end
+
+function M.now_ns()
+   local seconds, nanoseconds = read_clock(M.CLOCK_REALTIME, "uv.now_ns")
+   return seconds * 1000000000 + nanoseconds
+end
+
+function M.now()
+   local seconds, nanoseconds = read_clock(M.CLOCK_REALTIME, "uv.now")
+   return seconds + nanoseconds / 1000000000.0
+end
+
+function M.monotonic_ns()
+   local value = ffi.new("uint64_t[1]")
+   local rc = ffi.C.rig_uv_hrtime_read(value)
+   if rc == 0 then
+      return tonumber(value[0])
+   end
+
+   local seconds, nanoseconds = read_clock(M.CLOCK_MONOTONIC, "uv.monotonic_ns")
+   return seconds * 1000000000 + nanoseconds
+end
+
+function M.monotonic()
+   return M.monotonic_ns() / 1000000000.0
 end
 
 local function setup(options)

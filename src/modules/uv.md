@@ -26,6 +26,14 @@ Minimal libuv integration for Rig.
   - Each entry is a table containing:
     - `name`
     - `type`
+- `uv.now()`
+  - Returns epoch seconds as a Lua number through libuv.
+- `uv.now_ns()`
+  - Returns epoch nanoseconds through libuv.
+- `uv.monotonic()`
+  - Returns monotonic seconds as a Lua number through libuv.
+- `uv.monotonic_ns()`
+  - Returns monotonic nanoseconds through libuv.
 
 ## Constants
 
@@ -37,6 +45,8 @@ Minimal libuv integration for Rig.
 - `uv.DIRENT_SOCKET`
 - `uv.DIRENT_CHAR`
 - `uv.DIRENT_BLOCK`
+- `uv.CLOCK_MONOTONIC`
+- `uv.CLOCK_REALTIME`
 
 ## Runtime Mode
 

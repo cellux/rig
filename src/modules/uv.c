@@ -78,6 +78,9 @@ static int (*rig_uv__fs_scandir)(uv_loop_t *loop, uv_fs_t *req,
                                  uv_fs_cb cb) = NULL;
 static int (*rig_uv__fs_scandir_next)(uv_fs_t *req, uv_dirent_t *ent) = NULL;
 static void (*rig_uv__fs_req_cleanup)(uv_fs_t *req) = NULL;
+static int (*rig_uv__clock_gettime)(uv_clock_id clock_id,
+                                    uv_timespec64_t *ts) = NULL;
+static uint64_t (*rig_uv__hrtime)(void) = NULL;
 
 static void rig_uv_set_loader_error(const char *message) {
   rig_uv_loader_error = message != NULL ? message : "unknown libuv loader error";
@@ -126,7 +129,9 @@ static int rig_uv_ensure_loaded(void) {
       rig_uv_resolve_symbol((void **)&rig_uv__process_kill, "uv_process_kill") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir, "uv_fs_scandir") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir_next, "uv_fs_scandir_next") != 0 ||
-      rig_uv_resolve_symbol((void **)&rig_uv__fs_req_cleanup, "uv_fs_req_cleanup") != 0) {
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_req_cleanup, "uv_fs_req_cleanup") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__clock_gettime, "uv_clock_gettime") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__hrtime, "uv_hrtime") != 0) {
     rig_dl_close(rig_uv_library_handle);
     rig_uv_library_handle = NULL;
     return -1;
@@ -507,7 +512,44 @@ int rig_uv_scandir(rig_uv_loop_t *loop, const char *path,
   return 0;
 }
 
+int rig_uv_clock_read(int clock_id, int64_t *seconds, int32_t *nanoseconds) {
+  uv_timespec64_t ts;
+  int rc;
+
+  if (seconds == NULL || nanoseconds == NULL) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  rc = rig_uv__clock_gettime((uv_clock_id)clock_id, &ts);
+  if (rc != 0) {
+    return rc;
+  }
+
+  *seconds = ts.tv_sec;
+  *nanoseconds = ts.tv_nsec;
+  return 0;
+}
+
+int rig_uv_hrtime_read(uint64_t *value) {
+  if (value == NULL) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  *value = rig_uv__hrtime();
+  return 0;
+}
+
 void rig_register_uv(lua_State *L) {
+  lua_pushinteger(L, UV_CLOCK_MONOTONIC);
+  lua_setfield(L, -2, "CLOCK_MONOTONIC");
+  lua_pushinteger(L, UV_CLOCK_REALTIME);
+  lua_setfield(L, -2, "CLOCK_REALTIME");
   lua_pushinteger(L, UV_DIRENT_UNKNOWN);
   lua_setfield(L, -2, "DIRENT_UNKNOWN");
   lua_pushinteger(L, UV_DIRENT_FILE);

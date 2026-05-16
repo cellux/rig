@@ -43,6 +43,20 @@ test.case("uv scandir can see the tests directory", function()
    test.equal(seen["rig_basics_test.lua"], uv.DIRENT_FILE)
 end)
 
+test.case("uv clock helpers return numbers", function()
+   local now = uv.now()
+   local now_ns = uv.now_ns()
+   local monotonic = uv.monotonic()
+   local monotonic_ns = uv.monotonic_ns()
+
+   test.equal(type(now), "number")
+   test.equal(type(now_ns), "number")
+   test.equal(type(monotonic), "number")
+   test.equal(type(monotonic_ns), "number")
+   test.truthy(now_ns > 0)
+   test.truthy(monotonic_ns > 0)
+end)
+
 local fixture_setup_count = 0
 local fixture_teardown_count = 0
 local with_counter_fixture = test.fixture(

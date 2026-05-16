@@ -1,6 +1,6 @@
 # `time`
 
-Wall-clock and monotonic clocks through `clock_gettime`.
+Thin clock wrapper over the `uv` module.
 
 ## API
 
@@ -22,3 +22,4 @@ Wall-clock and monotonic clocks through `clock_gettime`.
 
 - Use `time.monotonic()` or `time.monotonic_ns()` for animation and frame timing.
 - `time.now()` is wall-clock time and may jump if the system clock changes.
+- `time` delegates to `uv.now*` and `uv.monotonic*`.
