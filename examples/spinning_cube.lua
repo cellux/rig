@@ -2,7 +2,6 @@ local ffi = ffi
 
 local math3d = require("math3d")
 local mesh3d = require("mesh3d")
-local rig = require("rig")
 local sdl3 = require("sdl3")
 local shader = require("shader")
 local time = require("time")
@@ -165,7 +164,7 @@ local function on_render(command_buffer, swapchain_texture, width, height)
    sdl3.EndGPURenderPass(render_pass)
 end
 
-rig.register_runtime_hook("after_setup", function(options)
+local function after_setup(options)
    if options.mode ~= "sdl3_gpu" then
       return
    end
@@ -227,16 +226,14 @@ rig.register_runtime_hook("after_setup", function(options)
 
    vertex_binding[0].buffer = vertex_buffer
    vertex_binding[0].offset = 0
-end)
-
-rig.register_runtime_hook("before_shutdown", function(options)
-   if options.mode == "sdl3_gpu" then
-      release_resources()
-   end
-end)
+end
 
 rig.run {
    mode = "sdl3_gpu",
+   hooks = {
+      after_setup = after_setup,
+      before_shutdown = release_resources,
+   },
    sdl3_gpu = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",

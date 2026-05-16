@@ -28,8 +28,11 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.run(options?)`
   - Starts the explicitly selected runtime mode.
   - `options.mode` is mandatory.
-  - The current first version ships with `sdl3`-owned modes such as `"sdl3"` and `"sdl3_gpu"` when the `sdl3` module has been loaded.
-  - Mode-specific configuration should live under a namespaced key such as `options.sdl3` or `options.sdl3_gpu`.
+  - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
+  - Mode-specific configuration should live under a namespaced key such as `options.sdl3`, `options.sdl3_gl`, or `options.sdl3_gpu`.
+  - Optional per-run hooks may be passed under `options.hooks`.
+  - `options.hooks.<phase>` may be either a function or an array of functions.
+  - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
 - `rig.script_loaders`
   - Ordered list of script loader functions.
   - Built in with Lua first and Fennel second.

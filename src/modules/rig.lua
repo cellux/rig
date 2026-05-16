@@ -121,6 +121,54 @@ local function run_runtime_hooks(phase, ...)
    end
 end
 
+local function run_option_hooks(options, phase, ...)
+   local hooks = options.hooks
+   if hooks == nil then
+      return
+   end
+   if type(hooks) ~= "table" then
+      error("rig.run expects options.hooks to be a table", 0)
+   end
+
+   local phase_hooks = hooks[phase]
+   if phase_hooks == nil then
+      return
+   end
+
+   if type(phase_hooks) == "function" then
+      phase_hooks(...)
+      return
+   end
+
+   if type(phase_hooks) ~= "table" then
+      error(
+         ("rig.run expects options.hooks.%s to be a function or a table of functions"):format(
+            phase
+         ),
+         0
+      )
+   end
+
+   for i = 1, #phase_hooks do
+      local hook = phase_hooks[i]
+      if type(hook) ~= "function" then
+         error(
+            ("rig.run expects options.hooks.%s[%d] to be a function"):format(
+               phase,
+               i
+            ),
+            0
+         )
+      end
+      hook(...)
+   end
+end
+
+local function run_all_hooks(options, phase, ...)
+   run_runtime_hooks(phase, ...)
+   run_option_hooks(options, phase, ...)
+end
+
 function M.run(options)
    if type(options) ~= "table" then
       error("rig.run expects a table", 0)
@@ -143,21 +191,23 @@ function M.run(options)
       )
    end
 
-   run_runtime_hooks("before_setup", options)
+   run_all_hooks(options, "before_setup", options)
    if type(mode.setup) == "function" then
-      mode.setup(options, run_runtime_hooks)
+      mode.setup(options)
    end
-   run_runtime_hooks("after_setup", options)
+   run_all_hooks(options, "after_setup", options)
 
    local ok, err = pcall(function()
-      mode.loop(options, run_runtime_hooks)
+      mode.loop(options, function(phase, ...)
+         run_all_hooks(options, phase, ...)
+      end)
    end)
 
-   run_runtime_hooks("before_shutdown", options)
+   run_all_hooks(options, "before_shutdown", options)
    if type(mode.shutdown) == "function" then
-      mode.shutdown(options, run_runtime_hooks)
+      mode.shutdown(options)
    end
-   run_runtime_hooks("after_shutdown", options)
+   run_all_hooks(options, "after_shutdown", options)
 
    if not ok then
       error(err, 0)

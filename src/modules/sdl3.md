@@ -6,9 +6,11 @@ The SDL shared library is loaded only when the module is required.
 
 ## Runtime Integration
 
-When loaded, `sdl3` registers two `rig.run(...)` modes:
+When loaded, `sdl3` registers three `rig.run(...)` modes:
 - `"sdl3"`
   - Owns the SDL window/renderer lifecycle through `rig.run(...)`.
+- `"sdl3_gl"`
+  - Owns the SDL window/OpenGL-context lifecycle through `rig.run(...)`.
 - `"sdl3_gpu"`
   - Owns the SDL window/GPU-device lifecycle through `rig.run(...)`.
 
@@ -16,9 +18,10 @@ When loaded, `sdl3` registers two `rig.run(...)` modes:
 
 Use SDL-specific runtime configuration under:
 - `options.sdl3` for `mode = "sdl3"`
+- `options.sdl3_gl` for `mode = "sdl3_gl"`
 - `options.sdl3_gpu` for `mode = "sdl3_gpu"`
 
-Shared fields accepted by both:
+Shared fields accepted by the SDL runtime modes as applicable:
 
 - `init_flags`
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
@@ -34,6 +37,28 @@ Shared fields accepted by both:
   - Mandatory for both modes.
 - `on_key(key_info)`
   - Optional keyboard event callback.
+
+Additional fields accepted by `options.sdl3_gl`:
+
+- `gl_attributes`
+  - OpenGL context attributes to apply before window creation.
+  - Supported keys currently include:
+    - `context_major_version`
+    - `context_minor_version`
+    - `context_profile`
+    - `context_flags`
+    - `doublebuffer`
+    - `depth_size`
+    - `stencil_size`
+    - `red_size`
+    - `green_size`
+    - `blue_size`
+    - `alpha_size`
+    - `multisamplebuffers`
+    - `multisamplesamples`
+    - `accelerated_visual`
+- `swap_interval`
+  - OpenGL swap interval passed after context creation.
 
 Additional fields accepted by `options.sdl3_gpu`:
 
@@ -61,6 +86,10 @@ Additional fields accepted by `options.sdl3_gpu`:
   - Returns the current `SDL_Window*`.
 - `sdl3.get_gpu_device()`
   - Returns the current `SDL_GPUDevice*`.
+- `sdl3.get_gl_context()`
+  - Returns the current `SDL_GLContext`.
+- `sdl3.get_gl_proc_address(name)`
+  - Resolves an OpenGL entry point through SDL.
 - `sdl3.upload_to_gpu_buffer(device, buffer, data_string)`
   - Uploads raw byte data into an SDL GPU buffer.
   - Raises an error if upload staging or submission fails.

@@ -1,7 +1,6 @@
 local M = ... or {}
 local ffi = ffi
 local bit = bit
-local rig = require("rig")
 
 ffi.cdef[[
 typedef struct SDL_Window SDL_Window;
@@ -12,6 +11,7 @@ typedef uint32_t Uint32;
 typedef uint64_t Uint64;
 typedef int32_t Sint32;
 typedef int64_t Sint64;
+typedef void* SDL_GLContext;
 typedef uint32_t SDL_EventType;
 typedef uint32_t SDL_WindowID;
 typedef uint32_t SDL_KeyboardID;
@@ -19,6 +19,7 @@ typedef int32_t SDL_Scancode;
 typedef uint32_t SDL_Keycode;
 typedef uint16_t SDL_Keymod;
 typedef uint32_t SDL_PropertiesID;
+typedef int SDL_GLAttr;
 typedef struct SDL_KeyboardEvent {
    SDL_EventType type;
    Uint32 reserved;
@@ -64,6 +65,14 @@ bool SDL_SetBooleanProperty(SDL_PropertiesID props, const char *name, bool value
 bool SDL_PollEvent(SDL_Event *event);
 const char *SDL_GetError(void);
 const char *SDL_GetKeyName(SDL_Keycode key);
+void SDL_GL_ResetAttributes(void);
+bool SDL_GL_SetAttribute(SDL_GLAttr attr, int value);
+SDL_GLContext SDL_GL_CreateContext(SDL_Window *window);
+bool SDL_GL_MakeCurrent(SDL_Window *window, SDL_GLContext context);
+bool SDL_GL_SetSwapInterval(int interval);
+bool SDL_GL_SwapWindow(SDL_Window *window);
+bool SDL_GL_DestroyContext(SDL_GLContext context);
+void *SDL_GL_GetProcAddress(const char *proc);
 ]]
 
 ffi.cdef[[
@@ -383,6 +392,14 @@ export_sdl_function("SetBooleanProperty", "SDL_SetBooleanProperty")
 export_sdl_function("PollEvent", "SDL_PollEvent")
 export_sdl_function("GetError", "SDL_GetError")
 export_sdl_function("GetKeyName", "SDL_GetKeyName")
+export_sdl_function("GL_ResetAttributes", "SDL_GL_ResetAttributes")
+export_sdl_function("GL_SetAttribute", "SDL_GL_SetAttribute")
+export_sdl_function("GL_CreateContext", "SDL_GL_CreateContext")
+export_sdl_function("GL_MakeCurrent", "SDL_GL_MakeCurrent")
+export_sdl_function("GL_SetSwapInterval", "SDL_GL_SetSwapInterval")
+export_sdl_function("GL_SwapWindow", "SDL_GL_SwapWindow")
+export_sdl_function("GL_DestroyContext", "SDL_GL_DestroyContext")
+export_sdl_function("GL_GetProcAddress", "SDL_GL_GetProcAddress")
 export_sdl_function("GPUSupportsShaderFormats", "SDL_GPUSupportsShaderFormats")
 export_sdl_function("CreateGPUDevice", "SDL_CreateGPUDevice")
 export_sdl_function("DestroyGPUDevice", "SDL_DestroyGPUDevice")
@@ -426,6 +443,7 @@ export_sdl_function("WaitForGPUIdle", "SDL_WaitForGPUIdle")
 M._window = nil
 M._renderer = nil
 M._gpu_device = nil
+M._gl_context = nil
 M._owned_init_flags = nil
 
 M.default_window_props = {
@@ -1213,6 +1231,9 @@ local function get_mode_options(options)
    if options.mode == "sdl3_gpu" then
       return normalize_runtime_options(options.sdl3_gpu), "options.sdl3_gpu"
    end
+   if options.mode == "sdl3_gl" then
+      return normalize_runtime_options(options.sdl3_gl), "options.sdl3_gl"
+   end
    error("unsupported sdl3 runtime mode '" .. tostring(options.mode) .. "'", 0)
 end
 
@@ -1226,8 +1247,25 @@ function M.get_gpu_device()
    return M._gpu_device
 end
 
-local function setup_common(options)
-   if M._renderer ~= nil or M._window ~= nil or M._gpu_device ~= nil then
+function M.get_gl_context()
+   return M._gl_context
+end
+
+function M.get_gl_proc_address(name)
+   if type(name) ~= "string" or name == "" then
+      error("sdl3.get_gl_proc_address expects a non-empty string", 0)
+   end
+
+   local ptr = M.GL_GetProcAddress(name)
+   if ptr == nil or ptr == ffi.NULL then
+      return nil, get_error_string()
+   end
+
+   return ptr
+end
+
+local function initialize_windowed_sdl(options)
+   if M._renderer ~= nil or M._window ~= nil or M._gpu_device ~= nil or M._gl_context ~= nil then
       shutdown()
    end
 
@@ -1245,6 +1283,10 @@ local function setup_common(options)
       owned_init_flags = required
    end
 
+   return options, owned_init_flags
+end
+
+local function create_window_or_fail(options, owned_init_flags)
    local create_window = options.create_window or default_create_window
    if type(create_window) ~= "function" then
       if owned_init_flags ~= nil then
@@ -1275,9 +1317,8 @@ local function setup_common(options)
 end
 
 local function setup(options)
-   local window_ptr, owned_init_flags = setup_common(options)
-
-   options = normalize_runtime_options(options)
+   options, owned_init_flags = initialize_windowed_sdl(options)
+   local window_ptr = create_window_or_fail(options, owned_init_flags)
    local create_renderer = options.create_renderer or default_create_renderer
    if type(create_renderer) ~= "function" then
       M.DestroyWindow(window_ptr)
@@ -1317,7 +1358,8 @@ local function setup_gpu(options)
       error("sdl3.setup_gpu expects a table if options are provided")
    end
 
-   local window_ptr, owned_init_flags = setup_common()
+   options, owned_init_flags = initialize_windowed_sdl(options)
+   local window_ptr = create_window_or_fail(options, owned_init_flags)
 
    local format_flags = options and options.shader_formats
    if format_flags == nil then
@@ -1365,7 +1407,159 @@ local function setup_gpu(options)
    M._owned_init_flags = owned_init_flags
 end
 
+local GL_PROFILE_VALUES = {
+   core = "GL_CONTEXT_PROFILE_CORE",
+   compatibility = "GL_CONTEXT_PROFILE_COMPATIBILITY",
+   es = "GL_CONTEXT_PROFILE_ES",
+}
+
+local GL_ATTRIBUTE_VALUES = {
+   red_size = "GL_ATTR_RED_SIZE",
+   green_size = "GL_ATTR_GREEN_SIZE",
+   blue_size = "GL_ATTR_BLUE_SIZE",
+   alpha_size = "GL_ATTR_ALPHA_SIZE",
+   buffer_size = "GL_ATTR_BUFFER_SIZE",
+   doublebuffer = "GL_ATTR_DOUBLEBUFFER",
+   depth_size = "GL_ATTR_DEPTH_SIZE",
+   stencil_size = "GL_ATTR_STENCIL_SIZE",
+   multisamplebuffers = "GL_ATTR_MULTISAMPLEBUFFERS",
+   multisamplesamples = "GL_ATTR_MULTISAMPLESAMPLES",
+   accelerated_visual = "GL_ATTR_ACCELERATED_VISUAL",
+   context_major_version = "GL_ATTR_CONTEXT_MAJOR_VERSION",
+   context_minor_version = "GL_ATTR_CONTEXT_MINOR_VERSION",
+   context_flags = "GL_ATTR_CONTEXT_FLAGS",
+   context_profile = "GL_ATTR_CONTEXT_PROFILE_MASK",
+   share_with_current_context = "GL_ATTR_SHARE_WITH_CURRENT_CONTEXT",
+   framebuffer_srgb_capable = "GL_ATTR_FRAMEBUFFER_SRGB_CAPABLE",
+}
+
+local function gl_attribute_int(value)
+   if type(value) == "boolean" then
+      return value and 1 or 0
+   end
+   local normalized = tonumber(value)
+   if normalized == nil then
+      error("OpenGL attribute values must be booleans or numbers", 0)
+   end
+   return normalized
+end
+
+local function normalize_gl_profile(value)
+   if type(value) == "string" then
+      local field = GL_PROFILE_VALUES[value]
+      if field == nil then
+         error("unsupported OpenGL context profile '" .. value .. "'", 0)
+      end
+      return M[field]
+   end
+   return gl_attribute_int(value)
+end
+
+local function apply_gl_attributes(attributes)
+   M.GL_ResetAttributes()
+
+   local requested = attributes
+   if requested == nil then
+      requested = {
+         context_major_version = 3,
+         context_minor_version = 3,
+         context_profile = "core",
+         doublebuffer = true,
+         depth_size = 24,
+      }
+   end
+   if type(requested) ~= "table" then
+      error("sdl3_gl gl_attributes must be a table", 0)
+   end
+
+   for key, value in pairs(requested) do
+      local field = GL_ATTRIBUTE_VALUES[key]
+      if field == nil then
+         error("unsupported OpenGL attribute '" .. tostring(key) .. "'", 0)
+      end
+
+      local normalized = value
+      if key == "context_profile" then
+         normalized = normalize_gl_profile(value)
+      else
+         normalized = gl_attribute_int(value)
+      end
+
+      if not M.GL_SetAttribute(M[field], normalized) then
+         error(
+            ("failed to set OpenGL attribute '%s': %s"):format(
+               key,
+               get_error_string()
+            ),
+            0
+         )
+      end
+   end
+end
+
+local function setup_gl(options)
+   if options ~= nil and type(options) ~= "table" then
+      error("sdl3_gl options must be a table if provided", 0)
+   end
+
+   options = normalize_runtime_options(options)
+   local window_props, props_err = merge_props(options.window_props, {
+      [M.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
+   })
+   if window_props == nil then
+      error(props_err, 0)
+   end
+
+   local window_options = {}
+   for key, value in pairs(options) do
+      window_options[key] = value
+   end
+   window_options.window_props = window_props
+
+   window_options, owned_init_flags = initialize_windowed_sdl(window_options)
+   apply_gl_attributes(options.gl_attributes)
+   local window_ptr = create_window_or_fail(window_options, owned_init_flags)
+   local gl_context = M.GL_CreateContext(window_ptr)
+   if gl_context == nil then
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
+      error("failed to create OpenGL context: " .. get_error_string(), 0)
+   end
+
+   if not M.GL_MakeCurrent(window_ptr, gl_context) then
+      M.GL_DestroyContext(gl_context)
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
+      error("failed to make OpenGL context current: " .. get_error_string(), 0)
+   end
+
+   local swap_interval = options.swap_interval
+   if swap_interval == nil then
+      swap_interval = 1
+   end
+   if not M.GL_SetSwapInterval(gl_attribute_int(swap_interval)) then
+      M.GL_DestroyContext(gl_context)
+      M.DestroyWindow(window_ptr)
+      if owned_init_flags ~= nil then
+         M.QuitSubSystem(owned_init_flags)
+      end
+      error("failed to set OpenGL swap interval: " .. get_error_string(), 0)
+   end
+
+   M._window = window_ptr
+   M._gl_context = gl_context
+   M._owned_init_flags = owned_init_flags
+end
+
 shutdown = function()
+   if M._gl_context ~= nil then
+      M.GL_DestroyContext(M._gl_context)
+      M._gl_context = nil
+   end
    if M._gpu_device ~= nil then
       M.WaitForGPUIdle(M._gpu_device)
       if M._window ~= nil then
@@ -1394,6 +1588,15 @@ local function present()
    end
    if not M.RenderPresent(M._renderer) then
       error("failed to present renderer: " .. ffi.string(M.GetError()))
+   end
+end
+
+local function present_gl()
+   if M._window == nil or M._gl_context == nil then
+      error("an OpenGL window and context must be initialized before presenting", 0)
+   end
+   if not M.GL_SwapWindow(M._window) then
+      error("failed to swap OpenGL window: " .. get_error_string(), 0)
    end
 end
 
@@ -1653,6 +1856,18 @@ local function render_gpu_frame(render_fn)
    return swapchain_texture ~= nil
 end
 
+local function render_gl_frame(render_fn)
+   if type(render_fn) ~= "function" then
+      error("sdl3_gl render requires a render function", 0)
+   end
+   if M._window == nil or M._gl_context == nil then
+      error("an SDL OpenGL context must be initialized before rendering", 0)
+   end
+
+   render_fn()
+   present_gl()
+end
+
 local function require_render_callback(options)
    local mode_options, mode_key = get_mode_options(options)
    local callback = mode_options.on_render
@@ -1716,6 +1931,32 @@ rig.register_runtime_mode("sdl3_gpu", {
          run_hooks("after_poll", options)
          run_hooks("before_frame", options)
          render_gpu_frame(on_render)
+         run_hooks("after_frame", options)
+      end
+   end,
+   shutdown = function()
+      shutdown()
+   end,
+})
+
+rig.register_runtime_mode("sdl3_gl", {
+   setup = function(options)
+      local sdl3_options = normalize_runtime_options(options.sdl3_gl)
+      require_render_callback(options)
+      setup_gl(sdl3_options)
+   end,
+   loop = function(options, run_hooks)
+      local sdl3_options = normalize_runtime_options(options.sdl3_gl)
+      local on_render = require_render_callback(options)
+      local on_key = sdl3_options.on_key
+      while true do
+         run_hooks("before_poll", options)
+         if pump_events(on_key) == false then
+            break
+         end
+         run_hooks("after_poll", options)
+         run_hooks("before_frame", options)
+         render_gl_frame(on_render)
          run_hooks("after_frame", options)
       end
    end,
