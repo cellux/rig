@@ -13,7 +13,7 @@ Build dependencies:
 - the `luajit` executable
 - SDL3 development files with an `sdl3` pkg-config entry
 
-At build time Rig links against LuaJIT and uses SDL3 only for compile-time headers and flags. The `rig` binary is not linked against the SDL3 shared library.
+At build time Rig links against LuaJIT and the platform dynamic loader, and uses SDL3 only for compile-time headers and flags. The `rig` binary is not linked against the SDL3 or libuv shared libraries.
 
 Build with:
 
@@ -41,6 +41,7 @@ Available modules:
 
 - `rig`: [`src/modules/rig.md`](src/modules/rig.md)
 - `dl`: [`src/modules/dl.md`](src/modules/dl.md)
+- `uv`: [`src/modules/uv.md`](src/modules/uv.md)
 - `sdl3`: [`src/modules/sdl3.md`](src/modules/sdl3.md)
 - `gl`: [`src/modules/gl.md`](src/modules/gl.md)
 - `shadercross`: [`src/modules/shadercross.md`](src/modules/shadercross.md)

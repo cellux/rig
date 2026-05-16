@@ -2,6 +2,7 @@
 fennel
 rig
 dl
+uv
 sdl3
 gl
 shadercross
