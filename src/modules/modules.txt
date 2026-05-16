@@ -1,6 +1,7 @@
 # One module name per line; order defines load order.
 fennel
 rig
+dl
 sdl3
 gl
 shadercross

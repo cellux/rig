@@ -21,6 +21,10 @@ add_executable(rig
     "${MODULE_REGISTRY_C}"
 )
 
+set_target_properties(rig PROPERTIES
+    ENABLE_EXPORTS ON
+)
+
 target_include_directories(rig PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     ${SDL3_INCLUDE_DIRS}
@@ -28,6 +32,7 @@ target_include_directories(rig PRIVATE
 
 target_link_libraries(rig PRIVATE
     PkgConfig::LUAJIT
+    ${CMAKE_DL_LIBS}
 )
 
 target_compile_options(rig PRIVATE
