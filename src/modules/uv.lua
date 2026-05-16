@@ -13,6 +13,11 @@ typedef void (*rig_uv_spawn_exit_cb)(
    const char *stderr_data,
    size_t stderr_len
 );
+typedef void (*rig_uv_scandir_cb)(
+   int status,
+   const char *entries_data,
+   size_t entries_len
+);
 
 rig_uv_loop_t *rig_uv_loop_new(void);
 int rig_uv_loop_delete(rig_uv_loop_t *loop);
@@ -27,11 +32,17 @@ int rig_uv_spawn_capture(
    const char *cwd,
    rig_uv_spawn_exit_cb on_exit
 );
+int rig_uv_scandir(
+   rig_uv_loop_t *loop,
+   const char *path,
+   rig_uv_scandir_cb on_done
+);
 ]]
 
 M._loop = M._loop or nil
 M._scheduler = M._scheduler or nil
 M._active_exit_callbacks = M._active_exit_callbacks or {}
+M._active_scandir_callbacks = M._active_scandir_callbacks or {}
 
 local function uv_error_string(err)
    local ptr = ffi.C.rig_uv_strerror(err)
@@ -53,6 +64,7 @@ end
 
 local function clear_callback_references()
    M._active_exit_callbacks = {}
+   M._active_scandir_callbacks = {}
 end
 
 local function normalize_spawn_spec(spec)
@@ -84,6 +96,13 @@ local function normalize_spawn_spec(spec)
       args = args_list,
       cwd = spec.cwd,
    }
+end
+
+local function normalize_scandir_path(path)
+   if type(path) ~= "string" or path == "" then
+      error("uv.scandir expects path to be a non-empty string", 0)
+   end
+   return path
 end
 
 local function spawn_internal(spec, on_exit)
@@ -134,6 +153,65 @@ local function spawn_internal(spec, on_exit)
    end
 end
 
+local function parse_scandir_entries(entries_data, entries_len)
+   local entries = {}
+   local data = ffi.string(entries_data, tonumber(entries_len) or 0)
+   local i = 1
+
+   while i <= #data do
+      local type_code = string.byte(data, i)
+      i = i + 1
+
+      local terminator = string.find(data, "\0", i, true)
+      if terminator == nil then
+         error("uv.scandir received malformed entry data", 0)
+      end
+
+      table.insert(entries, {
+         type = type_code,
+         name = string.sub(data, i, terminator - 1),
+      })
+      i = terminator + 1
+   end
+
+   return entries
+end
+
+local function scandir_internal(path, on_done)
+   if M._loop == nil then
+      error("uv.scandir requires an active uv loop", 0)
+   end
+   if type(on_done) ~= "function" then
+      error("uv internal scandir requires a completion callback", 0)
+   end
+
+   local completion_callback
+   completion_callback = ffi.cast("rig_uv_scandir_cb", function(status, entries_data, entries_len)
+      M._active_scandir_callbacks[completion_callback] = nil
+
+      if status ~= 0 then
+         on_done(nil, ("uv.scandir failed for '%s': %s"):format(
+            path,
+            uv_error_string(status)
+         ))
+         return
+      end
+
+      local entries = {}
+      if entries_data ~= nil and entries_data ~= ffi.NULL then
+         entries = parse_scandir_entries(entries_data, entries_len)
+      end
+      on_done(entries)
+   end)
+   M._active_scandir_callbacks[completion_callback] = true
+
+   local rc = ffi.C.rig_uv_scandir(M._loop, path, completion_callback)
+   if rc ~= 0 then
+      M._active_scandir_callbacks[completion_callback] = nil
+      error(("uv.scandir failed for '%s': %s"):format(path, uv_error_string(rc)), 0)
+   end
+end
+
 function M.get_loop()
    return M._loop
 end
@@ -147,6 +225,10 @@ end
 
 function M.spawn(spec)
    return sched.await("uv.spawn", normalize_spawn_spec(spec))
+end
+
+function M.scandir(path)
+   return sched.await("uv.scandir", normalize_scandir_path(path))
 end
 
 local function setup(options)
@@ -197,7 +279,7 @@ local function run_scheduler_loop(runtime_options, outer_options)
          -- continue immediately; draining will pick it up on the next iteration
       elseif scheduler:pending_async() > 0 then
          local rc = ffi.C.rig_uv_run(M._loop)
-         if rc ~= 0 then
+         if rc < 0 then
             scheduler:deactivate()
             error("uv loop failed: " .. uv_error_string(rc), 0)
          end
@@ -225,6 +307,16 @@ local function shutdown()
    M._loop = nil
    clear_callback_references()
 
+   while true do
+      local rc = ffi.C.rig_uv_run_nowait(loop_handle)
+      if rc < 0 then
+         error("uv loop failed during shutdown: " .. uv_error_string(rc), 0)
+      end
+      if rc == 0 then
+         break
+      end
+   end
+
    local rc = ffi.C.rig_uv_loop_delete(loop_handle)
    if rc ~= 0 then
       error("failed to close uv loop: " .. uv_error_string(rc), 0)
@@ -237,6 +329,25 @@ sched.register_handler("uv.spawn", function(scheduler, task, spec)
    local ok, err = pcall(spawn_internal, spec, function(result)
       scheduler:end_async()
       scheduler:resume_later(task, result)
+      ffi.C.rig_uv_stop(M._loop)
+   end)
+
+   if not ok then
+      scheduler:end_async()
+      error(err, 0)
+   end
+end)
+
+sched.register_handler("uv.scandir", function(scheduler, task, path)
+   scheduler:begin_async()
+
+   local ok, err = pcall(scandir_internal, path, function(entries, callback_err)
+      scheduler:end_async()
+      if callback_err ~= nil then
+         scheduler:resume_later(task, nil, callback_err)
+      else
+         scheduler:resume_later(task, entries)
+      end
       ffi.C.rig_uv_stop(M._loop)
    end)
 

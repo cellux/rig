@@ -29,6 +29,21 @@ static int run_user_script(lua_State *L, const char *script_path) {
   return 0;
 }
 
+static int set_rig_string_field(lua_State *L, const char *field_name,
+                                const char *value) {
+  lua_getglobal(L, "rig");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    fprintf(stderr, "Failed to initialize rig runtime field '%s'\n", field_name);
+    return -1;
+  }
+
+  lua_pushstring(L, value);
+  lua_setfield(L, -2, field_name);
+  lua_pop(L, 1);
+  return 0;
+}
+
 static int open_lua_lib(lua_State *L, lua_CFunction open_fn,
                         const char *lib_name, const char *label) {
   const char *msg;
@@ -105,6 +120,11 @@ int main(int argc, char **argv) {
 
   L = init_lua_runtime();
   if (L == NULL) {
+    return 1;
+  }
+
+  if (set_rig_string_field(L, "executable_path", argv[0]) != 0) {
+    lua_close(L);
     return 1;
   }
 

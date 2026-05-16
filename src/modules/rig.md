@@ -39,6 +39,9 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `scope:replace(key, resource, release_fn)` replaces a named resource, releasing the old one immediately.
   - `scope:release()` releases tracked resources in reverse order.
   - `release_fn` receives `(context, resource)`.
+- `rig.executable_path`
+  - String path used to launch the current Rig executable.
+  - Initialized from `argv[0]` at process startup.
 - `rig.script_loaders`
   - Ordered list of script loader functions.
   - Built in with Lua first and Fennel second.

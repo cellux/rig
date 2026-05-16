@@ -6,6 +6,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+enable_testing()
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
 pkg_check_modules(SDL3 REQUIRED sdl3)
@@ -38,4 +40,12 @@ target_link_libraries(rig PRIVATE
 target_compile_options(rig PRIVATE
     ${SDL3_CFLAGS_OTHER}
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
+)
+
+add_test(
+    NAME rig-tests
+    COMMAND $<TARGET_FILE:rig> ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_all_tests.lua
+)
+set_tests_properties(rig-tests PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )

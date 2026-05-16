@@ -14,9 +14,13 @@ Generic coroutine scheduler primitives for runtime-owned async backends.
 - `sched.await(kind, payload)`
   - Yields a scheduler-managed operation from the current task.
   - Must be called from a scheduler-managed coroutine.
+- `sched.park()`
+  - Suspends the current scheduler-managed coroutine until something else resumes it later.
 - `sched.spawn(fn, ...)`
   - Schedules a new coroutine task on the active scheduler.
   - Requires an active scheduler.
+- `sched.join(tasks)`
+  - Suspends the current scheduler-managed coroutine until all listed tasks have finished.
 
 ## Notes
 

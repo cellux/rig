@@ -20,6 +20,23 @@ Minimal libuv integration for Rig.
     - `stdout`
     - `stderr`
     - `success`
+- `uv.scandir(path)`
+  - Suspends the current scheduler-managed coroutine, scans one directory on the current uv loop, and resumes the coroutine later with the directory entries.
+  - Returns `entries` on success, or `nil, err` on failure.
+  - Each entry is a table containing:
+    - `name`
+    - `type`
+
+## Constants
+
+- `uv.DIRENT_UNKNOWN`
+- `uv.DIRENT_FILE`
+- `uv.DIRENT_DIR`
+- `uv.DIRENT_LINK`
+- `uv.DIRENT_FIFO`
+- `uv.DIRENT_SOCKET`
+- `uv.DIRENT_CHAR`
+- `uv.DIRENT_BLOCK`
 
 ## Runtime Mode
 

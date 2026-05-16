@@ -6,6 +6,9 @@ M._current_task = M._current_task or nil
 
 local yieldable_tag = {}
 
+M._handlers["sched.park"] = function()
+end
+
 local scheduler_mt = {}
 scheduler_mt.__index = scheduler_mt
 
@@ -30,6 +33,28 @@ local function is_yieldable(value)
    return type(value) == "table" and value._sched_tag == yieldable_tag
 end
 
+function scheduler_mt:_complete_task(task)
+   if task._done then
+      return
+   end
+
+   task._done = true
+   local waiters = task._waiters
+   if waiters == nil then
+      return
+   end
+
+   for i = 1, #waiters do
+      local waiter = waiters[i]
+      waiter.remaining = waiter.remaining - 1
+      if waiter.remaining == 0 and not waiter.resumed then
+         waiter.resumed = true
+         self:resume_later(waiter.task, true)
+      end
+   end
+   task._waiters = nil
+end
+
 function scheduler_mt:_resume_task(task, ...)
    M._active_scheduler = self
    M._current_task = task
@@ -39,17 +64,20 @@ function scheduler_mt:_resume_task(task, ...)
 
    if not ok then
       self._active_tasks = self._active_tasks - 1
+      self:_complete_task(task)
       set_pending_error(self, yielded_or_err)
       return
    end
 
    if coroutine.status(task.co) == "dead" then
       self._active_tasks = self._active_tasks - 1
+      self:_complete_task(task)
       return
    end
 
    if not is_yieldable(yielded_or_err) then
       self._active_tasks = self._active_tasks - 1
+      self:_complete_task(task)
       set_pending_error(
          self,
          "scheduler task yielded a non-yieldable value"
@@ -77,6 +105,7 @@ function scheduler_mt:_resume_task(task, ...)
    )
    if not handler_ok then
       self._active_tasks = self._active_tasks - 1
+      self:_complete_task(task)
       set_pending_error(self, handler_err)
    end
 end
@@ -88,6 +117,8 @@ function scheduler_mt:spawn(fn, ...)
 
    local task = {
       co = coroutine.create(fn),
+      _done = false,
+      _waiters = {},
    }
    self._active_tasks = self._active_tasks + 1
    enqueue_item(self._ready, {
@@ -219,12 +250,51 @@ function M.await(kind, payload)
    return coroutine.yield(M.yieldable(kind, payload))
 end
 
+function M.park()
+   return M.await("sched.park")
+end
+
 function M.spawn(fn, ...)
    local scheduler = M._active_scheduler
    if scheduler == nil then
       error("sched.spawn requires an active scheduler", 0)
    end
    return scheduler:spawn(fn, ...)
+end
+
+function M.join(tasks)
+   if M._current_task == nil then
+      error("sched.join may only be called from a scheduler-managed coroutine", 0)
+   end
+   if type(tasks) ~= "table" then
+      error("sched.join expects a table of tasks", 0)
+   end
+
+   local pending = {}
+   for i = 1, #tasks do
+      local task = tasks[i]
+      if type(task) ~= "table" or type(task.co) ~= "thread" then
+         error(("sched.join expects tasks[%d] to be a scheduler task"):format(i), 0)
+      end
+      if not task._done then
+         table.insert(pending, task)
+      end
+   end
+
+   if #pending == 0 then
+      return true
+   end
+
+   local waiter = {
+      task = M._current_task,
+      remaining = #pending,
+      resumed = false,
+   }
+   for i = 1, #pending do
+      table.insert(pending[i]._waiters, waiter)
+   end
+
+   return M.park()
 end
 
 return M

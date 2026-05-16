@@ -23,6 +23,14 @@ make
 
 This configures CMake in `build/` and builds the `rig` target there.
 
+Run the test suite with:
+
+```
+make test
+```
+
+This builds `rig` first and then runs the repo-local test runner in `tests/run_all_tests.lua`.
+
 ## How to use
 
 Run with:
@@ -43,6 +51,7 @@ Available modules:
 - `dl`: [`src/modules/dl.md`](src/modules/dl.md)
 - `sched`: [`src/modules/sched.md`](src/modules/sched.md)
 - `uv`: [`src/modules/uv.md`](src/modules/uv.md)
+- `test`: [`src/modules/test.md`](src/modules/test.md)
 - `sdl3`: [`src/modules/sdl3.md`](src/modules/sdl3.md)
 - `gl`: [`src/modules/gl.md`](src/modules/gl.md)
 - `shadercross`: [`src/modules/shadercross.md`](src/modules/shadercross.md)

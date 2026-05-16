@@ -4,6 +4,7 @@ rig
 dl
 sched
 uv
+test
 sdl3
 gl
 shadercross

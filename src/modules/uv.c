@@ -25,6 +25,8 @@ typedef void (*rig_uv_spawn_exit_cb)(int64_t exit_status, int term_signal,
                                      size_t stdout_len,
                                      const char *stderr_data,
                                      size_t stderr_len);
+typedef void (*rig_uv_scandir_cb)(int status, const char *entries_data,
+                                  size_t entries_len);
 
 typedef struct rig_uv_process {
   uv_process_t process;
@@ -48,6 +50,14 @@ typedef struct rig_uv_process {
   bool stderr_initialized;
 } rig_uv_process_t;
 
+typedef struct rig_uv_scandir {
+  uv_fs_t req;
+  rig_uv_scandir_cb on_done;
+  char *entries_data;
+  size_t entries_len;
+  size_t entries_capacity;
+} rig_uv_scandir_t;
+
 static void *rig_uv_library_handle = NULL;
 static const char *rig_uv_loader_error = NULL;
 
@@ -63,6 +73,11 @@ static int (*rig_uv__read_start)(uv_stream_t *stream, uv_alloc_cb alloc_cb,
                                  uv_read_cb read_cb) = NULL;
 static void (*rig_uv__close)(uv_handle_t *handle, uv_close_cb close_cb) = NULL;
 static int (*rig_uv__process_kill)(uv_process_t *process, int signum) = NULL;
+static int (*rig_uv__fs_scandir)(uv_loop_t *loop, uv_fs_t *req,
+                                 const char *path, int flags,
+                                 uv_fs_cb cb) = NULL;
+static int (*rig_uv__fs_scandir_next)(uv_fs_t *req, uv_dirent_t *ent) = NULL;
+static void (*rig_uv__fs_req_cleanup)(uv_fs_t *req) = NULL;
 
 static void rig_uv_set_loader_error(const char *message) {
   rig_uv_loader_error = message != NULL ? message : "unknown libuv loader error";
@@ -108,7 +123,10 @@ static int rig_uv_ensure_loaded(void) {
       rig_uv_resolve_symbol((void **)&rig_uv__spawn, "uv_spawn") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__read_start, "uv_read_start") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__close, "uv_close") != 0 ||
-      rig_uv_resolve_symbol((void **)&rig_uv__process_kill, "uv_process_kill") != 0) {
+      rig_uv_resolve_symbol((void **)&rig_uv__process_kill, "uv_process_kill") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir, "uv_fs_scandir") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir_next, "uv_fs_scandir_next") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_req_cleanup, "uv_fs_req_cleanup") != 0) {
     rig_dl_close(rig_uv_library_handle);
     rig_uv_library_handle = NULL;
     return -1;
@@ -179,6 +197,73 @@ static void rig_uv_capture_append(char **data, size_t *len, size_t *capacity,
 
   memcpy(*data + *len, chunk, chunk_len);
   *len += chunk_len;
+}
+
+static int rig_uv_scandir_append_entry(rig_uv_scandir_t *request,
+                                       uv_dirent_type_t type,
+                                       const char *name) {
+  size_t name_len = strlen(name);
+  size_t required = request->entries_len + 1 + name_len + 1;
+
+  if (required > request->entries_capacity) {
+    size_t new_capacity =
+        request->entries_capacity == 0 ? 4096 : request->entries_capacity;
+    while (required > new_capacity) {
+      new_capacity *= 2;
+    }
+
+    char *new_data = realloc(request->entries_data, new_capacity);
+    if (new_data == NULL) {
+      return UV_ENOMEM;
+    }
+
+    request->entries_data = new_data;
+    request->entries_capacity = new_capacity;
+  }
+
+  request->entries_data[request->entries_len] = (char)type;
+  request->entries_len += 1;
+  memcpy(request->entries_data + request->entries_len, name, name_len + 1);
+  request->entries_len += name_len + 1;
+  return 0;
+}
+
+static void rig_uv_finish_scandir(rig_uv_scandir_t *request, int status) {
+  if (request->on_done != NULL) {
+    request->on_done(status, request->entries_data, request->entries_len);
+  }
+  rig_uv__fs_req_cleanup(&request->req);
+  free(request->entries_data);
+  free(request);
+}
+
+static void rig_uv_on_scandir(uv_fs_t *req) {
+  rig_uv_scandir_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+
+  if (req->result < 0) {
+    rig_uv_finish_scandir(request, (int)req->result);
+    return;
+  }
+
+  uv_dirent_t entry;
+  int rc = 0;
+  while ((rc = rig_uv__fs_scandir_next(req, &entry)) != UV_EOF) {
+    if (rc < 0) {
+      rig_uv_finish_scandir(request, rc);
+      return;
+    }
+
+    rc = rig_uv_scandir_append_entry(request, entry.type, entry.name);
+    if (rc != 0) {
+      rig_uv_finish_scandir(request, rc);
+      return;
+    }
+  }
+
+  rig_uv_finish_scandir(request, 0);
 }
 
 static void rig_uv_alloc_cb(uv_handle_t *handle, size_t suggested_size,
@@ -394,6 +479,49 @@ int rig_uv_spawn_capture(rig_uv_loop_t *loop, const char *file,
   return 0;
 }
 
+int rig_uv_scandir(rig_uv_loop_t *loop, const char *path,
+                   rig_uv_scandir_cb on_done) {
+  if (loop == NULL || path == NULL || on_done == NULL) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  rig_uv_scandir_t *request = calloc(1, sizeof(rig_uv_scandir_t));
+  if (request == NULL) {
+    return UV_ENOMEM;
+  }
+
+  request->on_done = on_done;
+  request->req.data = request;
+
+  int rc = rig_uv__fs_scandir(&loop->loop, &request->req, path, 0,
+                              rig_uv_on_scandir);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->req);
+    free(request);
+    return rc;
+  }
+
+  return 0;
+}
+
 void rig_register_uv(lua_State *L) {
-  (void)L;
+  lua_pushinteger(L, UV_DIRENT_UNKNOWN);
+  lua_setfield(L, -2, "DIRENT_UNKNOWN");
+  lua_pushinteger(L, UV_DIRENT_FILE);
+  lua_setfield(L, -2, "DIRENT_FILE");
+  lua_pushinteger(L, UV_DIRENT_DIR);
+  lua_setfield(L, -2, "DIRENT_DIR");
+  lua_pushinteger(L, UV_DIRENT_LINK);
+  lua_setfield(L, -2, "DIRENT_LINK");
+  lua_pushinteger(L, UV_DIRENT_FIFO);
+  lua_setfield(L, -2, "DIRENT_FIFO");
+  lua_pushinteger(L, UV_DIRENT_SOCKET);
+  lua_setfield(L, -2, "DIRENT_SOCKET");
+  lua_pushinteger(L, UV_DIRENT_CHAR);
+  lua_setfield(L, -2, "DIRENT_CHAR");
+  lua_pushinteger(L, UV_DIRENT_BLOCK);
+  lua_setfield(L, -2, "DIRENT_BLOCK");
 }

@@ -1,6 +1,6 @@
 BUILD_DIR := build
 
-.PHONY: all configure rig clean
+.PHONY: all configure rig test clean
 
 all: rig
 
@@ -11,6 +11,9 @@ $(BUILD_DIR)/CMakeCache.txt: CMakeLists.txt
 
 rig: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR) --target rig
+
+test: rig
+	ctest --test-dir $(BUILD_DIR) --output-on-failure
 
 clean:
 	rm -rf $(BUILD_DIR)

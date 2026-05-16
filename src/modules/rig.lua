@@ -411,7 +411,20 @@ function M.run_script_file(script_path)
       )
    end
 
-   return M.load_script(script_path, source)
+   local result = M.load_script(script_path, source)
+
+   if script_path:match("_test%.lua$") ~= nil
+      or script_path:match("_test%.fnl$") ~= nil then
+      local test_mod = require("test")
+      if type(test_mod) == "table"
+         and type(test_mod.run_registered_cases) == "function" then
+         test_mod.run_registered_cases {
+            script_path = script_path,
+         }
+      end
+   end
+
+   return result
 end
 
 return M
