@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = ffi
+local sched = require("sched")
 
 ffi.cdef[[
 typedef struct rig_uv_loop rig_uv_loop_t;
@@ -29,7 +30,7 @@ int rig_uv_spawn_capture(
 ]]
 
 M._loop = M._loop or nil
-M._pending_error = M._pending_error or nil
+M._scheduler = M._scheduler or nil
 M._active_exit_callbacks = M._active_exit_callbacks or {}
 
 local function uv_error_string(err)
@@ -40,7 +41,7 @@ local function uv_error_string(err)
    return ffi.string(ptr)
 end
 
-local function normalize_options(options)
+local function normalize_runtime_options(options)
    if options == nil then
       return {}
    end
@@ -54,29 +55,12 @@ local function clear_callback_references()
    M._active_exit_callbacks = {}
 end
 
-function M.get_loop()
-   return M._loop
-end
-
-function M.stop()
-   if M._loop == nil then
-      error("uv.stop requires an active uv loop", 0)
-   end
-   ffi.C.rig_uv_stop(M._loop)
-end
-
-function M.spawn(spec)
-   if M._loop == nil then
-      error("uv.spawn requires an active uv loop", 0)
-   end
+local function normalize_spawn_spec(spec)
    if type(spec) ~= "table" then
       error("uv.spawn expects a table", 0)
    end
    if type(spec.file) ~= "string" or spec.file == "" then
       error("uv.spawn requires spec.file to be a non-empty string", 0)
-   end
-   if type(spec.on_exit) ~= "function" then
-      error("uv.spawn requires spec.on_exit to be a function", 0)
    end
    if spec.cwd ~= nil and (type(spec.cwd) ~= "string" or spec.cwd == "") then
       error("uv.spawn expects spec.cwd to be a non-empty string if provided", 0)
@@ -89,14 +73,32 @@ function M.spawn(spec)
       error("uv.spawn expects spec.args to be a table if provided", 0)
    end
 
-   local args = ffi.new("const char *[?]", #args_list + 1)
    for i = 1, #args_list do
       if type(args_list[i]) ~= "string" then
          error(("uv.spawn expects spec.args[%d] to be a string"):format(i), 0)
       end
-      args[i - 1] = args_list[i]
    end
-   args[#args_list] = nil
+
+   return {
+      file = spec.file,
+      args = args_list,
+      cwd = spec.cwd,
+   }
+end
+
+local function spawn_internal(spec, on_exit)
+   if M._loop == nil then
+      error("uv.spawn requires an active uv loop", 0)
+   end
+   if type(on_exit) ~= "function" then
+      error("uv internal spawn requires an exit callback", 0)
+   end
+
+   local args = ffi.new("const char *[?]", #spec.args + 1)
+   for i = 1, #spec.args do
+      args[i - 1] = spec.args[i]
+   end
+   args[#spec.args] = nil
 
    local exit_callback
    exit_callback = ffi.cast("rig_uv_spawn_exit_cb", function(exit_status, term_signal, stdout_data, stdout_len, stderr_data, stderr_len)
@@ -112,10 +114,7 @@ function M.spawn(spec)
       }
       result.success = result.exit_status == 0 and result.term_signal == 0
 
-      local ok, err = pcall(spec.on_exit, result)
-      if not ok and M._pending_error == nil then
-         M._pending_error = err
-      end
+      on_exit(result)
    end)
    M._active_exit_callbacks[exit_callback] = true
 
@@ -133,12 +132,25 @@ function M.spawn(spec)
          0
       )
    end
+end
 
-   return true
+function M.get_loop()
+   return M._loop
+end
+
+function M.stop()
+   if M._loop == nil then
+      error("uv.stop requires an active uv loop", 0)
+   end
+   ffi.C.rig_uv_stop(M._loop)
+end
+
+function M.spawn(spec)
+   return sched.await("uv.spawn", normalize_spawn_spec(spec))
 end
 
 local function setup(options)
-   options = normalize_options(options)
+   options = normalize_runtime_options(options)
 
    if M._loop ~= nil then
       local rc = ffi.C.rig_uv_loop_delete(M._loop)
@@ -149,50 +161,69 @@ local function setup(options)
    end
 
    clear_callback_references()
-   M._pending_error = nil
-
    local loop = ffi.C.rig_uv_loop_new()
    if loop == nil or loop == ffi.NULL then
       error("failed to create uv loop", 0)
    end
 
    M._loop = loop
+   M._scheduler = sched.create("uv scheduler")
 end
 
-local function loop(runtime_options, outer_options)
-   local options = normalize_options(runtime_options)
+local function run_scheduler_loop(runtime_options, outer_options)
+   local options = normalize_runtime_options(runtime_options)
    local main = options.main
    if main ~= nil and type(main) ~= "function" then
       error("uv.main must be a function if provided", 0)
    end
 
+   local scheduler = M._scheduler
+   if scheduler == nil then
+      error("uv scheduler is not initialized", 0)
+   end
+
+   scheduler:activate()
    if type(main) == "function" then
-      main(outer_options)
+      scheduler:spawn(main, outer_options)
    end
 
-   local rc = ffi.C.rig_uv_run(M._loop)
-   if rc ~= 0 then
-      error("uv loop failed: " .. uv_error_string(rc), 0)
+   while scheduler:has_live_tasks() do
+      scheduler:drain()
+      if not scheduler:has_live_tasks() then
+         break
+      end
+
+      if scheduler:has_ready_work() then
+         -- continue immediately; draining will pick it up on the next iteration
+      elseif scheduler:pending_async() > 0 then
+         local rc = ffi.C.rig_uv_run(M._loop)
+         if rc ~= 0 then
+            scheduler:deactivate()
+            error("uv loop failed: " .. uv_error_string(rc), 0)
+         end
+      else
+         scheduler:deactivate()
+         error(
+            "uv scheduler deadlocked: tasks are waiting but no async operations are pending",
+            0
+         )
+      end
    end
 
-   if M._pending_error ~= nil then
-      local err = M._pending_error
-      M._pending_error = nil
-      error(err, 0)
-   end
+   scheduler:deactivate()
 end
 
 local function shutdown()
+   M._scheduler = nil
+
    if M._loop == nil then
       clear_callback_references()
-      M._pending_error = nil
       return
    end
 
    local loop_handle = M._loop
    M._loop = nil
    clear_callback_references()
-   M._pending_error = nil
 
    local rc = ffi.C.rig_uv_loop_delete(loop_handle)
    if rc ~= 0 then
@@ -200,12 +231,27 @@ local function shutdown()
    end
 end
 
+sched.register_handler("uv.spawn", function(scheduler, task, spec)
+   scheduler:begin_async()
+
+   local ok, err = pcall(spawn_internal, spec, function(result)
+      scheduler:end_async()
+      scheduler:resume_later(task, result)
+      ffi.C.rig_uv_stop(M._loop)
+   end)
+
+   if not ok then
+      scheduler:end_async()
+      error(err, 0)
+   end
+end)
+
 rig.register_runtime_mode("uv", {
    setup = function(options)
       setup(options.uv)
    end,
    loop = function(options)
-      loop(options.uv, options)
+      run_scheduler_loop(options.uv, options)
    end,
    shutdown = function()
       shutdown()

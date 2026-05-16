@@ -41,6 +41,7 @@ Available modules:
 
 - `rig`: [`src/modules/rig.md`](src/modules/rig.md)
 - `dl`: [`src/modules/dl.md`](src/modules/dl.md)
+- `sched`: [`src/modules/sched.md`](src/modules/sched.md)
 - `uv`: [`src/modules/uv.md`](src/modules/uv.md)
 - `sdl3`: [`src/modules/sdl3.md`](src/modules/sdl3.md)
 - `gl`: [`src/modules/gl.md`](src/modules/gl.md)

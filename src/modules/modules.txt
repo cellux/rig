@@ -2,6 +2,7 @@
 fennel
 rig
 dl
+sched
 uv
 sdl3
 gl

@@ -10,12 +10,11 @@ Minimal libuv integration for Rig.
   - Requests the current uv loop to stop.
   - Requires an active `mode = "uv"` runtime.
 - `uv.spawn(spec)`
-  - Spawns a child process on the current uv loop and captures its `stdout` and `stderr`.
+  - Suspends the current scheduler-managed coroutine, spawns a child process on the current uv loop, and resumes the coroutine later with the captured result.
   - `spec.file` is required.
   - `spec.args` is optional; if omitted, it defaults to `{ spec.file }`.
   - `spec.cwd` is optional.
-  - `spec.on_exit(result)` is required.
-  - `result` contains:
+  - Returns a `result` table containing:
     - `exit_status`
     - `term_signal`
     - `stdout`
@@ -35,21 +34,20 @@ rig.run {
    mode = "uv",
    uv = {
       main = function()
-         uv.spawn {
+         local result = uv.spawn {
             file = "./build/rig",
             args = { "./build/rig", "script.lua" },
-            on_exit = function(result)
-               rig.println(result.stdout)
-            end,
          }
+         rig.println(result.stdout)
       end,
    },
 }
 ```
 
-`uv.main` is optional. If provided, it runs after setup and before the libuv loop starts blocking.
+`uv.main` is optional. If provided, it runs as a scheduler-managed coroutine after setup and before the libuv loop starts blocking.
 
 ## Notes
 
 - The current first version is intentionally narrow.
 - It is designed to support subprocess orchestration first, which is the main building block needed for a future async test runner.
+- The callback boundary remains internal to the module; user code should use the straight-line coroutine API.
