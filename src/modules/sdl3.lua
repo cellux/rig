@@ -1,6 +1,7 @@
 local M = ... or {}
 local ffi = ffi
 local bit = bit
+local rig = require("rig")
 
 ffi.cdef[[
 typedef struct SDL_Window SDL_Window;
@@ -427,10 +428,6 @@ M._renderer = nil
 M._gpu_device = nil
 M._owned_init_flags = nil
 
-M.config = M.config or {}
-M.factory = M.factory or {}
-M.callback = M.callback or {}
-
 M.default_window_props = {
    [M.PROP_WINDOW_CREATE_TITLE_STRING] = "rig",
    [M.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 640,
@@ -458,9 +455,9 @@ local function merge_props(base_props, override_props)
    return merged
 end
 
-local function default_create_window()
+local function default_create_window(options)
    local merged_props, merge_error =
-      merge_props(M.default_window_props, M.config.window_props)
+      merge_props(M.default_window_props, options.window_props)
    if merged_props == nil then
       return nil, merge_error
    end
@@ -492,20 +489,6 @@ local function default_create_renderer(window_ptr)
    end
 
    return renderer_ptr
-end
-
-local function ensure_extension_points()
-   if M.config.init_flags == nil then
-      M.config.init_flags = M.INIT_VIDEO + M.INIT_EVENTS
-   end
-
-   if type(M.factory.create_window) ~= "function" then
-      M.factory.create_window = default_create_window
-   end
-
-   if type(M.factory.create_renderer) ~= "function" then
-      M.factory.create_renderer = default_create_renderer
-   end
 end
 
 function M.destroy_properties(properties_id)
@@ -1199,19 +1182,41 @@ end
 
 local function normalize_init_flags(flags_number)
    if type(flags_number) ~= "number" then
-      error("sdl3.config.init_flags must be a number")
+      error("sdl3 init_flags must be a number")
    end
 
    local flags_integer = math.floor(flags_number)
    if flags_number < 0.0 or flags_number ~= flags_integer then
-      error("sdl3.config.init_flags must be a non-negative integer")
+      error("sdl3 init_flags must be a non-negative integer")
    end
    if flags_number > 4294967295.0 then
-      error("sdl3.config.init_flags exceeds Uint32 range")
+      error("sdl3 init_flags exceeds Uint32 range")
    end
 
    return ffi.cast("Uint32", flags_integer)
 end
+
+local function normalize_runtime_options(options)
+   if options == nil then
+      return {}
+   end
+   if type(options) ~= "table" then
+      error("sdl3 options must be a table", 0)
+   end
+   return options
+end
+
+local function get_mode_options(options)
+   if options.mode == "sdl3" then
+      return normalize_runtime_options(options.sdl3), "options.sdl3"
+   end
+   if options.mode == "sdl3_gpu" then
+      return normalize_runtime_options(options.sdl3_gpu), "options.sdl3_gpu"
+   end
+   error("unsupported sdl3 runtime mode '" .. tostring(options.mode) .. "'", 0)
+end
+
+local shutdown
 
 function M.get_window()
    return M._window
@@ -1221,14 +1226,15 @@ function M.get_gpu_device()
    return M._gpu_device
 end
 
-local function setup_common()
+local function setup_common(options)
    if M._renderer ~= nil or M._window ~= nil or M._gpu_device ~= nil then
-      M.shutdown()
+      shutdown()
    end
 
-   ensure_extension_points()
+   options = normalize_runtime_options(options)
 
-   local required = normalize_init_flags(M.config.init_flags)
+   local required =
+      normalize_init_flags(options.init_flags or (M.INIT_VIDEO + M.INIT_EVENTS))
    local initialized = M.WasInit(required)
    local owned_init_flags = nil
 
@@ -1239,21 +1245,21 @@ local function setup_common()
       owned_init_flags = required
    end
 
-   local create_window = M.factory.create_window
+   local create_window = options.create_window or default_create_window
    if type(create_window) ~= "function" then
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3.factory.create_window is not available")
+      error("sdl3 create_window must be a function", 0)
    end
 
-   local window_ptr, window_err = create_window()
+   local window_ptr, window_err = create_window(options)
    if window_ptr == nil then
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
       error(format_factory_error(
-         "sdl3.factory.create_window",
+         "sdl3 create_window",
          window_err,
          "expected SDL_Window* cdata"
       ))
@@ -1262,22 +1268,23 @@ local function setup_common()
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3.factory.create_window must return SDL_Window* cdata")
+      error("sdl3 create_window must return SDL_Window* cdata", 0)
    end
 
    return window_ptr, owned_init_flags
 end
 
-function M.setup()
-   local window_ptr, owned_init_flags = setup_common()
+local function setup(options)
+   local window_ptr, owned_init_flags = setup_common(options)
 
-   local create_renderer = M.factory.create_renderer
+   options = normalize_runtime_options(options)
+   local create_renderer = options.create_renderer or default_create_renderer
    if type(create_renderer) ~= "function" then
       M.DestroyWindow(window_ptr)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3.factory.create_renderer is not available")
+      error("sdl3 create_renderer must be a function", 0)
    end
 
    local renderer_ptr, renderer_err = create_renderer(window_ptr)
@@ -1287,7 +1294,7 @@ function M.setup()
          M.QuitSubSystem(owned_init_flags)
       end
       error(format_factory_error(
-         "sdl3.factory.create_renderer",
+         "sdl3 create_renderer",
          renderer_err,
          "expected SDL_Renderer* cdata"
       ))
@@ -1297,7 +1304,7 @@ function M.setup()
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3.factory.create_renderer must return SDL_Renderer* cdata")
+      error("sdl3 create_renderer must return SDL_Renderer* cdata", 0)
    end
 
    M._window = window_ptr
@@ -1305,7 +1312,7 @@ function M.setup()
    M._owned_init_flags = owned_init_flags
 end
 
-function M.setup_gpu(options)
+local function setup_gpu(options)
    if options ~= nil and type(options) ~= "table" then
       error("sdl3.setup_gpu expects a table if options are provided")
    end
@@ -1358,7 +1365,7 @@ function M.setup_gpu(options)
    M._owned_init_flags = owned_init_flags
 end
 
-function M.shutdown()
+shutdown = function()
    if M._gpu_device ~= nil then
       M.WaitForGPUIdle(M._gpu_device)
       if M._window ~= nil then
@@ -1381,7 +1388,7 @@ function M.shutdown()
    end
 end
 
-function M.present()
+local function present()
    if M._renderer == nil then
       error("SDL renderer is not initialized")
    end
@@ -1534,8 +1541,7 @@ function M.clear(r, g, b, a)
    end
 end
 
-local function dispatch_keyboard_event(event)
-   local handler = M.callback.on_key
+local function dispatch_keyboard_event(event, handler)
    if type(handler) ~= "function" then
       return
    end
@@ -1567,7 +1573,7 @@ local function dispatch_keyboard_event(event)
    })
 end
 
-function M.pump_events()
+local function pump_events(on_key)
    if M._window == nil then
       error("an SDL window must be initialized before sdl3.pump_events")
    end
@@ -1582,14 +1588,14 @@ function M.pump_events()
       end
 
       if event_type == M.EVENT_KEY_DOWN or event_type == M.EVENT_KEY_UP then
-         dispatch_keyboard_event(current.key)
+         dispatch_keyboard_event(current.key, on_key)
       end
    end
 
    return true
 end
 
-function M.render_frame(render_fn)
+local function render_frame(render_fn)
    if type(render_fn) ~= "function" then
       error("sdl3.render_frame requires a render function", 0)
    end
@@ -1598,10 +1604,10 @@ function M.render_frame(render_fn)
    end
 
    render_fn()
-   M.present()
+   present()
 end
 
-function M.render_gpu_frame(render_fn)
+local function render_gpu_frame(render_fn)
    if type(render_fn) ~= "function" then
       error("sdl3.render_gpu_frame requires a render function", 0)
    end
@@ -1647,47 +1653,75 @@ function M.render_gpu_frame(render_fn)
    return swapchain_texture ~= nil
 end
 
-function M.run(options)
-   if options ~= nil and type(options) ~= "table" then
-      error("sdl3.run expects a table if options are provided")
+local function require_render_callback(options)
+   local mode_options, mode_key = get_mode_options(options)
+   local callback = mode_options.on_render
+   if type(callback) ~= "function" then
+      error(
+         "rig.run with mode '" .. tostring(options.mode) .. "' requires " .. mode_key .. ".on_render to be a function",
+         0
+      )
    end
-   if type(M.callback.on_render) ~= "function" then
-      error("sdl3.callback.on_render must be a function before calling sdl3.run")
-   end
-
-   local mode = options and options.mode or "renderer"
-   local setup_fn
-   local frame_fn
-
-   if mode == "renderer" then
-      setup_fn = M.setup
-      frame_fn = function()
-         M.render_frame(M.callback.on_render)
-      end
-   elseif mode == "gpu" then
-      setup_fn = function()
-         M.setup_gpu(options and options.gpu)
-      end
-      frame_fn = function()
-         M.render_gpu_frame(M.callback.on_render)
-      end
-   else
-      error(("unsupported sdl3.run mode '%s'"):format(tostring(mode)), 0)
-   end
-
-   setup_fn()
-
-   local ok, err = pcall(function()
-      while M.pump_events() do
-         frame_fn()
-      end
-   end)
-
-   M.shutdown()
-
-   if not ok then
-      error(err, 0)
-   end
+   return callback
 end
+
+rig.register_runtime_mode("sdl3", {
+   setup = function(options)
+      local sdl3_options = normalize_runtime_options(options.sdl3)
+      require_render_callback(options)
+      setup(sdl3_options)
+   end,
+   loop = function(options, run_hooks)
+      local sdl3_options = normalize_runtime_options(options.sdl3)
+      local on_render = require_render_callback(options)
+      local on_key = sdl3_options.on_key
+      while true do
+         run_hooks("before_poll", options)
+         if pump_events(on_key) == false then
+            break
+         end
+         run_hooks("after_poll", options)
+         run_hooks("before_frame", options)
+         render_frame(on_render)
+         run_hooks("after_frame", options)
+      end
+   end,
+   shutdown = function()
+      shutdown()
+   end,
+})
+
+rig.register_runtime_mode("sdl3_gpu", {
+   setup = function(options)
+      local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
+      require_render_callback(options)
+      setup_gpu {
+         init_flags = sdl3_options.init_flags,
+         window_props = sdl3_options.window_props,
+         create_window = sdl3_options.create_window,
+         shader_formats = sdl3_options.shader_formats,
+         debug_mode = sdl3_options.debug_mode,
+         backend_name = sdl3_options.backend_name,
+      }
+   end,
+   loop = function(options, run_hooks)
+      local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
+      local on_render = require_render_callback(options)
+      local on_key = sdl3_options.on_key
+      while true do
+         run_hooks("before_poll", options)
+         if pump_events(on_key) == false then
+            break
+         end
+         run_hooks("after_poll", options)
+         run_hooks("before_frame", options)
+         render_gpu_frame(on_render)
+         run_hooks("after_frame", options)
+      end
+   end,
+   shutdown = function()
+      shutdown()
+   end,
+})
 
 return M

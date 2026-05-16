@@ -12,6 +12,24 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Does not append a trailing newline.
 - `rig.println(...)`
   - Same as `rig.print(...)`, but appends `\n`.
+- `rig.register_runtime_mode(name, mode)`
+  - Registers a named runtime mode that can be selected explicitly by `rig.run(...)`.
+- `rig.register_runtime_hook(phase, hook)`
+  - Registers a hook function for a named runtime phase.
+  - Current built-in phases used by the `sdl3` modes are:
+    - `before_setup`
+    - `after_setup`
+    - `before_poll`
+    - `after_poll`
+    - `before_frame`
+    - `after_frame`
+    - `before_shutdown`
+    - `after_shutdown`
+- `rig.run(options?)`
+  - Starts the explicitly selected runtime mode.
+  - `options.mode` is mandatory.
+  - The current first version ships with `sdl3`-owned modes such as `"sdl3"` and `"sdl3_gpu"` when the `sdl3` module has been loaded.
+  - Mode-specific configuration should live under a namespaced key such as `options.sdl3` or `options.sdl3_gpu`.
 - `rig.script_loaders`
   - Ordered list of script loader functions.
   - Built in with Lua first and Fennel second.

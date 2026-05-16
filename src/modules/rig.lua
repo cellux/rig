@@ -80,6 +80,90 @@ function M.println(...)
    write_values(true, ...)
 end
 
+M._runtime_modes = M._runtime_modes or {}
+M._runtime_hooks = M._runtime_hooks or {}
+
+function M.register_runtime_mode(name, mode)
+   if type(name) ~= "string" or name == "" then
+      error("rig.register_runtime_mode expects name to be a non-empty string", 0)
+   end
+   if type(mode) ~= "table" then
+      error("rig.register_runtime_mode expects mode to be a table", 0)
+   end
+
+   M._runtime_modes[name] = mode
+end
+
+function M.register_runtime_hook(phase, hook)
+   if type(phase) ~= "string" or phase == "" then
+      error("rig.register_runtime_hook expects phase to be a non-empty string", 0)
+   end
+   if type(hook) ~= "function" then
+      error("rig.register_runtime_hook expects hook to be a function", 0)
+   end
+
+   local hooks = M._runtime_hooks[phase]
+   if hooks == nil then
+      hooks = {}
+      M._runtime_hooks[phase] = hooks
+   end
+   table.insert(hooks, hook)
+end
+
+local function run_runtime_hooks(phase, ...)
+   local hooks = M._runtime_hooks[phase]
+   if hooks == nil then
+      return
+   end
+
+   for i = 1, #hooks do
+      hooks[i](...)
+   end
+end
+
+function M.run(options)
+   if type(options) ~= "table" then
+      error("rig.run expects a table", 0)
+   end
+   if type(options.mode) ~= "string" or options.mode == "" then
+      error("rig.run requires options.mode to be a non-empty string", 0)
+   end
+
+   local mode = M._runtime_modes[options.mode]
+   if mode == nil then
+      error(
+         ("rig.run does not know runtime mode '%s'"):format(options.mode),
+         0
+      )
+   end
+   if type(mode.loop) ~= "function" then
+      error(
+         ("runtime mode '%s' is missing loop()"):format(options.mode),
+         0
+      )
+   end
+
+   run_runtime_hooks("before_setup", options)
+   if type(mode.setup) == "function" then
+      mode.setup(options, run_runtime_hooks)
+   end
+   run_runtime_hooks("after_setup", options)
+
+   local ok, err = pcall(function()
+      mode.loop(options, run_runtime_hooks)
+   end)
+
+   run_runtime_hooks("before_shutdown", options)
+   if type(mode.shutdown) == "function" then
+      mode.shutdown(options, run_runtime_hooks)
+   end
+   run_runtime_hooks("after_shutdown", options)
+
+   if not ok then
+      error(err, 0)
+   end
+end
+
 local function load_lua_script(script_path, source)
    local chunk, err = loadstring(source, script_path)
    if chunk ~= nil then

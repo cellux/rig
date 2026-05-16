@@ -4,47 +4,50 @@ Lazy SDL3 binding built on LuaJIT FFI.
 
 The SDL shared library is loaded only when the module is required.
 
-## Lifecycle
+## Runtime Integration
 
-- `sdl3.setup()`
-  - Initializes SDL and creates the window and renderer.
-- `sdl3.setup_gpu(options?)`
-  - Initializes SDL, creates the window, creates an `SDL_GPUDevice`, and claims the window for it.
-- `sdl3.pump_events()`
-  - Dispatches queued SDL events.
-  - Returns `false` after a quit event.
-- `sdl3.render_frame(render_fn)`
-  - Calls `render_fn()` and then presents through the SDL renderer.
-- `sdl3.render_gpu_frame(render_fn)`
-  - Acquires a GPU command buffer and swapchain texture, calls `render_fn(command_buffer, swapchain_texture, width, height)`, and submits the frame.
-- `sdl3.shutdown()`
-  - Destroys owned renderer/window state and releases initialized SDL subsystems.
-- `sdl3.run(options?)`
-  - Convenience wrapper around setup, the event loop, and shutdown.
-  - `mode = "renderer"` uses `sdl3.setup()` and `sdl3.render_frame(sdl3.callback.on_render)` each frame.
-  - `mode = "gpu"` uses `sdl3.setup_gpu(options.gpu)` and calls `sdl3.render_gpu_frame(sdl3.callback.on_render)` each frame.
+When loaded, `sdl3` registers two `rig.run(...)` modes:
+- `"sdl3"`
+  - Owns the SDL window/renderer lifecycle through `rig.run(...)`.
+- `"sdl3_gpu"`
+  - Owns the SDL window/GPU-device lifecycle through `rig.run(...)`.
 
-## Extension Points
+## `rig.run` Options
 
-The module exposes SDL-specific user extension points through nested tables:
+Use SDL-specific runtime configuration under:
+- `options.sdl3` for `mode = "sdl3"`
+- `options.sdl3_gpu` for `mode = "sdl3_gpu"`
 
-- `sdl3.config.init_flags`
+Shared fields accepted by both:
+
+- `init_flags`
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
-- `sdl3.config.window_props`
+- `window_props`
   - Optional window property overrides merged into `sdl3.default_window_props`.
-- `sdl3.factory.create_window() -> window_ptr | nil, err`
-  - Defaults to `SDL_CreateWindowWithProperties`.
-- `sdl3.factory.create_renderer(window_ptr) -> renderer_ptr | nil, err`
-  - Defaults to the normal SDL renderer path.
-- `sdl3.callback.on_render()`
-  - Called by `sdl3.render_frame()`.
-- `sdl3.callback.on_key(key_info)`
-  - Called by `sdl3.pump_events()` for keyboard events.
+- `create_window(options) -> window_ptr | nil, err`
+  - Overrides window creation.
+  - Defaults to the builtin `SDL_CreateWindowWithProperties` path.
+- `create_renderer(window_ptr) -> renderer_ptr | nil, err`
+  - Overrides renderer creation for `mode = "sdl3"`.
+  - Defaults to the builtin SDL renderer path.
+- `on_render`
+  - Mandatory for both modes.
+- `on_key(key_info)`
+  - Optional keyboard event callback.
+
+Additional fields accepted by `options.sdl3_gpu`:
+
+- `shader_formats`
+  - Passed to the SDL GPU runtime mode during device creation.
+- `debug_mode`
+  - Passed to the SDL GPU runtime mode during device creation.
+- `backend_name`
+  - Passed to the SDL GPU runtime mode during device creation.
 
 ## Window Properties
 
 - `sdl3.default_window_props`
-  - Default property table used by the builtin `sdl3.factory.create_window`.
+  - Default property table used by the builtin SDL window factory.
 - `sdl3.build_properties(props)`
   - Converts a Lua table into `SDL_PropertiesID`.
 - `sdl3.destroy_properties(properties_id)`
@@ -102,5 +105,5 @@ The module exposes SDL-specific user extension points through nested tables:
 
 ## Notes
 
-- `sdl3.setup_gpu()` reports backend diagnostics before device creation when SDL rejects the requested shader format/backend combination.
+- The SDL runtime modes report backend diagnostics before GPU device creation when SDL rejects the requested shader format/backend combination.
 - On Linux, SDL GPU currently means Vulkan. Old Intel Haswell systems often expose only partial Vulkan support and may still be rejected.

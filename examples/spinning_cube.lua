@@ -2,23 +2,13 @@ local ffi = ffi
 
 local math3d = require("math3d")
 local mesh3d = require("mesh3d")
+local rig = require("rig")
 local sdl3 = require("sdl3")
 local shader = require("shader")
 local time = require("time")
 
-sdl3.config.window_props = {
-   [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
-   [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 960,
-   [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = 540,
-   [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-}
-
 local function fail(message)
    error(message, 0)
-end
-
-local function sdl_error(prefix)
-   return ("%s: %s"):format(prefix, ffi.string(sdl3.GetError()))
 end
 
 local vertex_shader_source = [[
@@ -95,6 +85,13 @@ local vertex_uniform_data = math3d.mat4()
 local vertex_input = sdl3.build_vertex_input_state_from_mesh(cube_mesh)
 
 local resource_scope = nil
+local vertex_buffer = nil
+local pipeline = nil
+local depth_texture = nil
+local depth_format = nil
+local depth_width = 0
+local depth_height = 0
+local vertex_binding = ffi.new("SDL_GPUBufferBinding[1]")
 
 local function release_resources()
    if resource_scope ~= nil then
@@ -103,19 +100,80 @@ local function release_resources()
    end
 end
 
-local vertex_buffer = nil
-local pipeline = nil
-local depth_texture = nil
+local function ensure_depth_texture(width, height, depth_format)
+   if depth_texture ~= nil and depth_width == width and depth_height == height then
+      return
+   end
 
-local ok, err = pcall(function()
-   sdl3.setup_gpu {
-      shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
-   }
+   depth_texture = resource_scope:replace("depth_texture",
+      sdl3.create_depth_texture(sdl3.get_gpu_device(), width, height, depth_format),
+      function(scope_device, resource)
+         sdl3.ReleaseGPUTexture(scope_device, resource)
+      end)
+   depth_width = width
+   depth_height = height
+end
+
+local function on_render(command_buffer, swapchain_texture, width, height)
+   ensure_depth_texture(width, height, depth_format)
+
+   build_mvp(vertex_uniform_data, width / height, time.monotonic())
+   sdl3.PushGPUVertexUniformData(
+      command_buffer,
+      0,
+      vertex_uniform_data,
+      ffi.sizeof(vertex_uniform_data)
+   )
+
+   local color_target_info = ffi.new("SDL_GPUColorTargetInfo[1]")
+   color_target_info[0].texture = swapchain_texture
+   color_target_info[0].mip_level = 0
+   color_target_info[0].layer_or_depth_plane = 0
+   color_target_info[0].clear_color.r = 0.07
+   color_target_info[0].clear_color.g = 0.08
+   color_target_info[0].clear_color.b = 0.11
+   color_target_info[0].clear_color.a = 1.0
+   color_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
+   color_target_info[0].store_op = sdl3.GPU_STOREOP_STORE
+   color_target_info[0].resolve_texture = nil
+   color_target_info[0].resolve_mip_level = 0
+   color_target_info[0].resolve_layer = 0
+   color_target_info[0].cycle = false
+   color_target_info[0].cycle_resolve_texture = false
+
+   local depth_target_info = ffi.new("SDL_GPUDepthStencilTargetInfo[1]")
+   depth_target_info[0].texture = depth_texture
+   depth_target_info[0].clear_depth = 1.0
+   depth_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
+   depth_target_info[0].store_op = sdl3.GPU_STOREOP_DONT_CARE
+   depth_target_info[0].stencil_load_op = sdl3.GPU_LOADOP_DONT_CARE
+   depth_target_info[0].stencil_store_op = sdl3.GPU_STOREOP_DONT_CARE
+   depth_target_info[0].cycle = false
+   depth_target_info[0].clear_stencil = 0
+   depth_target_info[0].mip_level = 0
+   depth_target_info[0].layer = 0
+
+   local render_pass = sdl3.BeginGPURenderPass(
+      command_buffer,
+      color_target_info,
+      1,
+      depth_target_info
+   )
+   sdl3.BindGPUGraphicsPipeline(render_pass, pipeline)
+   sdl3.BindGPUVertexBuffers(render_pass, 0, vertex_binding, 1)
+   sdl3.DrawGPUPrimitives(render_pass, cube_mesh.vertex_count, 1, 0, 0)
+   sdl3.EndGPURenderPass(render_pass)
+end
+
+rig.register_runtime_hook("after_setup", function(options)
+   if options.mode ~= "sdl3_gpu" then
+      return
+   end
 
    local device = sdl3.get_gpu_device()
    local window = sdl3.get_window()
    if device == nil or window == nil then
-      fail("sdl3.setup_gpu did not produce a device and window")
+      fail("sdl3_gpu runtime mode did not produce a device and window")
    end
 
    local scope = sdl3.resource_scope(device)
@@ -123,20 +181,15 @@ local ok, err = pcall(function()
 
    local vertex_shader = scope:create_gpu_shader(vertex_compiled)
    local fragment_shader = scope:create_gpu_shader(fragment_compiled)
-
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)
-   local depth_format = sdl3.choose_depth_format(device)
+   depth_format = sdl3.choose_depth_format(device)
 
    vertex_buffer = scope:create_gpu_buffer {
       usage = sdl3.GPU_BUFFERUSAGE_VERTEX,
       size = #cube_mesh.vertex_blob,
       props = 0,
    }
-   sdl3.upload_to_gpu_buffer(
-      device,
-      vertex_buffer,
-      cube_mesh.vertex_blob
-   )
+   sdl3.upload_to_gpu_buffer(device, vertex_buffer, cube_mesh.vertex_blob)
 
    pipeline = scope:create_graphics_pipeline {
       vertex_shader = vertex_shader,
@@ -172,84 +225,26 @@ local ok, err = pcall(function()
       props = 0,
    }
 
-   local depth_width = 0
-   local depth_height = 0
-
-   local function ensure_depth_texture(width, height)
-      if depth_texture ~= nil and depth_width == width and depth_height == height then
-         return
-      end
-
-      depth_texture = resource_scope:replace("depth_texture",
-         sdl3.create_depth_texture(device, width, height, depth_format),
-         function(scope_device, resource)
-         sdl3.ReleaseGPUTexture(scope_device, resource)
-      end)
-      depth_width = width
-      depth_height = height
-   end
-
-   local vertex_binding = ffi.new("SDL_GPUBufferBinding[1]")
    vertex_binding[0].buffer = vertex_buffer
    vertex_binding[0].offset = 0
+end)
 
-   while sdl3.pump_events() do
-      sdl3.render_gpu_frame(function(command_buffer, swapchain_texture, width, height)
-         ensure_depth_texture(width, height)
-
-         build_mvp(vertex_uniform_data, width / height, time.monotonic())
-         sdl3.PushGPUVertexUniformData(
-            command_buffer,
-            0,
-            vertex_uniform_data,
-            ffi.sizeof(vertex_uniform_data)
-         )
-
-         local color_target_info = ffi.new("SDL_GPUColorTargetInfo[1]")
-         color_target_info[0].texture = swapchain_texture
-         color_target_info[0].mip_level = 0
-         color_target_info[0].layer_or_depth_plane = 0
-         color_target_info[0].clear_color.r = 0.07
-         color_target_info[0].clear_color.g = 0.08
-         color_target_info[0].clear_color.b = 0.11
-         color_target_info[0].clear_color.a = 1.0
-         color_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
-         color_target_info[0].store_op = sdl3.GPU_STOREOP_STORE
-         color_target_info[0].resolve_texture = nil
-         color_target_info[0].resolve_mip_level = 0
-         color_target_info[0].resolve_layer = 0
-         color_target_info[0].cycle = false
-         color_target_info[0].cycle_resolve_texture = false
-
-         local depth_target_info = ffi.new("SDL_GPUDepthStencilTargetInfo[1]")
-         depth_target_info[0].texture = depth_texture
-         depth_target_info[0].clear_depth = 1.0
-         depth_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
-         depth_target_info[0].store_op = sdl3.GPU_STOREOP_DONT_CARE
-         depth_target_info[0].stencil_load_op = sdl3.GPU_LOADOP_DONT_CARE
-         depth_target_info[0].stencil_store_op = sdl3.GPU_STOREOP_DONT_CARE
-         depth_target_info[0].cycle = false
-         depth_target_info[0].clear_stencil = 0
-         depth_target_info[0].mip_level = 0
-         depth_target_info[0].layer = 0
-
-         local render_pass = sdl3.BeginGPURenderPass(
-            command_buffer,
-            color_target_info,
-            1,
-            depth_target_info
-         )
-         sdl3.BindGPUGraphicsPipeline(render_pass, pipeline)
-         sdl3.BindGPUVertexBuffers(render_pass, 0, vertex_binding, 1)
-         sdl3.DrawGPUPrimitives(render_pass, cube_mesh.vertex_count, 1, 0, 0)
-         sdl3.EndGPURenderPass(render_pass)
-      end)
+rig.register_runtime_hook("before_shutdown", function(options)
+   if options.mode == "sdl3_gpu" then
+      release_resources()
    end
 end)
 
-release_resources()
-sdl3.shutdown()
-
-if not ok then
-   fail(err)
-end
+rig.run {
+   mode = "sdl3_gpu",
+   sdl3_gpu = {
+      window_props = {
+         [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
+         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 960,
+         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = 540,
+         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+      },
+      on_render = on_render,
+      shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
+   },
+}
