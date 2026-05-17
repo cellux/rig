@@ -71,6 +71,7 @@ Available modules:
 - `dl`: [`src/modules/dl.md`](src/modules/dl.md)
 - `freetype`: [`src/modules/freetype.md`](src/modules/freetype.md)
 - `harfbuzz`: [`src/modules/harfbuzz.md`](src/modules/harfbuzz.md)
+- `font`: [`src/modules/font.md`](src/modules/font.md)
 - `sched`: [`src/modules/sched.md`](src/modules/sched.md)
 - `uv`: [`src/modules/uv.md`](src/modules/uv.md)
 - `test`: [`src/modules/test.md`](src/modules/test.md)

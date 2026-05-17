@@ -7,6 +7,7 @@ require("time")
 ffi.cdef[[
 typedef struct SDL_Window SDL_Window;
 typedef struct SDL_Renderer SDL_Renderer;
+typedef struct SDL_Texture SDL_Texture;
 typedef struct SDL_Rect SDL_Rect;
 typedef unsigned char Uint8;
 typedef uint16_t Uint16;
@@ -24,6 +25,9 @@ typedef uint32_t SDL_Keycode;
 typedef uint16_t SDL_Keymod;
 typedef uint32_t SDL_PropertiesID;
 typedef int SDL_GLAttr;
+typedef Uint32 SDL_PixelFormat;
+typedef Uint32 SDL_TextureAccess;
+typedef Uint32 SDL_BlendMode;
 typedef struct SDL_KeyboardEvent {
    SDL_EventType type;
    Uint32 reserved;
@@ -80,6 +84,13 @@ bool SDL_RenderClear(SDL_Renderer *renderer);
 bool SDL_RenderPoint(SDL_Renderer *renderer, float x, float y);
 bool SDL_RenderLine(SDL_Renderer *renderer, float x1, float y1, float x2, float y2);
 bool SDL_RenderFillRect(SDL_Renderer *renderer, const struct SDL_FRect *rect);
+SDL_Texture *SDL_CreateTexture(SDL_Renderer *renderer, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h);
+bool SDL_UpdateTexture(SDL_Texture *texture, const SDL_Rect *rect, const void *pixels, int pitch);
+bool SDL_SetTextureColorMod(SDL_Texture *texture, Uint8 r, Uint8 g, Uint8 b);
+bool SDL_SetTextureAlphaMod(SDL_Texture *texture, Uint8 alpha);
+bool SDL_SetTextureBlendMode(SDL_Texture *texture, SDL_BlendMode blendMode);
+bool SDL_RenderTexture(SDL_Renderer *renderer, SDL_Texture *texture, const struct SDL_FRect *srcrect, const struct SDL_FRect *dstrect);
+void SDL_DestroyTexture(SDL_Texture *texture);
 SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props);
 SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, const char *name);
 bool SDL_SetRenderVSync(SDL_Renderer *renderer, int vsync);
@@ -425,6 +436,13 @@ export_sdl_function("RenderClear", "SDL_RenderClear")
 export_sdl_function("RenderPoint", "SDL_RenderPoint")
 export_sdl_function("RenderLine", "SDL_RenderLine")
 export_sdl_function("RenderFillRect", "SDL_RenderFillRect")
+export_sdl_function("CreateTexture", "SDL_CreateTexture")
+export_sdl_function("UpdateTexture", "SDL_UpdateTexture")
+export_sdl_function("SetTextureColorMod", "SDL_SetTextureColorMod")
+export_sdl_function("SetTextureAlphaMod", "SDL_SetTextureAlphaMod")
+export_sdl_function("SetTextureBlendMode", "SDL_SetTextureBlendMode")
+export_sdl_function("RenderTexture", "SDL_RenderTexture")
+export_sdl_function("DestroyTexture", "SDL_DestroyTexture")
 export_sdl_function("CreateWindowWithProperties", "SDL_CreateWindowWithProperties")
 export_sdl_function("CreateRenderer", "SDL_CreateRenderer")
 export_sdl_function("SetRenderVSync", "SDL_SetRenderVSync")

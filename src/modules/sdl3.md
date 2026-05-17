@@ -116,6 +116,21 @@ Additional fields accepted by `options.sdl3_gpu`:
   - Raw SDL line draw call.
 - `sdl3.RenderFillRect(renderer, rect_ptr)`
   - Raw SDL filled-rectangle draw call.
+- `sdl3.CreateTexture(renderer, format, access, w, h)`
+  - Raw SDL texture creation call.
+  - For byte-ordered `R,G,B,A` upload buffers, `sdl3.PIXELFORMAT_RGBA32` is the safer choice than `sdl3.PIXELFORMAT_RGBA8888`.
+- `sdl3.UpdateTexture(texture, rect_ptr, pixels_ptr, pitch)`
+  - Raw SDL texture upload/update call.
+- `sdl3.SetTextureColorMod(texture, r, g, b)`
+  - Raw SDL texture color modulation call.
+- `sdl3.SetTextureAlphaMod(texture, alpha)`
+  - Raw SDL texture alpha modulation call.
+- `sdl3.SetTextureBlendMode(texture, blend_mode)`
+  - Raw SDL texture blend mode call.
+- `sdl3.RenderTexture(renderer, texture, src_rect_ptr, dst_rect_ptr)`
+  - Raw SDL textured quad draw call.
+- `sdl3.DestroyTexture(texture)`
+  - Raw SDL texture destruction call.
 - `sdl3.clear(r, g, b, a)`
   - Convenience clear helper that uses the active SDL renderer.
 

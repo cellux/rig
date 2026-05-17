@@ -4,6 +4,7 @@ rig
 dl
 freetype
 harfbuzz
+font
 sched
 uv
 test
