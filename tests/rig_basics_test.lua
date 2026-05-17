@@ -1,5 +1,6 @@
 local test = require("test")
 local uv = require("uv")
+local dl = require("dl")
 
 test.case("rig globals are available", function()
    test.equal(type(rig), "table")
@@ -51,6 +52,17 @@ test.case("uv clock helpers return numbers", function()
    test.equal(type(monotonic), "number")
    test.truthy(now > 0)
    test.truthy(monotonic > 0)
+end)
+
+test.case("dl can resolve a known exported symbol", function()
+   local handle, open_err = dl.open(nil)
+   test.truthy(handle ~= nil, open_err)
+
+   local symbol, sym_err = dl.sym(handle, "rig_dl_open")
+   test.truthy(symbol ~= nil, sym_err)
+
+   local ok, close_err = dl.close(handle)
+   test.truthy(ok == true, close_err)
 end)
 
 local fixture_setup_count = 0
