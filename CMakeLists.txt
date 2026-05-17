@@ -44,7 +44,7 @@ target_compile_options(rig PRIVATE
 
 add_test(
     NAME rig-tests
-    COMMAND $<TARGET_FILE:rig> ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_all_tests.lua
+    COMMAND $<TARGET_FILE:rig> ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_all_tests.lua
 )
 set_tests_properties(rig-tests PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

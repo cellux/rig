@@ -1,0 +1,57 @@
+local test = require("test")
+
+local fixture_setup_count = 0
+local fixture_teardown_count = 0
+local with_counter_fixture = test.fixture(
+   function()
+      fixture_setup_count = fixture_setup_count + 1
+      return { value = 41 }
+   end,
+   function(resource)
+      fixture_teardown_count = fixture_teardown_count + 1
+      test.equal(resource.value, 42)
+   end
+)
+
+test.case("fixture wraps setup and teardown", with_counter_fixture(function(resource)
+   test.equal(resource.value, 41)
+   resource.value = 42
+end))
+
+test.case("test.run discovers the repo test files", function()
+   local summary = test.run {
+      files = { "tests/fennel_test.fnl" },
+      jobs = 1,
+   }
+
+   test.equal(summary.total, 1)
+   test.equal(summary.passed, 1)
+   test.truthy(summary.duration >= 0)
+   test.truthy(summary.files[1].duration >= 0)
+   test.match(
+      summary.files[1].stdout,
+      "PASS scheduler can run a spawned task %([^)]+%)"
+   )
+end)
+
+test.case("contains_line matches complete lines", function()
+   local text = "alpha\nbeta\ngamma\n"
+   test.contains_line(text, "beta")
+end)
+
+local serial_counter = 0
+
+test.serial("serial case runs first in serial sequence", function()
+   serial_counter = serial_counter + 1
+   test.equal(serial_counter, 1)
+end)
+
+test.serial("serial case preserves declaration order", function()
+   serial_counter = serial_counter + 1
+   test.equal(serial_counter, 2)
+end)
+
+test.serial("fixture setup and teardown ran once", function()
+   test.equal(fixture_setup_count, 1)
+   test.equal(fixture_teardown_count, 1)
+end)

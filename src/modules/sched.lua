@@ -6,14 +6,22 @@ M._current_task = M._current_task or nil
 
 local yieldable_tag = {}
 
-M._handlers["sched.park"] = function()
-end
-
 local scheduler_mt = {}
 scheduler_mt.__index = scheduler_mt
 
 local function enqueue_item(queue, item)
    table.insert(queue, item)
+end
+
+M._handlers["sched.yield"] = function(scheduler, task)
+   enqueue_item(scheduler._ready, {
+      task = task,
+      argc = 0,
+      values = {},
+   })
+end
+
+M._handlers["sched.park"] = function()
 end
 
 local function pop_item(queue)
@@ -49,7 +57,7 @@ function scheduler_mt:_complete_task(task)
       waiter.remaining = waiter.remaining - 1
       if waiter.remaining == 0 and not waiter.resumed then
          waiter.resumed = true
-         self:resume_later(waiter.task, true)
+         self:wake(waiter.task, true)
       end
    end
    task._waiters = nil
@@ -129,7 +137,7 @@ function scheduler_mt:spawn(fn, ...)
    return task
 end
 
-function scheduler_mt:resume_later(task, ...)
+function scheduler_mt:wake(task, ...)
    enqueue_item(self._completions, {
       task = task,
       argc = select("#", ...),
@@ -231,9 +239,9 @@ function M.create(label)
    }, scheduler_mt)
 end
 
-function M.yieldable(kind, payload)
+function M.build_request(kind, payload)
    if type(kind) ~= "string" or kind == "" then
-      error("sched.yieldable expects kind to be a non-empty string", 0)
+      error("sched.build_request expects kind to be a non-empty string", 0)
    end
 
    return {
@@ -247,7 +255,11 @@ function M.await(kind, payload)
    if M._current_task == nil then
       error("sched.await may only be called from a scheduler-managed coroutine", 0)
    end
-   return coroutine.yield(M.yieldable(kind, payload))
+   return coroutine.yield(M.build_request(kind, payload))
+end
+
+function M.yield()
+   return M.await("sched.yield")
 end
 
 function M.park()

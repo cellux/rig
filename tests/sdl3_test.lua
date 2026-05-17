@@ -1,0 +1,13 @@
+local test = require("test")
+local sdl3 = require("sdl3")
+
+test.case("sdl3 exposes time-related SDL APIs", function()
+   test.equal(type(sdl3.GetCurrentTime), "function")
+   test.equal(type(sdl3.GetTicks), "function")
+   test.equal(type(sdl3.GetTicksNS), "function")
+   test.equal(type(sdl3.GetPerformanceCounter), "function")
+   test.equal(type(sdl3.GetPerformanceFrequency), "function")
+   test.equal(type(sdl3.Delay), "function")
+   test.equal(type(sdl3.DelayNS), "function")
+   test.equal(type(sdl3.DelayPrecise), "function")
+end)

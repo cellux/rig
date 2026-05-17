@@ -361,7 +361,7 @@ sched.register_handler("uv.spawn", function(scheduler, task, spec)
 
    local ok, err = pcall(spawn_internal, spec, function(result)
       scheduler:end_async()
-      scheduler:resume_later(task, result)
+      scheduler:wake(task, result)
       ffi.C.rig_uv_stop(M._loop)
    end)
 
@@ -377,9 +377,9 @@ sched.register_handler("uv.scandir", function(scheduler, task, path)
    local ok, err = pcall(scandir_internal, path, function(entries, callback_err)
       scheduler:end_async()
       if callback_err ~= nil then
-         scheduler:resume_later(task, nil, callback_err)
+         scheduler:wake(task, nil, callback_err)
       else
-         scheduler:resume_later(task, entries)
+         scheduler:wake(task, entries)
       end
       ffi.C.rig_uv_stop(M._loop)
    end)

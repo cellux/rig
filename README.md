@@ -29,7 +29,7 @@ Run the test suite with:
 make test
 ```
 
-This builds `rig` first and then runs the repo-local test runner in `tests/run_all_tests.lua`.
+This builds `rig` first and then runs the repo-local test runner in `scripts/run_all_tests.lua`.
 
 ## How to use
 
