@@ -96,6 +96,7 @@ bool SDL_SetNumberProperty(SDL_PropertiesID props, const char *name, Sint64 valu
 bool SDL_SetFloatProperty(SDL_PropertiesID props, const char *name, float value);
 bool SDL_SetBooleanProperty(SDL_PropertiesID props, const char *name, bool value);
 bool SDL_PollEvent(SDL_Event *event);
+Uint32 SDL_GetMouseState(float *x, float *y);
 const char *SDL_GetError(void);
 const char *SDL_GetKeyName(SDL_Keycode key);
 bool SDL_GetCurrentTime(Sint64 *ticks);
@@ -440,6 +441,7 @@ export_sdl_function("SetNumberProperty", "SDL_SetNumberProperty")
 export_sdl_function("SetFloatProperty", "SDL_SetFloatProperty")
 export_sdl_function("SetBooleanProperty", "SDL_SetBooleanProperty")
 export_sdl_function("PollEvent", "SDL_PollEvent")
+export_sdl_function("GetMouseState", "SDL_GetMouseState")
 export_sdl_function("GetError", "SDL_GetError")
 export_sdl_function("GetKeyName", "SDL_GetKeyName")
 export_sdl_function("GetCurrentTime", "SDL_GetCurrentTime")
