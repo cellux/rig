@@ -4,7 +4,7 @@ local function format_duration(duration)
    return string.format("%.3f ms", duration * 1000.0)
 end
 
-local function format_file_status(prefix, summary, result)
+local function format_file_status(ok, index, summary, result)
    local passed = result.passed_cases
    local total = result.total_cases
    if type(passed) ~= "number" or type(total) ~= "number" then
@@ -13,8 +13,9 @@ local function format_file_status(prefix, summary, result)
    end
 
    return string.format(
-      "%s [%d/%d] %s (%s)",
-      prefix,
+      "%s %d - [%d/%d] %s (%s)",
+      ok and "ok" or "not ok",
+      index,
       passed,
       total,
       result.file,
@@ -22,21 +23,20 @@ local function format_file_status(prefix, summary, result)
    )
 end
 
-local function print_failure(summary, result)
-   rig.println(format_file_status("FAIL", summary, result))
+local function print_diagnostics(label, text)
+   rig.println("# " .. label .. ":")
+   for line in (tostring(text) .. "\n"):gmatch("(.-)\n") do
+      rig.println("# " .. line)
+   end
+end
+
+local function print_failure(index, summary, result)
+   rig.println(format_file_status(false, index, summary, result))
    if result.stdout ~= "" then
-      rig.println("stdout:")
-      io.write(result.stdout)
-      if result.stdout:sub(-1) ~= "\n" then
-         io.write("\n")
-      end
+      print_diagnostics("stdout", result.stdout)
    end
    if result.stderr ~= "" then
-      rig.println("stderr:")
-      io.write(result.stderr)
-      if result.stderr:sub(-1) ~= "\n" then
-         io.write("\n")
-      end
+      print_diagnostics("stderr", result.stderr)
    end
 end
 
@@ -44,22 +44,25 @@ rig.run {
    mode = "uv",
    uv = {
       main = function()
-         local summary = test.run {
+        local summary = test.run {
             roots = { "tests" },
             jobs = 4,
-         }
+        }
+
+         rig.println("TAP version 13")
+         rig.println("1.." .. tostring(#summary.files))
 
          for i = 1, #summary.files do
             local result = summary.files[i]
             if result.success then
-               rig.println(format_file_status("PASS", summary, result))
+               rig.println(format_file_status(true, i, summary, result))
             else
-               print_failure(summary, result)
+               print_failure(i, summary, result)
             end
          end
 
          rig.println(
-            ("Summary: %d passed, %d failed, %d total (%s)"):
+            ("# Summary: %d passed, %d failed, %d total (%s)"):
                format(
                   summary.passed,
                   summary.failed,
