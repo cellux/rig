@@ -25,7 +25,7 @@ local function pop_item(queue)
 end
 
 M._handlers["sched.yield"] = function(scheduler, task)
-   enqueue_item(scheduler._ready, {
+   enqueue_item(scheduler._next_ready, {
       task = task,
       argc = 0,
       values = {},
@@ -212,7 +212,7 @@ function scheduler_mt:has_live_tasks()
 end
 
 function scheduler_mt:has_ready_work()
-   return #self._ready > 0 or #self._completions > 0
+   return #self._ready > 0 or #self._completions > 0 or #self._next_ready > 0
 end
 
 function scheduler_mt:pending_async()
@@ -220,6 +220,11 @@ function scheduler_mt:pending_async()
 end
 
 function scheduler_mt:drain()
+   if #self._completions == 0 and #self._ready == 0 and #self._next_ready > 0 then
+      self._ready = self._next_ready
+      self._next_ready = {}
+   end
+
    while self._pending_error == nil do
       local completion = pop_item(self._completions)
       if completion ~= nil then
@@ -283,6 +288,7 @@ function M.create(label)
       _label = label or "scheduler",
       _handlers = setmetatable({}, { __index = M._handlers }),
       _ready = {},
+      _next_ready = {},
       _completions = {},
       _sleeping = {},
       _active_tasks = 0,

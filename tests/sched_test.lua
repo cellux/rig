@@ -2,24 +2,36 @@ local test = require("test")
 local sched = require("sched")
 
 test.case("sched.yield resumes on the next scheduler drain", function()
+   local scheduler = sched.create("yield scheduler")
    local events = {}
+   local task_a
+   local task_b
 
-   local task_a = sched.spawn(function()
+   scheduler:activate()
+
+   task_a = sched.spawn(function()
       table.insert(events, "a1")
       sched.yield()
       table.insert(events, "a2")
    end)
 
-   local task_b = sched.spawn(function()
+   task_b = sched.spawn(function()
       table.insert(events, "b1")
    end)
 
-   sched.join { task_a, task_b }
-
-   test.equal(#events, 3)
+   scheduler:drain()
+   test.equal(#events, 2)
    test.equal(events[1], "a1")
    test.equal(events[2], "b1")
+   test.falsey(task_a._done)
+   test.truthy(task_b._done)
+
+   scheduler:drain()
+   scheduler:deactivate()
+
+   test.equal(#events, 3)
    test.equal(events[3], "a2")
+   test.truthy(task_a._done)
 end)
 
 test.case("sched.sleep can be implemented with deadline wakeups", function()
