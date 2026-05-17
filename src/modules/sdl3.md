@@ -40,6 +40,8 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Mandatory for both modes.
 - `on_key(key_info)`
   - Optional keyboard event callback.
+- `on_mouse(mouse_info)`
+  - Optional mouse event callback.
 
 Additional fields accepted by `options.sdl3_gl`:
 
@@ -99,6 +101,23 @@ Additional fields accepted by `options.sdl3_gpu`:
   - Sleeps for at least the requested nanoseconds.
 - `sdl3.DelayPrecise(ns)`
   - Higher-precision SDL delay helper.
+
+## Renderer Helpers
+
+- `sdl3.get_renderer()`
+  - Returns the current `SDL_Renderer*` when `mode = "sdl3"` owns the runtime.
+- `sdl3.SetRenderDrawColor(renderer, r, g, b, a)`
+  - Raw SDL renderer color setter.
+- `sdl3.RenderClear(renderer)`
+  - Raw SDL renderer clear call.
+- `sdl3.RenderPoint(renderer, x, y)`
+  - Raw SDL point draw call.
+- `sdl3.RenderLine(renderer, x1, y1, x2, y2)`
+  - Raw SDL line draw call.
+- `sdl3.RenderFillRect(renderer, rect_ptr)`
+  - Raw SDL filled-rectangle draw call.
+- `sdl3.clear(r, g, b, a)`
+  - Convenience clear helper that uses the active SDL renderer.
 
 ## GPU Helpers
 

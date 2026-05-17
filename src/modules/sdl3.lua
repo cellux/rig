@@ -6,6 +6,7 @@ local sched = require("sched")
 ffi.cdef[[
 typedef struct SDL_Window SDL_Window;
 typedef struct SDL_Renderer SDL_Renderer;
+typedef struct SDL_Rect SDL_Rect;
 typedef unsigned char Uint8;
 typedef uint16_t Uint16;
 typedef uint32_t Uint32;
@@ -16,6 +17,7 @@ typedef void* SDL_GLContext;
 typedef uint32_t SDL_EventType;
 typedef uint32_t SDL_WindowID;
 typedef uint32_t SDL_KeyboardID;
+typedef uint32_t SDL_MouseID;
 typedef int32_t SDL_Scancode;
 typedef uint32_t SDL_Keycode;
 typedef uint16_t SDL_Keymod;
@@ -39,14 +41,44 @@ typedef struct SDL_QuitEvent {
    Uint32 reserved;
    Uint64 timestamp;
 } SDL_QuitEvent;
+typedef struct SDL_MouseMotionEvent {
+   SDL_EventType type;
+   Uint32 reserved;
+   Uint64 timestamp;
+   SDL_WindowID windowID;
+   SDL_MouseID which;
+   Uint32 state;
+   float x;
+   float y;
+   float xrel;
+   float yrel;
+} SDL_MouseMotionEvent;
+typedef struct SDL_MouseButtonEvent {
+   SDL_EventType type;
+   Uint32 reserved;
+   Uint64 timestamp;
+   SDL_WindowID windowID;
+   SDL_MouseID which;
+   Uint8 button;
+   bool down;
+   Uint8 clicks;
+   Uint8 padding;
+   float x;
+   float y;
+} SDL_MouseButtonEvent;
 typedef union SDL_Event {
    Uint32 type;
    SDL_KeyboardEvent key;
    SDL_QuitEvent quit;
+   SDL_MouseMotionEvent motion;
+   SDL_MouseButtonEvent button;
    Uint8 padding[128];
 } SDL_Event;
 bool SDL_SetRenderDrawColor(SDL_Renderer *renderer, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
 bool SDL_RenderClear(SDL_Renderer *renderer);
+bool SDL_RenderPoint(SDL_Renderer *renderer, float x, float y);
+bool SDL_RenderLine(SDL_Renderer *renderer, float x1, float y1, float x2, float y2);
+bool SDL_RenderFillRect(SDL_Renderer *renderer, const struct SDL_FRect *rect);
 SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props);
 SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, const char *name);
 bool SDL_SetRenderVSync(SDL_Renderer *renderer, int vsync);
@@ -118,6 +150,12 @@ typedef struct SDL_FColor {
    float b;
    float a;
 } SDL_FColor;
+typedef struct SDL_FRect {
+   float x;
+   float y;
+   float w;
+   float h;
+} SDL_FRect;
 typedef struct SDL_Rect {
    int x;
    int y;
@@ -382,6 +420,9 @@ end
 
 export_sdl_function("SetRenderDrawColor", "SDL_SetRenderDrawColor")
 export_sdl_function("RenderClear", "SDL_RenderClear")
+export_sdl_function("RenderPoint", "SDL_RenderPoint")
+export_sdl_function("RenderLine", "SDL_RenderLine")
+export_sdl_function("RenderFillRect", "SDL_RenderFillRect")
 export_sdl_function("CreateWindowWithProperties", "SDL_CreateWindowWithProperties")
 export_sdl_function("CreateRenderer", "SDL_CreateRenderer")
 export_sdl_function("SetRenderVSync", "SDL_SetRenderVSync")
@@ -1185,6 +1226,10 @@ function M.get_window()
    return M._window
 end
 
+function M.get_renderer()
+   return M._renderer
+end
+
 function M.get_gpu_device()
    return M._gpu_device
 end
@@ -1718,7 +1763,46 @@ local function dispatch_keyboard_event(event, handler)
    })
 end
 
-local function pump_events(on_key)
+local function dispatch_mouse_motion_event(event, handler)
+   if type(handler) ~= "function" then
+      return
+   end
+
+   local timestamp_ns = tonumber(event.timestamp) or 0
+
+   handler({
+      type = "mouse",
+      action = "move",
+      x = tonumber(event.x) or 0,
+      y = tonumber(event.y) or 0,
+      xrel = tonumber(event.xrel) or 0,
+      yrel = tonumber(event.yrel) or 0,
+      buttons = tonumber(event.state) or 0,
+      timestamp_ns = timestamp_ns,
+      timestamp_ms = math.floor(timestamp_ns / 1000000),
+   })
+end
+
+local function dispatch_mouse_button_event(event, handler)
+   if type(handler) ~= "function" then
+      return
+   end
+
+   local timestamp_ns = tonumber(event.timestamp) or 0
+
+   handler({
+      type = "mouse",
+      action = event.down and "down" or "up",
+      button = tonumber(event.button) or 0,
+      clicks = tonumber(event.clicks) or 0,
+      x = tonumber(event.x) or 0,
+      y = tonumber(event.y) or 0,
+      timestamp_ns = timestamp_ns,
+      timestamp_ms = math.floor(timestamp_ns / 1000000),
+   })
+end
+
+local function pump_events(on_key, on_mouse)
    if M._window == nil then
       error("an SDL window must be initialized before sdl3.pump_events")
    end
@@ -1734,6 +1818,10 @@ local function pump_events(on_key)
 
       if event_type == M.EVENT_KEY_DOWN or event_type == M.EVENT_KEY_UP then
          dispatch_keyboard_event(current.key, on_key)
+      elseif event_type == M.EVENT_MOUSE_MOTION then
+         dispatch_mouse_motion_event(current.motion, on_mouse)
+      elseif event_type == M.EVENT_MOUSE_BUTTON_DOWN or event_type == M.EVENT_MOUSE_BUTTON_UP then
+         dispatch_mouse_button_event(current.button, on_mouse)
       end
    end
 
@@ -1860,9 +1948,10 @@ rig.register_runtime_mode("sdl3", {
       local sdl3_options = normalize_runtime_options(options.sdl3)
       local on_render = require_render_callback(options)
       local on_key = sdl3_options.on_key
+      local on_mouse = sdl3_options.on_mouse
       while true do
          run_hooks("before_poll", options)
-         if pump_events(on_key) == false then
+         if pump_events(on_key, on_mouse) == false then
             break
          end
          run_hooks("after_poll", options)
@@ -1896,9 +1985,10 @@ rig.register_runtime_mode("sdl3_gpu", {
       local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
       local on_render = require_render_callback(options)
       local on_key = sdl3_options.on_key
+      local on_mouse = sdl3_options.on_mouse
       while true do
          run_hooks("before_poll", options)
-         if pump_events(on_key) == false then
+         if pump_events(on_key, on_mouse) == false then
             break
          end
          run_hooks("after_poll", options)
@@ -1925,9 +2015,10 @@ rig.register_runtime_mode("sdl3_gl", {
       local sdl3_options = normalize_runtime_options(options.sdl3_gl)
       local on_render = require_render_callback(options)
       local on_key = sdl3_options.on_key
+      local on_mouse = sdl3_options.on_mouse
       while true do
          run_hooks("before_poll", options)
-         if pump_events(on_key) == false then
+         if pump_events(on_key, on_mouse) == false then
             break
          end
          run_hooks("after_poll", options)
