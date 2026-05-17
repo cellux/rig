@@ -44,8 +44,7 @@ Async test-runner helpers built on top of `uv` and `sched`.
     - `failed`
     - `total`
     - `success`
-    - `duration_ns`
-    - `duration_ms`
+    - `duration`
   - Options:
     - `roots`
     - `files`
@@ -59,5 +58,5 @@ Async test-runner helpers built on top of `uv` and `sched`.
 - Within one test file, registered cases are currently executed under `mode = "uv"`, so they may use coroutine-based `uv` APIs such as `uv.spawn(...)` and `uv.scandir(...)`.
 - Use `test.serial(...)` for cases that rely on shared mutable state or ordering.
 - Each registered case records its own elapsed monotonic duration and prints it in the `PASS` / `FAIL` line.
-- Each file run recorded by `test.run(...)` also carries `duration_ns` and `duration_ms`.
+- Each file run recorded by `test.run(...)` also carries `duration` in seconds as a Lua number.
 - Test files without any registered cases still work as plain pass/fail scripts: exiting normally passes, and raising an error fails the file.

@@ -54,8 +54,8 @@ local function fail_with_message(message)
    error(message, 0)
 end
 
-local function format_duration_ns(duration_ns)
-   return string.format("%.3f ms", duration_ns / 1000000.0)
+local function format_duration(duration_s)
+   return string.format("%.3f ms", duration_s * 1000.0)
 end
 
 local function normalize_roots(roots)
@@ -323,7 +323,7 @@ function M.run(options)
    end
 
    local results = {}
-   local started_ns = time.monotonic_ns()
+   local started_at = time.monotonic()
    local next_index = 1
    local worker_count = math.min(jobs, #files)
    if worker_count == 0 then
@@ -333,8 +333,7 @@ function M.run(options)
          failed = 0,
          total = 0,
          success = true,
-         duration_ns = 0,
-         duration_ms = 0,
+         duration = 0,
       }
    end
 
@@ -347,12 +346,12 @@ function M.run(options)
             return
          end
 
-         local file_started_ns = time.monotonic_ns()
+         local file_started_at = time.monotonic()
          local result = uv.spawn {
             file = executable,
             args = { executable, file },
          }
-         local duration_ns = time.monotonic_ns() - file_started_ns
+         local duration = time.monotonic() - file_started_at
 
          table.insert(results, {
             file = file,
@@ -361,8 +360,7 @@ function M.run(options)
             term_signal = result.term_signal,
             stdout = result.stdout,
             stderr = result.stderr,
-            duration_ns = duration_ns,
-            duration_ms = duration_ns / 1000000.0,
+            duration = duration,
          })
       end
    end
@@ -392,8 +390,7 @@ function M.run(options)
          summary.failed = summary.failed + 1
       end
    end
-   summary.duration_ns = time.monotonic_ns() - started_ns
-   summary.duration_ms = summary.duration_ns / 1000000.0
+   summary.duration = time.monotonic() - started_at
    summary.success = summary.failed == 0
    return summary
 end
@@ -425,18 +422,17 @@ function M.run_registered_cases(options)
    local results = {}
 
    local function run_case(case, index)
-      local started_ns = time.monotonic_ns()
+      local started_at = time.monotonic()
       local ok, err = xpcall(case.fn, function(value)
          return tostring(value)
       end)
-      local duration_ns = time.monotonic_ns() - started_ns
+      local duration = time.monotonic() - started_at
       results[index] = {
          name = case.name,
          success = ok,
          err = err,
          serial = case.serial,
-         duration_ns = duration_ns,
-         duration_ms = duration_ns / 1000000.0,
+         duration = duration,
       }
    end
 
@@ -492,7 +488,7 @@ function M.run_registered_cases(options)
          rig.println(
             ("PASS %s (%s)"):format(
                result.name,
-               format_duration_ns(result.duration_ns)
+               format_duration(result.duration)
             )
          )
       else
@@ -500,7 +496,7 @@ function M.run_registered_cases(options)
          io.stderr:write(
             ("FAIL %s (%s)\n"):format(
                result.name,
-               format_duration_ns(result.duration_ns)
+               format_duration(result.duration)
             )
          )
          io.stderr:write(

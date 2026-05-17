@@ -1,11 +1,11 @@
 local test = require("test")
 
-local function format_duration_ms(duration_ms)
-   return string.format("%.3f ms", duration_ms)
+local function format_duration(duration)
+   return string.format("%.3f ms", duration * 1000.0)
 end
 
 local function print_failure(result)
-   rig.println("FAIL " .. result.file .. " (" .. format_duration_ms(result.duration_ms) .. ")")
+   rig.println("FAIL " .. result.file .. " (" .. format_duration(result.duration) .. ")")
    if result.stdout ~= "" then
       rig.println("stdout:")
       io.write(result.stdout)
@@ -34,7 +34,7 @@ rig.run {
          for i = 1, #summary.files do
             local result = summary.files[i]
             if result.success then
-               rig.println("PASS " .. result.file .. " (" .. format_duration_ms(result.duration_ms) .. ")")
+               rig.println("PASS " .. result.file .. " (" .. format_duration(result.duration) .. ")")
             else
                print_failure(result)
             end
@@ -46,7 +46,7 @@ rig.run {
                   summary.passed,
                   summary.failed,
                   summary.total,
-                  format_duration_ms(summary.duration_ms)
+                  format_duration(summary.duration)
                )
          )
 

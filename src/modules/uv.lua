@@ -248,29 +248,20 @@ function M.scandir(path)
    return sched.await("uv.scandir", normalize_scandir_path(path))
 end
 
-function M.now_ns()
-   local seconds, nanoseconds = read_clock(M.CLOCK_REALTIME, "uv.now_ns")
-   return seconds * 1000000000 + nanoseconds
-end
-
 function M.now()
    local seconds, nanoseconds = read_clock(M.CLOCK_REALTIME, "uv.now")
    return seconds + nanoseconds / 1000000000.0
 end
 
-function M.monotonic_ns()
+function M.monotonic()
    local value = ffi.new("uint64_t[1]")
    local rc = ffi.C.rig_uv_hrtime_read(value)
    if rc == 0 then
-      return tonumber(value[0])
+      return tonumber(value[0]) / 1000000000.0
    end
 
-   local seconds, nanoseconds = read_clock(M.CLOCK_MONOTONIC, "uv.monotonic_ns")
-   return seconds * 1000000000 + nanoseconds
-end
-
-function M.monotonic()
-   return M.monotonic_ns() / 1000000000.0
+   local seconds, nanoseconds = read_clock(M.CLOCK_MONOTONIC, "uv.monotonic")
+   return seconds + nanoseconds / 1000000000.0
 end
 
 local function setup(options)

@@ -45,16 +45,12 @@ end)
 
 test.case("uv clock helpers return numbers", function()
    local now = uv.now()
-   local now_ns = uv.now_ns()
    local monotonic = uv.monotonic()
-   local monotonic_ns = uv.monotonic_ns()
 
    test.equal(type(now), "number")
-   test.equal(type(now_ns), "number")
    test.equal(type(monotonic), "number")
-   test.equal(type(monotonic_ns), "number")
-   test.truthy(now_ns > 0)
-   test.truthy(monotonic_ns > 0)
+   test.truthy(now > 0)
+   test.truthy(monotonic > 0)
 end)
 
 local fixture_setup_count = 0
@@ -83,10 +79,8 @@ test.case("test.run discovers the repo test files", function()
 
    test.equal(summary.total, 1)
    test.equal(summary.passed, 1)
-   test.truthy(summary.duration_ns >= 0)
-   test.truthy(summary.duration_ms >= 0)
-   test.truthy(summary.files[1].duration_ns >= 0)
-   test.truthy(summary.files[1].duration_ms >= 0)
+   test.truthy(summary.duration >= 0)
+   test.truthy(summary.files[1].duration >= 0)
    test.match(
       summary.files[1].stdout,
       "PASS scheduler can run a spawned task %([^)]+%)"

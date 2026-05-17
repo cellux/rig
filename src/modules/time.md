@@ -8,18 +8,9 @@ Thin clock wrapper over the `uv` module.
   - Returns epoch seconds as a Lua number.
 - `time.monotonic()`
   - Returns monotonic seconds as a Lua number.
-- `time.now_ns()`
-  - Returns epoch nanoseconds as a Lua number.
-- `time.monotonic_ns()`
-  - Returns monotonic nanoseconds as a Lua number.
-
-## Constants
-
-- `time.CLOCK_REALTIME`
-- `time.CLOCK_MONOTONIC`
 
 ## Notes
 
-- Use `time.monotonic()` or `time.monotonic_ns()` for animation and frame timing.
+- Use `time.monotonic()` for animation and frame timing.
 - `time.now()` is wall-clock time and may jump if the system clock changes.
-- `time` delegates to `uv.now*` and `uv.monotonic*`.
+- `time` delegates to `uv.now()` and `uv.monotonic()`.
