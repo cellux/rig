@@ -3,6 +3,7 @@ fennel
 rig
 dl
 freetype
+harfbuzz
 sched
 uv
 test

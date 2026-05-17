@@ -12,6 +12,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
 pkg_check_modules(SDL3 REQUIRED sdl3)
 pkg_check_modules(FREETYPE2 REQUIRED freetype2)
+pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(LIBUV REQUIRED libuv)
 find_program(LUAJIT_BIN NAMES luajit luajit-2.1 REQUIRED)
 
@@ -33,6 +34,7 @@ target_include_directories(rig PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     ${SDL3_INCLUDE_DIRS}
     ${FREETYPE2_INCLUDE_DIRS}
+    ${HARFBUZZ_INCLUDE_DIRS}
     ${LIBUV_INCLUDE_DIRS}
 )
 
@@ -44,6 +46,7 @@ target_link_libraries(rig PRIVATE
 target_compile_options(rig PRIVATE
     ${SDL3_CFLAGS_OTHER}
     ${FREETYPE2_CFLAGS_OTHER}
+    ${HARFBUZZ_CFLAGS_OTHER}
     ${LIBUV_CFLAGS_OTHER}
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )

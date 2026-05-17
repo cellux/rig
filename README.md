@@ -70,6 +70,7 @@ Available modules:
 - `rig`: [`src/modules/rig.md`](src/modules/rig.md)
 - `dl`: [`src/modules/dl.md`](src/modules/dl.md)
 - `freetype`: [`src/modules/freetype.md`](src/modules/freetype.md)
+- `harfbuzz`: [`src/modules/harfbuzz.md`](src/modules/harfbuzz.md)
 - `sched`: [`src/modules/sched.md`](src/modules/sched.md)
 - `uv`: [`src/modules/uv.md`](src/modules/uv.md)
 - `test`: [`src/modules/test.md`](src/modules/test.md)
