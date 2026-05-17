@@ -12,8 +12,23 @@ Build dependencies:
 - LuaJIT development files with a `luajit` pkg-config entry
 - the `luajit` executable
 - SDL3 development files with an `sdl3` pkg-config entry
+- FreeType development files with a `freetype2` pkg-config entry
+- libuv development files with a `libuv` pkg-config entry
 
-At build time Rig links against LuaJIT and the platform dynamic loader, and uses SDL3 only for compile-time headers and flags. The `rig` binary is not linked against the SDL3 or libuv shared libraries.
+Current build and runtime split:
+
+- At build time Rig links against:
+  - LuaJIT
+  - the platform dynamic loader (`dl`)
+- At build time Rig also uses compile-time headers and flags from:
+  - SDL3
+  - FreeType
+  - libuv
+- The `rig` binary is currently not linked against the SDL3, libuv, or FreeType shared libraries.
+- Those libraries are loaded dynamically at runtime by the corresponding modules:
+  - `sdl3`
+  - `uv`
+  - `freetype`
 
 Build with:
 
@@ -29,7 +44,12 @@ Run the test suite with:
 make test
 ```
 
-This builds `rig` first and then runs the repo-local test runner in `scripts/run_all_tests.lua`.
+This rebuilds `rig` if needed and then runs `ctest`, which invokes the repo-local test runner in [`scripts/run_all_tests.lua`](scripts/run_all_tests.lua).
+
+Notes:
+
+- The built executable is `build/rig`.
+- `make test` currently assumes the runtime-loadable libraries needed by the exercised modules are installed on the host.
 
 ## How to use
 
