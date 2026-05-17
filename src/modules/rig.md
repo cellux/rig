@@ -30,6 +30,11 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `options.mode` is mandatory.
   - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
   - Mode-specific configuration should live under a namespaced key such as `options.sdl3`, `options.sdl3_gl`, or `options.sdl3_gpu`.
+  - `options.sched`
+    - Optional runtime-owned scheduler request for runtime modes that support it.
+    - `true` enables a scheduler with a default label.
+    - A table enables a scheduler and may specify `label`.
+    - `nil` or `false` leaves the scheduler disabled.
   - Optional per-run hooks may be passed under `options.hooks`.
   - `options.hooks.<phase>` may be either a function or an array of functions.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.

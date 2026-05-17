@@ -22,3 +22,20 @@ test.case("uv clock helpers return numbers", function()
    test.truthy(now > 0)
    test.truthy(monotonic > 0)
 end)
+
+test.case("uv mode rejects options.sched because it already provides a scheduler", function()
+   local ok, err = pcall(rig.run, {
+      mode = "uv",
+      sched = true,
+      uv = {
+         main = function()
+         end,
+      },
+   })
+
+   test.falsey(ok)
+   test.match(
+      tostring(err),
+      "mode 'uv' always provides a scheduler; options%.sched is unnecessary"
+   )
+end)

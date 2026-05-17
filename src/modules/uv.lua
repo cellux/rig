@@ -392,6 +392,12 @@ end)
 
 rig.register_runtime_mode("uv", {
    setup = function(options)
+      if options.sched ~= nil then
+         error(
+            "rig.run with mode 'uv' always provides a scheduler; options.sched is unnecessary",
+            0
+         )
+      end
       setup(options.uv)
    end,
    loop = function(options)

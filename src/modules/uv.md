@@ -67,6 +67,10 @@ rig.run {
 
 `uv.main` is optional. If provided, it runs as a scheduler-managed coroutine after setup and before the libuv loop starts blocking.
 
+`mode = "uv"` always creates and owns a scheduler.
+
+- `options.sched` is unnecessary in `mode = "uv"` and is rejected.
+
 ## Notes
 
 - The current first version is intentionally narrow.
