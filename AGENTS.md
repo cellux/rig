@@ -23,3 +23,26 @@
   - Use a double underscore for dynamically bound symbols from the underlying C library.
 - If a Rig C module implements its own Lua-facing abstraction in `X.c`, its identifier should use `rig_X_NAME`.
   - Use a single underscore for Rig-owned wrapper or abstraction names.
+
+## Runtime And API Design
+
+- `rig.run(...)` is the only public runtime entrypoint.
+  - Runtime-aware modules should register modes and hooks with `rig`.
+  - Backend modules should not expose their own public main-loop driver.
+- Per-run startup and runtime configuration should go through `rig.run(...)` options.
+  - Avoid monkey-patching module globals to control runtime behavior.
+  - Use module-scoped option tables such as `sdl3 = { ... }`, `sdl3_gpu = { ... }`, and `uv = { ... }`.
+  - Use `options.hooks` for run-local hooks and `rig.register_runtime_hook(...)` for persistent module-level hooks.
+- Public async APIs should be coroutine-based.
+  - Callback-style async APIs are internal implementation details.
+  - User-facing async operations should suspend through `sched`.
+- `sched` is the generic scheduler layer.
+  - Backend-specific yield protocol details should be hidden behind module APIs.
+  - Users should not have to call `sched.await("backend.op", ...)` directly when a proper wrapper exists.
+- Raw foreign API exposure and higher-level Lua abstractions should coexist explicitly.
+  - Raw bindings should mirror the foreign C API naming.
+  - Higher-level Lua conveniences in the same module should use `snake_case`.
+- If a utility is backend-agnostic, put it in `rig`.
+  - Backend-specific modules may wrap it with backend-specific convenience methods.
+- Runtime behavior must not depend on module load order.
+  - Use explicit runtime mode ownership via `mode = "..."`.
