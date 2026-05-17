@@ -18,6 +18,7 @@ typedef void (*rig_uv_scandir_cb)(
    const char *entries_data,
    size_t entries_len
 );
+typedef void (*rig_uv_timer_cb)(void);
 
 rig_uv_loop_t *rig_uv_loop_new(void);
 int rig_uv_loop_delete(rig_uv_loop_t *loop);
@@ -37,6 +38,11 @@ int rig_uv_scandir(
    const char *path,
    rig_uv_scandir_cb on_done
 );
+int rig_uv_sleep_once(
+   rig_uv_loop_t *loop,
+   uint64_t timeout_ms,
+   rig_uv_timer_cb on_done
+);
 int rig_uv_clock_read(
    int clock_id,
    int64_t *seconds,
@@ -49,6 +55,7 @@ M._loop = M._loop or nil
 M._scheduler = M._scheduler or nil
 M._active_exit_callbacks = M._active_exit_callbacks or {}
 M._active_scandir_callbacks = M._active_scandir_callbacks or {}
+M._active_timer_callbacks = M._active_timer_callbacks or {}
 
 local function uv_error_string(err)
    local ptr = ffi.C.rig_uv_strerror(err)
@@ -82,6 +89,7 @@ end
 local function clear_callback_references()
    M._active_exit_callbacks = {}
    M._active_scandir_callbacks = {}
+   M._active_timer_callbacks = {}
 end
 
 local function normalize_spawn_spec(spec)
@@ -229,6 +237,39 @@ local function scandir_internal(path, on_done)
    end
 end
 
+local function sleep_internal(seconds, on_done)
+   if M._loop == nil then
+      error("uv.sleep requires an active uv loop", 0)
+   end
+   if type(on_done) ~= "function" then
+      error("uv internal sleep requires a completion callback", 0)
+   end
+
+   local timeout_ms = math.ceil(seconds * 1000.0)
+   if timeout_ms < 0 then
+      timeout_ms = 0
+   end
+
+   local completion_callback
+   completion_callback = ffi.cast("rig_uv_timer_cb", function()
+      M._active_timer_callbacks[completion_callback] = nil
+      on_done()
+   end)
+   M._active_timer_callbacks[completion_callback] = true
+
+   local rc = ffi.C.rig_uv_sleep_once(M._loop, timeout_ms, completion_callback)
+   if rc ~= 0 then
+      M._active_timer_callbacks[completion_callback] = nil
+      error(
+         ("uv.sleep failed for %.6f seconds: %s"):format(
+            seconds,
+            uv_error_string(rc)
+         ),
+         0
+      )
+   end
+end
+
 function M.get_loop()
    return M._loop
 end
@@ -246,6 +287,10 @@ end
 
 function M.scandir(path)
    return sched.await("uv.scandir", normalize_scandir_path(path))
+end
+
+function M.sleep(seconds)
+   return sched.sleep(seconds)
 end
 
 function M.now()
@@ -283,6 +328,20 @@ local function setup(options)
 
    M._loop = loop
    M._scheduler = sched.create("uv scheduler")
+   M._scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
+      scheduler:begin_async()
+
+      local ok, err = pcall(sleep_internal, seconds, function()
+         scheduler:end_async()
+         scheduler:wake(task)
+         ffi.C.rig_uv_stop(M._loop)
+      end)
+
+      if not ok then
+         scheduler:end_async()
+         error(err, 0)
+      end
+   end)
 end
 
 local function run_scheduler_loop(runtime_options, outer_options)
@@ -392,12 +451,6 @@ end)
 
 rig.register_runtime_mode("uv", {
    setup = function(options)
-      if options.sched ~= nil then
-         error(
-            "rig.run with mode 'uv' always provides a scheduler; options.sched is unnecessary",
-            0
-         )
-      end
       setup(options.uv)
    end,
    loop = function(options)

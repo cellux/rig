@@ -26,6 +26,8 @@ Minimal libuv integration for Rig.
   - Each entry is a table containing:
     - `name`
     - `type`
+- `uv.sleep(seconds)`
+  - Suspends the current scheduler-managed coroutine for at least the requested number of seconds on the current uv loop.
 - `uv.now()`
   - Returns epoch seconds as a Lua number through libuv.
 - `uv.monotonic()`
@@ -68,8 +70,6 @@ rig.run {
 `uv.main` is optional. If provided, it runs as a scheduler-managed coroutine after setup and before the libuv loop starts blocking.
 
 `mode = "uv"` always creates and owns a scheduler.
-
-- `options.sched` is unnecessary in `mode = "uv"` and is rejected.
 
 ## Notes
 

@@ -27,6 +27,7 @@ typedef void (*rig_uv_spawn_exit_cb)(int64_t exit_status, int term_signal,
                                      size_t stderr_len);
 typedef void (*rig_uv_scandir_cb)(int status, const char *entries_data,
                                   size_t entries_len);
+typedef void (*rig_uv_timer_cb)(void);
 
 typedef struct rig_uv_process {
   uv_process_t process;
@@ -58,6 +59,11 @@ typedef struct rig_uv_scandir {
   size_t entries_capacity;
 } rig_uv_scandir_t;
 
+typedef struct rig_uv_timer {
+  uv_timer_t timer;
+  rig_uv_timer_cb on_done;
+} rig_uv_timer_t;
+
 static void *rig_uv_library_handle = NULL;
 static const char *rig_uv_loader_error = NULL;
 
@@ -78,6 +84,9 @@ static int (*rig_uv__fs_scandir)(uv_loop_t *loop, uv_fs_t *req,
                                  uv_fs_cb cb) = NULL;
 static int (*rig_uv__fs_scandir_next)(uv_fs_t *req, uv_dirent_t *ent) = NULL;
 static void (*rig_uv__fs_req_cleanup)(uv_fs_t *req) = NULL;
+static int (*rig_uv__timer_init)(uv_loop_t *loop, uv_timer_t *handle) = NULL;
+static int (*rig_uv__timer_start)(uv_timer_t *handle, uv_timer_cb cb,
+                                  uint64_t timeout, uint64_t repeat) = NULL;
 static int (*rig_uv__clock_gettime)(uv_clock_id clock_id,
                                     uv_timespec64_t *ts) = NULL;
 static uint64_t (*rig_uv__hrtime)(void) = NULL;
@@ -130,6 +139,8 @@ static int rig_uv_ensure_loaded(void) {
       rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir, "uv_fs_scandir") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir_next, "uv_fs_scandir_next") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__fs_req_cleanup, "uv_fs_req_cleanup") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__timer_init, "uv_timer_init") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__timer_start, "uv_timer_start") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__clock_gettime, "uv_clock_gettime") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__hrtime, "uv_hrtime") != 0) {
     rig_dl_close(rig_uv_library_handle);
@@ -269,6 +280,26 @@ static void rig_uv_on_scandir(uv_fs_t *req) {
   }
 
   rig_uv_finish_scandir(request, 0);
+}
+
+static void rig_uv_on_timer_closed(uv_handle_t *handle) {
+  rig_uv_timer_t *timer = handle->data;
+  if (timer != NULL) {
+    free(timer);
+  }
+}
+
+static void rig_uv_on_timer(uv_timer_t *handle) {
+  rig_uv_timer_t *timer = handle->data;
+  if (timer == NULL) {
+    return;
+  }
+
+  if (timer->on_done != NULL) {
+    timer->on_done();
+  }
+
+  rig_uv__close((uv_handle_t *)&timer->timer, rig_uv_on_timer_closed);
 }
 
 static void rig_uv_alloc_cb(uv_handle_t *handle, size_t suggested_size,
@@ -506,6 +537,41 @@ int rig_uv_scandir(rig_uv_loop_t *loop, const char *path,
   if (rc != 0) {
     rig_uv__fs_req_cleanup(&request->req);
     free(request);
+    return rc;
+  }
+
+  return 0;
+}
+
+int rig_uv_sleep_once(rig_uv_loop_t *loop, uint64_t timeout_ms,
+                      rig_uv_timer_cb on_done) {
+  rig_uv_timer_t *timer;
+  int rc;
+
+  if (loop == NULL || on_done == NULL) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  timer = calloc(1, sizeof(rig_uv_timer_t));
+  if (timer == NULL) {
+    return UV_ENOMEM;
+  }
+
+  timer->on_done = on_done;
+  timer->timer.data = timer;
+
+  rc = rig_uv__timer_init(&loop->loop, &timer->timer);
+  if (rc != 0) {
+    free(timer);
+    return rc;
+  }
+
+  rc = rig_uv__timer_start(&timer->timer, rig_uv_on_timer, timeout_ms, 0);
+  if (rc != 0) {
+    rig_uv__close((uv_handle_t *)&timer->timer, rig_uv_on_timer_closed);
     return rc;
   }
 

@@ -22,12 +22,9 @@ Use SDL-specific runtime configuration under:
 - `options.sdl3_gpu` for `mode = "sdl3_gpu"`
 
 Shared fields accepted by the SDL runtime modes as applicable:
-
-- `options.sched`
-  - Optional scheduler request for `mode = "sdl3"`, `mode = "sdl3_gl"`, and `mode = "sdl3_gpu"`.
-  - `true` enables a runtime-owned scheduler with a default label.
-  - A table enables a runtime-owned scheduler and may specify `label`.
-  - When enabled, the scheduler is drained once per frame after event polling and before rendering.
+- All SDL runtime modes create and own a scheduler.
+- The scheduler is drained once per frame after event polling and before rendering.
+- `sched.sleep(seconds)` is supported and resumes tasks on the first frame after the requested deadline has passed.
 
 - `init_flags`
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.

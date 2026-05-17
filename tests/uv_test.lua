@@ -1,4 +1,5 @@
 local test = require("test")
+local sched = require("sched")
 local uv = require("uv")
 
 test.case("uv scandir can see the tests directory", function()
@@ -23,19 +24,10 @@ test.case("uv clock helpers return numbers", function()
    test.truthy(monotonic > 0)
 end)
 
-test.case("uv mode rejects options.sched because it already provides a scheduler", function()
-   local ok, err = pcall(rig.run, {
-      mode = "uv",
-      sched = true,
-      uv = {
-         main = function()
-         end,
-      },
-   })
+test.case("sched.sleep waits under uv mode", function()
+   local start = uv.monotonic()
+   sched.sleep(0.01)
+   local elapsed = uv.monotonic() - start
 
-   test.falsey(ok)
-   test.match(
-      tostring(err),
-      "mode 'uv' always provides a scheduler; options%.sched is unnecessary"
-   )
+   test.truthy(elapsed >= 0.005)
 end)

@@ -4,13 +4,24 @@ M._handlers = M._handlers or {}
 M._active_scheduler = M._active_scheduler or nil
 M._current_task = M._current_task or nil
 
-local yieldable_tag = {}
+local request_mt = {}
+
+local function is_request(value)
+   return type(value) == "table" and getmetatable(value) == request_mt
+end
 
 local scheduler_mt = {}
 scheduler_mt.__index = scheduler_mt
 
 local function enqueue_item(queue, item)
    table.insert(queue, item)
+end
+
+local function pop_item(queue)
+   if #queue == 0 then
+      return nil
+   end
+   return table.remove(queue, 1)
 end
 
 M._handlers["sched.yield"] = function(scheduler, task)
@@ -24,21 +35,14 @@ end
 M._handlers["sched.park"] = function()
 end
 
-local function pop_item(queue)
-   if #queue == 0 then
-      return nil
-   end
-   return table.remove(queue, 1)
+M._handlers["sched.sleep"] = function()
+   error("no active runtime provides sched.sleep", 0)
 end
 
 local function set_pending_error(self, err)
    if self._pending_error == nil then
       self._pending_error = err
    end
-end
-
-local function is_yieldable(value)
-   return type(value) == "table" and value._sched_tag == yieldable_tag
 end
 
 function scheduler_mt:_complete_task(task)
@@ -83,23 +87,26 @@ function scheduler_mt:_resume_task(task, ...)
       return
    end
 
-   if not is_yieldable(yielded_or_err) then
+   if not is_request(yielded_or_err) then
       self._active_tasks = self._active_tasks - 1
       self:_complete_task(task)
       set_pending_error(
          self,
-         "scheduler task yielded a non-yieldable value"
+         "scheduler task yielded a non-request value"
       )
       return
    end
 
-   local handler = self._handlers[yielded_or_err.kind]
+   local request = yielded_or_err
+
+   local handler = self._handlers[request.kind]
    if type(handler) ~= "function" then
       self._active_tasks = self._active_tasks - 1
+      self:_complete_task(task)
       set_pending_error(
          self,
          ("no scheduler handler is registered for '%s'"):format(
-            tostring(yielded_or_err.kind)
+            tostring(request.kind)
          )
       )
       return
@@ -109,7 +116,7 @@ function scheduler_mt:_resume_task(task, ...)
       handler,
       self,
       task,
-      yielded_or_err.payload
+      request.payload
    )
    if not handler_ok then
       self._active_tasks = self._active_tasks - 1
@@ -137,12 +144,56 @@ function scheduler_mt:spawn(fn, ...)
    return task
 end
 
+function scheduler_mt:set_handler(kind, handler)
+   if type(kind) ~= "string" or kind == "" then
+      error("scheduler:set_handler expects kind to be a non-empty string", 0)
+   end
+   if type(handler) ~= "function" then
+      error("scheduler:set_handler expects handler to be a function", 0)
+   end
+   self._handlers[kind] = handler
+end
+
 function scheduler_mt:wake(task, ...)
    enqueue_item(self._completions, {
       task = task,
       argc = select("#", ...),
       values = { ... },
    })
+end
+
+function scheduler_mt:sleep_until(task, deadline)
+   if type(task) ~= "table" or type(task.co) ~= "thread" then
+      error("scheduler:sleep_until expects a scheduler task", 0)
+   end
+   if type(deadline) ~= "number" then
+      error("scheduler:sleep_until expects deadline to be a number", 0)
+   end
+
+   enqueue_item(self._sleeping, {
+      task = task,
+      deadline = deadline,
+   })
+end
+
+function scheduler_mt:wake_due_sleepers(now)
+   if type(now) ~= "number" then
+      error("scheduler:wake_due_sleepers expects now to be a number", 0)
+   end
+
+   local sleeping = self._sleeping
+   local remaining = {}
+
+   for i = 1, #sleeping do
+      local entry = sleeping[i]
+      if entry.deadline <= now then
+         self:wake(entry.task)
+      else
+         table.insert(remaining, entry)
+      end
+   end
+
+   self._sleeping = remaining
 end
 
 function scheduler_mt:begin_async()
@@ -230,9 +281,10 @@ function M.create(label)
 
    return setmetatable({
       _label = label or "scheduler",
-      _handlers = M._handlers,
+      _handlers = setmetatable({}, { __index = M._handlers }),
       _ready = {},
       _completions = {},
+      _sleeping = {},
       _active_tasks = 0,
       _pending_async = 0,
       _pending_error = nil,
@@ -244,11 +296,10 @@ function M.build_request(kind, payload)
       error("sched.build_request expects kind to be a non-empty string", 0)
    end
 
-   return {
-      _sched_tag = yieldable_tag,
+   return setmetatable({
       kind = kind,
       payload = payload,
-   }
+   }, request_mt)
 end
 
 function M.await(kind, payload)
@@ -264,6 +315,17 @@ end
 
 function M.park()
    return M.await("sched.park")
+end
+
+function M.sleep(seconds)
+   if type(seconds) ~= "number" then
+      error("sched.sleep expects seconds to be a number", 0)
+   end
+   if seconds < 0 then
+      error("sched.sleep expects seconds to be non-negative", 0)
+   end
+
+   return M.await("sched.sleep", seconds)
 end
 
 function M.spawn(fn, ...)

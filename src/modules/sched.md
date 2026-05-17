@@ -16,6 +16,9 @@ Generic coroutine scheduler primitives for runtime-owned async backends.
   - Must be called from a scheduler-managed coroutine.
 - `sched.yield()`
   - Suspends the current scheduler-managed coroutine and reschedules it for the next scheduler drain.
+- `sched.sleep(seconds)`
+  - Suspends the current scheduler-managed coroutine for at least the requested number of seconds.
+  - Requires the active runtime to provide a sleep backend.
 - `sched.park()`
   - Suspends the current scheduler-managed coroutine until something else resumes it later.
 - `sched.spawn(fn, ...)`
@@ -30,4 +33,5 @@ Generic coroutine scheduler primitives for runtime-owned async backends.
 - Backend modules such as `uv` should register handlers and keep their callback/event-loop details internal.
 - User code should usually not construct raw yieldables directly when a higher-level backend API already exists.
 - `sched.yield()` is for cooperative next-tick rescheduling.
+- `sched.sleep()` is for runtime-provided timed suspension.
 - `sched.park()` is for indefinite suspension until some other code resumes the task.

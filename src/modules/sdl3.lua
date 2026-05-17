@@ -1810,49 +1810,31 @@ local function render_gl_frame(render_fn)
    present_gl()
 end
 
-local function normalize_sched_options(options)
-   local sched_options = options.sched
-   if sched_options == nil or sched_options == false then
-      return nil
+local function current_monotonic_seconds()
+   local counter = tonumber(M.GetPerformanceCounter())
+   local frequency = tonumber(M.GetPerformanceFrequency())
+   if frequency == nil or frequency <= 0 then
+      error("sdl3.GetPerformanceFrequency returned an invalid value", 0)
    end
-   if sched_options == true then
-      return {}
-   end
-   if type(sched_options) ~= "table" then
-      error("rig.run expects options.sched to be true, false, nil, or a table", 0)
-   end
-   return sched_options
+   return counter / frequency
 end
 
-local function setup_optional_scheduler(options, default_label)
-   local sched_options = normalize_sched_options(options)
-   if sched_options == nil then
-      M._scheduler = nil
-      return
-   end
-
-   local label = sched_options.label
-   if label == nil then
-      label = default_label
-   elseif type(label) ~= "string" or label == "" then
-      error("rig.run expects options.sched.label to be a non-empty string if provided", 0)
-   end
-
+local function setup_scheduler(label)
    M._scheduler = sched.create(label)
+   M._scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
+      scheduler:sleep_until(task, current_monotonic_seconds() + seconds)
+   end)
    M._scheduler:activate()
 end
 
-local function drain_optional_scheduler()
-   if M._scheduler ~= nil then
-      M._scheduler:drain()
-   end
+local function drain_scheduler()
+   M._scheduler:wake_due_sleepers(current_monotonic_seconds())
+   M._scheduler:drain()
 end
 
-local function shutdown_optional_scheduler()
-   if M._scheduler ~= nil then
-      M._scheduler:deactivate()
-      M._scheduler = nil
-   end
+local function shutdown_scheduler()
+   M._scheduler:deactivate()
+   M._scheduler = nil
 end
 
 local function require_render_callback(options)
@@ -1872,7 +1854,7 @@ rig.register_runtime_mode("sdl3", {
       local sdl3_options = normalize_runtime_options(options.sdl3)
       require_render_callback(options)
       setup(sdl3_options)
-      setup_optional_scheduler(options, "sdl3 scheduler")
+      setup_scheduler("sdl3 scheduler")
    end,
    loop = function(options, run_hooks)
       local sdl3_options = normalize_runtime_options(options.sdl3)
@@ -1884,14 +1866,14 @@ rig.register_runtime_mode("sdl3", {
             break
          end
          run_hooks("after_poll", options)
-         drain_optional_scheduler()
+         drain_scheduler()
          run_hooks("before_frame", options)
          render_frame(on_render)
          run_hooks("after_frame", options)
       end
    end,
    shutdown = function()
-      shutdown_optional_scheduler()
+      shutdown_scheduler()
       shutdown()
    end,
 })
@@ -1908,7 +1890,7 @@ rig.register_runtime_mode("sdl3_gpu", {
          debug_mode = sdl3_options.debug_mode,
          backend_name = sdl3_options.backend_name,
       }
-      setup_optional_scheduler(options, "sdl3_gpu scheduler")
+      setup_scheduler("sdl3_gpu scheduler")
    end,
    loop = function(options, run_hooks)
       local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
@@ -1920,14 +1902,14 @@ rig.register_runtime_mode("sdl3_gpu", {
             break
          end
          run_hooks("after_poll", options)
-         drain_optional_scheduler()
+         drain_scheduler()
          run_hooks("before_frame", options)
          render_gpu_frame(on_render)
          run_hooks("after_frame", options)
       end
    end,
    shutdown = function()
-      shutdown_optional_scheduler()
+      shutdown_scheduler()
       shutdown()
    end,
 })
@@ -1937,7 +1919,7 @@ rig.register_runtime_mode("sdl3_gl", {
       local sdl3_options = normalize_runtime_options(options.sdl3_gl)
       require_render_callback(options)
       setup_gl(sdl3_options)
-      setup_optional_scheduler(options, "sdl3_gl scheduler")
+      setup_scheduler("sdl3_gl scheduler")
    end,
    loop = function(options, run_hooks)
       local sdl3_options = normalize_runtime_options(options.sdl3_gl)
@@ -1949,14 +1931,14 @@ rig.register_runtime_mode("sdl3_gl", {
             break
          end
          run_hooks("after_poll", options)
-         drain_optional_scheduler()
+         drain_scheduler()
          run_hooks("before_frame", options)
          render_gl_frame(on_render)
          run_hooks("after_frame", options)
       end
    end,
    shutdown = function()
-      shutdown_optional_scheduler()
+      shutdown_scheduler()
       shutdown()
    end,
 })
