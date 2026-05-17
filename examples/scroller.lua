@@ -66,11 +66,36 @@ local scene = {
    sprite_snake_phase = 0.0,
    title_phase = 0.0,
    profiler_cpu_ms = 0.0,
+   profiler_cpu_max_1s_ms = 0.0,
    profiler_cpu_max_ms = 0.0,
+   profiler_present_ms = 0.0,
+   profiler_present_max_1s_ms = 0.0,
+   profiler_present_max_ms = 0.0,
+   profiler_total_ms = 0.0,
+   profiler_total_max_1s_ms = 0.0,
+   profiler_total_max_ms = 0.0,
    profiler_interval_ms = 0.0,
+   profiler_interval_max_1s_ms = 0.0,
    profiler_interval_max_ms = 0.0,
+   profiler_gap_ms = 0.0,
+   profiler_gap_max_1s_ms = 0.0,
+   profiler_gap_max_ms = 0.0,
    profiler_overruns = 0,
    profiler_last_frame_counter = nil,
+   profiler_frame_start_counter = nil,
+   profiler_cpu_history = {},
+   profiler_present_history = {},
+   profiler_total_history = {},
+   profiler_interval_history = {},
+   profiler_gap_history = {},
+   vsync_enabled = true,
+   profiler_enabled = true,
+   raster_enabled = true,
+   sprites_enabled = true,
+   sprite_outline_enabled = true,
+   scroller_enabled = true,
+   animate_enabled = true,
+   animate_task = nil,
 }
 
 local scroll_text = table.concat({
@@ -595,22 +620,42 @@ end
 local function draw_profiler(renderer)
    local panel_x = 18
    local panel_y = 16
-   local panel_w = 210
-   local panel_h = 70
+   local panel_w = 378
+   local panel_h = 194
 
    set_draw_color(renderer, 0, 0, 0, 150)
    fill_rect(renderer, panel_x, panel_y, panel_w, panel_h)
 
    local text_x = panel_x + 10
-   local line_1 = ("CPU %.2f"):format(scene.profiler_cpu_ms)
-   local line_2 = ("INT %.2f"):format(scene.profiler_interval_ms)
-   local line_3 = ("OVR %d"):format(scene.profiler_overruns)
-   local line_4 = ("MAX %.2f %.2f"):format(scene.profiler_cpu_max_ms, scene.profiler_interval_max_ms)
+   local header = "      CUR / 1S / MAX"
+   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(scene.profiler_cpu_ms, scene.profiler_cpu_max_1s_ms, scene.profiler_cpu_max_ms)
+   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(scene.profiler_present_ms, scene.profiler_present_max_1s_ms, scene.profiler_present_max_ms)
+   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(scene.profiler_total_ms, scene.profiler_total_max_1s_ms, scene.profiler_total_max_ms)
+   local line_4 = ("INT %.2f / %.2f / %.2f"):format(scene.profiler_interval_ms, scene.profiler_interval_max_1s_ms, scene.profiler_interval_max_ms)
+   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(scene.profiler_gap_ms, scene.profiler_gap_max_1s_ms, scene.profiler_gap_max_ms)
+   local line_6 = ("OVR %d"):format(scene.profiler_overruns)
+   local line_7 = scene.vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
+   local line_8 = scene.raster_enabled and "RASTER ON [1]" or "RASTER OFF [1]"
+   local line_9 = scene.sprites_enabled and "SPRITES ON [2]" or "SPRITES OFF [2]"
+   local line_10 = scene.sprite_outline_enabled and "OUTLINE ON [3]" or "OUTLINE OFF [3]"
+   local line_11 = scene.scroller_enabled and "SCROLLER ON [4]" or "SCROLLER OFF [4]"
+   local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
+   local line_13 = "PROFILER ON [0]"
 
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_1, text_x, panel_y + 18, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_2, text_x, panel_y + 34, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_3, text_x, panel_y + 50, 255, 214, 160, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_4, text_x, panel_y + 66, 255, 184, 150, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, header, text_x, panel_y + 16, 255, 184, 150, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
 end
 
 local function make_sprite(i, character)
@@ -625,6 +670,77 @@ local function make_sprite(i, character)
       lag = (i - 1) * 0.32,
       bob = (i - 1) * 0.21,
    }
+end
+
+local function update_metric_history(history, now_seconds, value)
+   history[#history + 1] = {
+      t = now_seconds,
+      v = value,
+   }
+
+   local cutoff = now_seconds - 1.0
+   while history[1] ~= nil and history[1].t < cutoff do
+      table.remove(history, 1)
+   end
+
+   local max_1s = 0.0
+   for i = 1, #history do
+      if history[i].v > max_1s then
+         max_1s = history[i].v
+      end
+   end
+
+   return max_1s
+end
+
+local function set_vsync(enabled)
+   local renderer = sdl3.get_renderer()
+   local interval = enabled and 1 or 0
+   if not sdl3.SetRenderVSync(renderer, interval) then
+      error("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()), 0)
+   end
+   scene.vsync_enabled = enabled
+end
+
+local function toggle_vsync()
+   set_vsync(not scene.vsync_enabled)
+end
+
+local function set_animation_enabled(enabled)
+   scene.animate_enabled = enabled
+
+   if enabled and scene.animate_task ~= nil then
+      local scheduler = sched._active_scheduler
+      if scheduler ~= nil then
+         scheduler:wake(scene.animate_task)
+      end
+   end
+end
+
+local function toggle_animation()
+   set_animation_enabled(not scene.animate_enabled)
+end
+
+local function on_key(key_info)
+   if key_info.action ~= "down" or key_info["repeat"] then
+      return
+   end
+
+   if key_info.key == "0" then
+      scene.profiler_enabled = not scene.profiler_enabled
+   elseif key_info.key == "V" or key_info.key == "v" then
+      toggle_vsync()
+   elseif key_info.key == "1" then
+      scene.raster_enabled = not scene.raster_enabled
+   elseif key_info.key == "2" then
+      scene.sprites_enabled = not scene.sprites_enabled
+   elseif key_info.key == "3" then
+      scene.sprite_outline_enabled = not scene.sprite_outline_enabled
+   elseif key_info.key == "4" then
+      scene.scroller_enabled = not scene.scroller_enabled
+   elseif key_info.key == "5" then
+      toggle_animation()
+   end
 end
 
 local function draw_sprites(renderer)
@@ -649,20 +765,22 @@ local function draw_sprites(renderer)
       local y = lerp(min_y, max_y, y_phase)
       local outline_scale = scale * 1.03
 
-      for j = 1, #sprite_outline_offsets do
-         local offset = sprite_outline_offsets[j]
-         draw_packed_glyph(
-            renderer,
-            scene.sprite_textures,
-            sprite.glyph,
-            x + offset[1],
-            y + offset[2],
-            outline_scale,
-            0,
-            0,
-            0,
-            128
-         )
+      if scene.sprite_outline_enabled then
+         for j = 1, #sprite_outline_offsets do
+            local offset = sprite_outline_offsets[j]
+            draw_packed_glyph(
+               renderer,
+               scene.sprite_textures,
+               sprite.glyph,
+               x + offset[1],
+               y + offset[2],
+               outline_scale,
+               0,
+               0,
+               0,
+               128
+            )
+         end
       end
 
       draw_packed_glyph(
@@ -685,13 +803,13 @@ local function animate_scroller()
    local period = scene.scroll_run.width + scroll_loop_gap
    local transition_duration = 0.5
    local visible_duration = 4.0
+   local fixed_dt = 1.0 / 120.0
+   local max_dt = 0.05
+   local max_steps_per_frame = 6
+   local accumulator = 0.0
    local state = "VISIBLE" -- VISIBLE, FADING_OUT, FADING_IN
 
-   while true do
-      local now = time.monotonic()
-      local dt = now - last
-      last = now
-
+   local function update_simulation(dt)
       scene.raster_transition_timer = scene.raster_transition_timer + dt
 
       if state == "VISIBLE" then
@@ -723,6 +841,35 @@ local function animate_scroller()
       scene.raster_phase = scene.raster_phase + dt * 1.6
       scene.sprite_snake_phase = scene.sprite_snake_phase + dt * 2.35
       scene.title_phase = scene.title_phase + dt * 1.8
+   end
+
+   while true do
+      if not scene.animate_enabled then
+         sched.park()
+         last = time.monotonic()
+      end
+
+      local now = time.monotonic()
+      local dt = now - last
+      last = now
+      if dt < 0.0 then
+         dt = 0.0
+      elseif dt > max_dt then
+         dt = max_dt
+      end
+
+      accumulator = accumulator + dt
+      local steps = 0
+      while accumulator >= fixed_dt and steps < max_steps_per_frame do
+         update_simulation(fixed_dt)
+         accumulator = accumulator - fixed_dt
+         steps = steps + 1
+      end
+
+      if steps == max_steps_per_frame and accumulator > fixed_dt then
+         accumulator = fixed_dt
+      end
+
       sched.yield()
    end
 end
@@ -776,7 +923,11 @@ local function initialize_scene()
       scene.sprite_atlas,
       sprite_text
    )
-   warm_atlas_text(scene.profiler_face, scene.profiler_atlas, "CPU INT OVR MAX 0123456789.-")
+   warm_atlas_text(
+      scene.profiler_face,
+      scene.profiler_atlas,
+      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM PROFILER ON OFF [] 0123456789./-"
+   )
 
    scene.title_textures = upload_atlas_textures(renderer, scene.title_atlas)
    scene.scroll_textures = upload_atlas_textures(renderer, scene.scroll_atlas)
@@ -798,7 +949,7 @@ local function initialize_scene()
       scene.sprites[i] = sprite
    end
 
-   sched.spawn(animate_scroller)
+   scene.animate_task = sched.spawn(animate_scroller)
 end
 
 local function release_scene()
@@ -855,17 +1006,68 @@ local function release_scene()
    end
 end
 
-local function render_frame()
+local function begin_frame_profile()
    local frame_start = tonumber(sdl3.GetPerformanceCounter())
+   local frame_start_seconds = frame_start / perf_frequency
    local last_frame_counter = scene.profiler_last_frame_counter
    if last_frame_counter ~= nil then
       scene.profiler_interval_ms = (frame_start - last_frame_counter) * 1000.0 / perf_frequency
       if scene.profiler_interval_ms > scene.profiler_interval_max_ms then
          scene.profiler_interval_max_ms = scene.profiler_interval_ms
       end
+      scene.profiler_interval_max_1s_ms =
+         update_metric_history(scene.profiler_interval_history, frame_start_seconds, scene.profiler_interval_ms)
+
+      local gap_ms = scene.profiler_interval_ms - scene.profiler_total_ms
+      if gap_ms < 0.0 then
+         gap_ms = 0.0
+      end
+      scene.profiler_gap_ms = gap_ms
+      if scene.profiler_gap_ms > scene.profiler_gap_max_ms then
+         scene.profiler_gap_max_ms = scene.profiler_gap_ms
+      end
+      scene.profiler_gap_max_1s_ms =
+         update_metric_history(scene.profiler_gap_history, frame_start_seconds, scene.profiler_gap_ms)
    end
    scene.profiler_last_frame_counter = frame_start
+   scene.profiler_frame_start_counter = frame_start
+end
 
+local function end_frame_profile()
+   local frame_start = scene.profiler_frame_start_counter
+   if frame_start == nil then
+      return
+   end
+
+   local frame_end = tonumber(sdl3.GetPerformanceCounter())
+   local frame_end_seconds = frame_end / perf_frequency
+    scene.profiler_total_ms = (frame_end - frame_start) * 1000.0 / perf_frequency
+   if scene.profiler_total_ms > scene.profiler_total_max_ms then
+      scene.profiler_total_max_ms = scene.profiler_total_ms
+   end
+   scene.profiler_total_max_1s_ms =
+      update_metric_history(scene.profiler_total_history, frame_end_seconds, scene.profiler_total_ms)
+
+   local present_ms = scene.profiler_total_ms - scene.profiler_cpu_ms
+   if present_ms < 0.0 then
+      present_ms = 0.0
+   end
+   scene.profiler_present_ms = present_ms
+   if scene.profiler_present_ms > scene.profiler_present_max_ms then
+      scene.profiler_present_max_ms = scene.profiler_present_ms
+   end
+   scene.profiler_present_max_1s_ms =
+      update_metric_history(scene.profiler_present_history, frame_end_seconds, scene.profiler_present_ms)
+
+   if scene.profiler_total_ms > 16.67 then
+      scene.profiler_overruns = scene.profiler_overruns + 1
+   end
+
+   scene.profiler_frame_start_counter = nil
+end
+
+local function render_frame()
+   local frame_start = tonumber(sdl3.GetPerformanceCounter())
    local renderer = sdl3.get_renderer()
    set_draw_color(
       renderer,
@@ -878,20 +1080,28 @@ local function render_frame()
       error("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()), 0)
    end
 
-   draw_rasterbars(renderer)
-   draw_sprites(renderer)
+   if scene.raster_enabled then
+      draw_rasterbars(renderer)
+   end
+   if scene.sprites_enabled then
+      draw_sprites(renderer)
+   end
    --draw_title(renderer)
-   draw_scroller(renderer)
-   draw_profiler(renderer)
+   if scene.scroller_enabled then
+      draw_scroller(renderer)
+   end
+   if scene.profiler_enabled then
+      draw_profiler(renderer)
+   end
 
    local frame_end = tonumber(sdl3.GetPerformanceCounter())
+   local frame_end_seconds = frame_end / perf_frequency
    scene.profiler_cpu_ms = (frame_end - frame_start) * 1000.0 / perf_frequency
    if scene.profiler_cpu_ms > scene.profiler_cpu_max_ms then
       scene.profiler_cpu_max_ms = scene.profiler_cpu_ms
    end
-   if scene.profiler_cpu_ms > 16.67 then
-      scene.profiler_overruns = scene.profiler_overruns + 1
-   end
+   scene.profiler_cpu_max_1s_ms =
+      update_metric_history(scene.profiler_cpu_history, frame_end_seconds, scene.profiler_cpu_ms)
 end
 
 rig.run {
@@ -902,10 +1112,13 @@ rig.run {
          [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
          [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
       },
+      on_key = on_key,
       on_render = render_frame,
    },
    hooks = {
       after_setup = initialize_scene,
+      before_frame = begin_frame_profile,
+      after_frame = end_frame_profile,
       before_shutdown = release_scene,
    },
 }
