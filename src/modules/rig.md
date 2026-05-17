@@ -34,6 +34,18 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Optional per-run hooks may be passed under `options.hooks`.
   - `options.hooks.<phase>` may be either a function or an array of functions.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
+- `rig.create_service(service_id, method_names)`
+  - Creates a named runtime service definition.
+  - `service_id` is a string.
+  - `method_names` is an array of required method names.
+  - Raises if the service already exists.
+- `rig.register_service_impl(service_id, mode, impl)`
+  - Registers a service implementation for one runtime mode.
+  - Completeness is checked at registration time.
+  - Raises if the service is unknown or if that mode already has an implementation.
+- `rig.require_service(service_id)`
+  - Returns the implementation for the currently active runtime mode.
+  - Raises if no runtime mode is active or if the active mode has no implementation.
 - `rig.resource_scope(context, label?)`
   - Creates a generic ownership scope.
   - `scope:adopt(resource, release_fn)` tracks a resource with a custom release function.
@@ -57,3 +69,5 @@ Core runtime helpers that are always loaded at interpreter startup.
 ## Notes
 
 - Custom script languages can be added by appending loader functions to `rig.script_loaders`.
+- Services are resolved by active runtime mode, not by loaded-module presence.
+- One module should own each service definition. Backend modules should require that owner before calling `rig.register_service_impl(...)`.

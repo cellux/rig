@@ -1,6 +1,7 @@
 local M = ... or {}
 local ffi = ffi
 local sched = require("sched")
+require("time")
 
 ffi.cdef[[
 typedef struct rig_uv_loop rig_uv_loop_t;
@@ -308,6 +309,15 @@ function M.monotonic()
    local seconds, nanoseconds = read_clock(M.CLOCK_MONOTONIC, "uv.monotonic")
    return seconds + nanoseconds / 1000000000.0
 end
+
+rig.register_service_impl("time", "uv", {
+   now = function()
+      return M.now()
+   end,
+   monotonic = function()
+      return M.monotonic()
+   end,
+})
 
 local function setup(options)
    options = normalize_runtime_options(options)

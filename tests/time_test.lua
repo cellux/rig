@@ -1,15 +1,31 @@
 local test = require("test")
-local sdl3 = require("sdl3")
 local time = require("time")
+local uv = require("uv")
 
-test.case("time can use the sdl3 backend", function()
-   test.equal(type(sdl3.GetCurrentTime), "function")
+local outside_runtime_ok, outside_runtime_err = pcall(time.now)
 
-   local now = time.now()
-   local monotonic = time.monotonic()
+test.case("time requires an active runtime service", function()
+   test.falsey(outside_runtime_ok)
+   test.match(tostring(outside_runtime_err), "requires an active runtime mode")
+end)
 
-   test.equal(type(now), "number")
-   test.equal(type(monotonic), "number")
-   test.truthy(now > 0)
-   test.truthy(monotonic > 0)
+test.case("time can use the uv service inside uv mode", function()
+   local observed_now
+   local observed_monotonic
+
+   rig.run {
+      mode = "uv",
+      uv = {
+         main = function()
+            observed_now = time.now()
+            observed_monotonic = time.monotonic()
+            uv.stop()
+         end,
+      },
+   }
+
+   test.equal(type(observed_now), "number")
+   test.equal(type(observed_monotonic), "number")
+   test.truthy(observed_now > 0)
+   test.truthy(observed_monotonic > 0)
 end)

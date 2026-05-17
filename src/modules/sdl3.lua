@@ -2,6 +2,7 @@ local M = ... or {}
 local ffi = ffi
 local bit = bit
 local sched = require("sched")
+require("time")
 
 ffi.cdef[[
 typedef struct SDL_Window SDL_Window;
@@ -1908,6 +1909,28 @@ local function current_monotonic_seconds()
    end
    return counter / frequency
 end
+
+local function current_time_seconds()
+   local ticks = ffi.new("int64_t[1]")
+   if not M.GetCurrentTime(ticks) then
+      local err = M.GetError()
+      error("sdl3.GetCurrentTime failed: " .. ffi.string(err), 0)
+   end
+   return tonumber(ticks[0]) / 1000000000.0
+end
+
+local sdl3_time_service = {
+   now = function()
+      return current_time_seconds()
+   end,
+   monotonic = function()
+      return current_monotonic_seconds()
+   end,
+}
+
+rig.register_service_impl("time", "sdl3", sdl3_time_service)
+rig.register_service_impl("time", "sdl3_gl", sdl3_time_service)
+rig.register_service_impl("time", "sdl3_gpu", sdl3_time_service)
 
 local function setup_scheduler(label)
    M._scheduler = sched.create(label)

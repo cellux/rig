@@ -176,6 +176,143 @@ end
 
 M._runtime_modes = M._runtime_modes or {}
 M._runtime_hooks = M._runtime_hooks or {}
+M._services = M._services or {}
+M._active_runtime_mode = M._active_runtime_mode or nil
+
+local function normalize_method_names(method_names)
+   if type(method_names) ~= "table" then
+      error("rig.create_service expects method_names to be a table", 0)
+   end
+
+   local copied = {}
+   local seen = {}
+
+   for i = 1, #method_names do
+      local method_name = method_names[i]
+      if type(method_name) ~= "string" or method_name == "" then
+         error(
+            ("rig.create_service expects method_names[%d] to be a non-empty string"):format(i),
+            0
+         )
+      end
+      if seen[method_name] then
+         error(
+            ("rig.create_service received duplicate method name '%s'"):format(method_name),
+            0
+         )
+      end
+      copied[i] = method_name
+      seen[method_name] = true
+   end
+
+   return copied
+end
+
+function M.create_service(service_id, method_names)
+   if type(service_id) ~= "string" or service_id == "" then
+      error("rig.create_service expects service_id to be a non-empty string", 0)
+   end
+
+   local methods = normalize_method_names(method_names)
+   local existing = M._services[service_id]
+   if existing ~= nil then
+      error(
+         ("rig.create_service already has a service '%s'"):format(service_id),
+         0
+      )
+   end
+
+   local service = {
+      id = service_id,
+      methods = methods,
+      impls = {},
+   }
+   M._services[service_id] = service
+   return service
+end
+
+function M.register_service_impl(service_id, mode, impl)
+   if type(service_id) ~= "string" or service_id == "" then
+      error("rig.register_service_impl expects service_id to be a non-empty string", 0)
+   end
+   if type(mode) ~= "string" or mode == "" then
+      error("rig.register_service_impl expects mode to be a non-empty string", 0)
+   end
+   if type(impl) ~= "table" then
+      error("rig.register_service_impl expects impl to be a table", 0)
+   end
+
+   local service = M._services[service_id]
+   if service == nil then
+      error(
+         ("rig.register_service_impl does not know service '%s'"):format(service_id),
+         0
+      )
+   end
+   if service.impls[mode] ~= nil then
+      error(
+         ("rig.register_service_impl already has an implementation for service '%s' in mode '%s'"):format(
+            service_id,
+            mode
+         ),
+         0
+      )
+   end
+
+   for i = 1, #service.methods do
+      local method_name = service.methods[i]
+      if type(impl[method_name]) ~= "function" then
+         error(
+            ("rig.register_service_impl requires service '%s' for mode '%s' to implement method '%s'"):format(
+               service_id,
+               mode,
+               method_name
+            ),
+            0
+         )
+      end
+   end
+
+   service.impls[mode] = impl
+   return impl
+end
+
+function M.require_service(service_id)
+   if type(service_id) ~= "string" or service_id == "" then
+      error("rig.require_service expects service_id to be a non-empty string", 0)
+   end
+
+   local service = M._services[service_id]
+   if service == nil then
+      error(
+         ("rig.require_service does not know service '%s'"):format(service_id),
+         0
+      )
+   end
+
+   local active_mode = M._active_runtime_mode
+   if type(active_mode) ~= "string" or active_mode == "" then
+      error(
+         ("rig.require_service('%s') requires an active runtime mode"):format(
+            service_id
+         ),
+         0
+      )
+   end
+
+   local impl = service.impls[active_mode]
+   if impl == nil then
+      error(
+         ("rig.require_service('%s') has no implementation for runtime mode '%s'"):format(
+            service_id,
+            active_mode
+         ),
+         0
+      )
+   end
+
+   return impl
+end
 
 function M.register_runtime_mode(name, mode)
    if type(name) ~= "string" or name == "" then
@@ -285,23 +422,28 @@ function M.run(options)
       )
    end
 
-   run_all_hooks(options, "before_setup", options)
-   if type(mode.setup) == "function" then
-      mode.setup(options)
-   end
-   run_all_hooks(options, "after_setup", options)
+   local previous_mode = M._active_runtime_mode
+   M._active_runtime_mode = options.mode
 
    local ok, err = pcall(function()
+      run_all_hooks(options, "before_setup", options)
+      if type(mode.setup) == "function" then
+         mode.setup(options)
+      end
+      run_all_hooks(options, "after_setup", options)
+
       mode.loop(options, function(phase, ...)
          run_all_hooks(options, phase, ...)
       end)
+
+      run_all_hooks(options, "before_shutdown", options)
+      if type(mode.shutdown) == "function" then
+         mode.shutdown(options)
+      end
+      run_all_hooks(options, "after_shutdown", options)
    end)
 
-   run_all_hooks(options, "before_shutdown", options)
-   if type(mode.shutdown) == "function" then
-      mode.shutdown(options)
-   end
-   run_all_hooks(options, "after_shutdown", options)
+   M._active_runtime_mode = previous_mode
 
    if not ok then
       error(err, 0)

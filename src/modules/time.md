@@ -1,6 +1,6 @@
 # `time`
 
-Backend-selecting clock wrapper over `uv` or `sdl3`.
+Runtime-service clock wrapper.
 
 ## API
 
@@ -13,7 +13,11 @@ Backend-selecting clock wrapper over `uv` or `sdl3`.
 
 - Use `time.monotonic()` for animation and frame timing.
 - `time.now()` is wall-clock time and may jump if the system clock changes.
-- `time` checks already-loaded modules at call time.
-- If `uv` is loaded, it uses `uv.now()` and `uv.monotonic()`.
-- Otherwise, if `sdl3` is loaded, it uses `sdl3.GetCurrentTime()` and `sdl3.GetPerformanceCounter()` / `sdl3.GetPerformanceFrequency()`.
-- If neither module is loaded, `time` raises an error.
+- `time` resolves the `"time"` service through `rig.require_service("time")`.
+- The service implementation depends on the currently active runtime mode.
+- `uv` registers the `"time"` service for `mode = "uv"`.
+- `sdl3` registers the `"time"` service for:
+  - `mode = "sdl3"`
+  - `mode = "sdl3_gl"`
+  - `mode = "sdl3_gpu"`
+- Calling `time.now()` or `time.monotonic()` without an active runtime mode raises an error.
