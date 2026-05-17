@@ -2,6 +2,7 @@
 fennel
 rig
 dl
+freetype
 sched
 uv
 test

@@ -11,6 +11,7 @@ enable_testing()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
 pkg_check_modules(SDL3 REQUIRED sdl3)
+pkg_check_modules(FREETYPE2 REQUIRED freetype2)
 find_program(LUAJIT_BIN NAMES luajit luajit-2.1 REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/src/modules/modules.cmake")
@@ -30,6 +31,7 @@ set_target_properties(rig PROPERTIES
 target_include_directories(rig PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     ${SDL3_INCLUDE_DIRS}
+    ${FREETYPE2_INCLUDE_DIRS}
 )
 
 target_link_libraries(rig PRIVATE
@@ -39,6 +41,7 @@ target_link_libraries(rig PRIVATE
 
 target_compile_options(rig PRIVATE
     ${SDL3_CFLAGS_OTHER}
+    ${FREETYPE2_CFLAGS_OTHER}
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )
 
