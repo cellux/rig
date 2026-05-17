@@ -13,7 +13,7 @@ rig: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR) --target rig
 
 test: rig
-	ctest --test-dir $(BUILD_DIR) --output-on-failure
+	ctest --test-dir $(BUILD_DIR) --output-on-failure --verbose
 
 clean:
 	rm -rf $(BUILD_DIR)

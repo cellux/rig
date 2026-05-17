@@ -4,8 +4,26 @@ local function format_duration(duration)
    return string.format("%.3f ms", duration * 1000.0)
 end
 
-local function print_failure(result)
-   rig.println("FAIL " .. result.file .. " (" .. format_duration(result.duration) .. ")")
+local function format_file_status(prefix, summary, result)
+   local passed = result.passed_cases
+   local total = result.total_cases
+   if type(passed) ~= "number" or type(total) ~= "number" then
+      passed = summary.passed
+      total = summary.total
+   end
+
+   return string.format(
+      "%s [%d/%d] %s (%s)",
+      prefix,
+      passed,
+      total,
+      result.file,
+      format_duration(result.duration)
+   )
+end
+
+local function print_failure(summary, result)
+   rig.println(format_file_status("FAIL", summary, result))
    if result.stdout ~= "" then
       rig.println("stdout:")
       io.write(result.stdout)
@@ -34,9 +52,9 @@ rig.run {
          for i = 1, #summary.files do
             local result = summary.files[i]
             if result.success then
-               rig.println("PASS " .. result.file .. " (" .. format_duration(result.duration) .. ")")
+               rig.println(format_file_status("PASS", summary, result))
             else
-               print_failure(result)
+               print_failure(summary, result)
             end
          end
 

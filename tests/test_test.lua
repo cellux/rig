@@ -28,6 +28,8 @@ test.case("test.run discovers the repo test files", function()
    test.equal(summary.passed, 1)
    test.truthy(summary.duration >= 0)
    test.truthy(summary.files[1].duration >= 0)
+   test.equal(summary.files[1].passed_cases, 2)
+   test.equal(summary.files[1].total_cases, 2)
    test.match(
       summary.files[1].stdout,
       "PASS scheduler can run a spawned task %([^)]+%)"

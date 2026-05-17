@@ -6,6 +6,8 @@ local lua_tostring = _G.tostring
 
 M._registered_cases = M._registered_cases or {}
 
+local case_summary_prefix = "@@RIG_TEST_CASE_SUMMARY "
+
 local function is_test_script_path(script_path)
    return type(script_path) == "string"
       and (
@@ -126,6 +128,36 @@ local function discover_files(roots)
 
    table.sort(files)
    return files
+end
+
+local function extract_case_summary(output)
+   if type(output) ~= "string" or output == "" then
+      return output, nil, nil
+   end
+
+   local lines = {}
+   local had_trailing_newline = output:sub(-1) == "\n"
+   local passed = nil
+   local total = nil
+
+   for line in output:gmatch("([^\n]+)") do
+      local line_passed, line_total = line:match(
+         "^" .. case_summary_prefix:gsub("([^%w])", "%%%1") .. "(%d+)%s+(%d+)$"
+      )
+      if line_passed ~= nil then
+         passed = tonumber(line_passed)
+         total = tonumber(line_total)
+      else
+         table.insert(lines, line)
+      end
+   end
+
+   local cleaned = table.concat(lines, "\n")
+   if had_trailing_newline and cleaned ~= "" then
+      cleaned = cleaned .. "\n"
+   end
+
+   return cleaned, passed, total
 end
 
 function M.case(name, fn)
@@ -352,15 +384,20 @@ function M.run(options)
             args = { executable, file },
          }
          local duration = time.monotonic() - file_started_at
+         local stdout, passed_cases, total_cases = extract_case_summary(
+            result.stdout
+         )
 
          table.insert(results, {
             file = file,
             success = result.success,
             exit_status = result.exit_status,
             term_signal = result.term_signal,
-            stdout = result.stdout,
+            stdout = stdout,
             stderr = result.stderr,
             duration = duration,
+            passed_cases = passed_cases,
+            total_cases = total_cases,
          })
       end
    end
@@ -506,6 +543,14 @@ function M.run_registered_cases(options)
    end
 
    summary.success = summary.failed == 0
+   rig.println(
+      string.format(
+         "%s%d %d",
+         case_summary_prefix,
+         summary.passed,
+         summary.total
+      )
+   )
    if not summary.success then
       error(
          ("test file '%s' failed: %d of %d cases failed"):format(
