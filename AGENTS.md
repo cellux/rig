@@ -2,6 +2,8 @@
 
 - Do not run `make` and any `./build/rig ...` smoke tests in parallel.
 - Build first, wait for it to finish, then run smoke tests.
+- If you only change a Lua or Fennel script such as an example or test file, you do not need to rebuild `rig`.
+  - Rebuild only when changing C code, build files, or embedded builtin module sources that are compiled into the executable.
 
 ## API Naming
 
