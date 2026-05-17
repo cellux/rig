@@ -24,6 +24,18 @@ local function pop_item(queue)
    return table.remove(queue, 1)
 end
 
+local function flush_next_ready(self)
+   local next_ready = self._next_ready
+   if #next_ready == 0 then
+      return
+   end
+
+   for i = 1, #next_ready do
+      enqueue_item(self._ready, next_ready[i])
+      next_ready[i] = nil
+   end
+end
+
 M._handlers["sched.yield"] = function(scheduler, task)
    enqueue_item(scheduler._next_ready, {
       task = task,
@@ -220,10 +232,7 @@ function scheduler_mt:pending_async()
 end
 
 function scheduler_mt:drain()
-   if #self._completions == 0 and #self._ready == 0 and #self._next_ready > 0 then
-      self._ready = self._next_ready
-      self._next_ready = {}
-   end
+   flush_next_ready(self)
 
    while self._pending_error == nil do
       local completion = pop_item(self._completions)

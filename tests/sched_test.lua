@@ -34,6 +34,40 @@ test.case("sched.yield resumes on the next scheduler drain", function()
    test.truthy(task_a._done)
 end)
 
+test.case("sched.yield is not starved by completions on the next drain", function()
+   local scheduler = sched.create("yield starvation scheduler")
+   local events = {}
+   local yielded_task
+   local parked_task
+
+   scheduler:activate()
+
+   yielded_task = sched.spawn(function()
+      table.insert(events, "yield before")
+      sched.yield()
+      table.insert(events, "yield after")
+   end)
+
+   parked_task = sched.spawn(function()
+      table.insert(events, "park before")
+      sched.park()
+      table.insert(events, "park after")
+   end)
+
+   scheduler:drain()
+   scheduler:wake(parked_task)
+   scheduler:drain()
+   scheduler:deactivate()
+
+   test.equal(#events, 4)
+   test.equal(events[1], "yield before")
+   test.equal(events[2], "park before")
+   test.equal(events[3], "park after")
+   test.equal(events[4], "yield after")
+   test.truthy(yielded_task._done)
+   test.truthy(parked_task._done)
+end)
+
 test.case("sched.sleep can be implemented with deadline wakeups", function()
    local scheduler = sched.create("sleep test scheduler")
    local events = {}
