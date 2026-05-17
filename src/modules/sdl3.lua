@@ -65,6 +65,14 @@ bool SDL_SetBooleanProperty(SDL_PropertiesID props, const char *name, bool value
 bool SDL_PollEvent(SDL_Event *event);
 const char *SDL_GetError(void);
 const char *SDL_GetKeyName(SDL_Keycode key);
+bool SDL_GetCurrentTime(Sint64 *ticks);
+Uint64 SDL_GetTicks(void);
+Uint64 SDL_GetTicksNS(void);
+Uint64 SDL_GetPerformanceCounter(void);
+Uint64 SDL_GetPerformanceFrequency(void);
+void SDL_Delay(Uint32 ms);
+void SDL_DelayNS(Uint64 ns);
+void SDL_DelayPrecise(Uint64 ns);
 void SDL_GL_ResetAttributes(void);
 bool SDL_GL_SetAttribute(SDL_GLAttr attr, int value);
 SDL_GLContext SDL_GL_CreateContext(SDL_Window *window);
@@ -392,6 +400,14 @@ export_sdl_function("SetBooleanProperty", "SDL_SetBooleanProperty")
 export_sdl_function("PollEvent", "SDL_PollEvent")
 export_sdl_function("GetError", "SDL_GetError")
 export_sdl_function("GetKeyName", "SDL_GetKeyName")
+export_sdl_function("GetCurrentTime", "SDL_GetCurrentTime")
+export_sdl_function("GetTicks", "SDL_GetTicks")
+export_sdl_function("GetTicksNS", "SDL_GetTicksNS")
+export_sdl_function("GetPerformanceCounter", "SDL_GetPerformanceCounter")
+export_sdl_function("GetPerformanceFrequency", "SDL_GetPerformanceFrequency")
+export_sdl_function("Delay", "SDL_Delay")
+export_sdl_function("DelayNS", "SDL_DelayNS")
+export_sdl_function("DelayPrecise", "SDL_DelayPrecise")
 export_sdl_function("GL_ResetAttributes", "SDL_GL_ResetAttributes")
 export_sdl_function("GL_SetAttribute", "SDL_GL_SetAttribute")
 export_sdl_function("GL_CreateContext", "SDL_GL_CreateContext")

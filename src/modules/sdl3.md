@@ -78,6 +78,25 @@ Additional fields accepted by `options.sdl3_gpu`:
 - `sdl3.destroy_properties(properties_id)`
   - Releases a properties object built through SDL.
 
+## Time Helpers
+
+- `sdl3.GetCurrentTime(ticks_ptr)`
+  - Raw SDL realtime clock call.
+- `sdl3.GetTicks()`
+  - Milliseconds since SDL initialization.
+- `sdl3.GetTicksNS()`
+  - Nanoseconds since SDL initialization.
+- `sdl3.GetPerformanceCounter()`
+  - Raw high-resolution performance counter value.
+- `sdl3.GetPerformanceFrequency()`
+  - Frequency for `sdl3.GetPerformanceCounter()`.
+- `sdl3.Delay(ms)`
+  - Sleeps for at least the requested milliseconds.
+- `sdl3.DelayNS(ns)`
+  - Sleeps for at least the requested nanoseconds.
+- `sdl3.DelayPrecise(ns)`
+  - Higher-precision SDL delay helper.
+
 ## GPU Helpers
 
 - `sdl3.get_gpu_driver_names()`
