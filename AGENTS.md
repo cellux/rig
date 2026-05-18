@@ -17,14 +17,14 @@
     - Lua: `sdl3.GetTicks`
 - Any additional Lua-only abstractions layered on top of a C API must use `snake_case`.
 - Single-word lowercase names count as `snake_case`.
-- Constant names may mirror the original C names exactly after removing the module or library prefix.
-  - There is no need for double underscores in constant names.
-  - We do not reserve constant names for any separate Rig-owned naming scheme.
-- Constants may remain in all-caps when mirroring foreign APIs or representing enum-like values.
 - If a Rig C module loads symbols dynamically via `dlsym`, each bound symbol should use a `rig_X__NAME` identifier in `X.c`.
   - Use a double underscore for dynamically bound symbols from the underlying C library.
 - If a Rig C module implements its own Lua-facing abstraction in `X.c`, its identifier should use `rig_X_NAME`.
   - Use a single underscore for Rig-owned wrapper or abstraction names.
+- Constant names may mirror the original C names exactly after removing the module or library prefix.
+  - There is no need for double underscores in constant names.
+  - We do not reserve constant names for any separate Rig-owned naming scheme.
+- Constants may remain in all-caps when mirroring foreign APIs or representing enum-like values.
 
 ## Runtime And API Design
 
@@ -41,9 +41,6 @@
 - `sched` is the generic scheduler layer.
   - Backend-specific yield protocol details should be hidden behind module APIs.
   - Users should not have to call `sched.await("backend.op", ...)` directly when a proper wrapper exists.
-- Raw foreign API exposure and higher-level Lua abstractions should coexist explicitly.
-  - Raw bindings should mirror the foreign C API naming.
-  - Higher-level Lua conveniences in the same module should use `snake_case`.
 - If a utility is backend-agnostic, put it in `rig`.
   - Backend-specific modules may wrap it with backend-specific convenience methods.
 - Runtime behavior must not depend on module load order.
