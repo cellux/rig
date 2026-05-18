@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 local sched = require("sched")
 require("time")
 

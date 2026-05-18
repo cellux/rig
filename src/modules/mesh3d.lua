@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 local sdl3 = require("sdl3")
 
 local DEFAULT_FACE_COLORS = {

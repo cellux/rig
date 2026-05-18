@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 
 ffi.cdef[[
 typedef float rig_math3d_mat4[16];

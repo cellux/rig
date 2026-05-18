@@ -1,4 +1,4 @@
-local ffi = ffi
+local ffi = require("ffi")
 
 local gl = require("gl")
 local math3d = require("math3d")

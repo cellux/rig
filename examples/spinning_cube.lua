@@ -1,4 +1,4 @@
-local ffi = ffi
+local ffi = require("ffi")
 
 local math3d = require("math3d")
 local mesh3d = require("mesh3d")

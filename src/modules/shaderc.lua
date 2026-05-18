@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 
 ffi.cdef[[
 typedef struct shaderc_compiler* shaderc_compiler_t;

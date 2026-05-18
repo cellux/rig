@@ -1,6 +1,6 @@
 local sdl3 = require("sdl3")
 local sched = require("sched")
-local ffi = ffi
+local ffi = require("ffi")
 
 local window_width = 960
 local window_height = 540

@@ -62,7 +62,7 @@ Currently exported groups include:
 
 ```lua
 local freetype = require("freetype")
-local ffi = ffi
+local ffi = require("ffi")
 
 local library_out = ffi.new("FT_Library[1]")
 assert(freetype.Init_FreeType(library_out) == 0)

@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 
 ffi.cdef[[
 typedef int hb_bool_t;

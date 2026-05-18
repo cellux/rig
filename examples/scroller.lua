@@ -2,7 +2,7 @@ local sdl3 = require("sdl3")
 local sched = require("sched")
 local font = require("font")
 local time = require("time")
-local ffi = ffi
+local ffi = require("ffi")
 
 local window_width = 1280
 local window_height = 720

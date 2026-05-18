@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 
 ffi.cdef[[
 typedef unsigned char FT_Bool;

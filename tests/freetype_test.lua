@@ -1,6 +1,6 @@
 local test = require("test")
 local freetype = require("freetype")
-local ffi = ffi
+local ffi = require("ffi")
 local bit = bit
 
 local function find_font_path()

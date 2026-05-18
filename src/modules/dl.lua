@@ -1,5 +1,5 @@
 local M = ... or {}
-local ffi = ffi
+local ffi = require("ffi")
 
 ffi.cdef[[
 void *rig_dl_open(const char *path);

@@ -1,7 +1,7 @@
 local test = require("test")
 local freetype = require("freetype")
 local harfbuzz = require("harfbuzz")
-local ffi = ffi
+local ffi = require("ffi")
 
 local function find_font_path()
    local candidates = {

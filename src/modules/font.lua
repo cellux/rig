@@ -1,7 +1,7 @@
 local M = ... or {}
 local freetype = require("freetype")
 local harfbuzz = require("harfbuzz")
-local ffi = ffi
+local ffi = require("ffi")
 local bit = bit
 
 local face_mt = {}
