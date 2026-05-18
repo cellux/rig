@@ -76,6 +76,32 @@ test.case("font can create a sized face and shape text", function()
    face:release()
 end)
 
+test.case("font can build a text run from an atlas", function()
+   local font_path = find_font_path()
+   if font_path == nil then
+      return
+   end
+
+   local face = font.load_face(font_path)
+   local sized = face:create_sized_face(18)
+   local atlas = sized:create_atlas()
+   local run = atlas:build_text_run("Hello")
+
+   test.equal(run.text, "Hello")
+   test.truthy(type(run.width) == "number")
+   test.truthy(run.width > 0)
+   test.truthy(type(run.glyph_count) == "number")
+   test.truthy(run.glyph_count > 0)
+   test.equal(#run.entries, run.glyph_count)
+   test.truthy(type(run.entries[1].layout_x) == "number")
+   test.truthy(type(run.entries[1].layout_y) == "number")
+   test.truthy(type(run.entries[1].packed) == "table")
+
+   atlas:release()
+   sized:release()
+   face:release()
+end)
+
 test.case("font can rasterize a shaped glyph", function()
    local font_path = find_font_path()
    if font_path == nil then
@@ -164,6 +190,29 @@ test.case("font atlas packs glyphs into grayscale pages", function()
    local page_data = atlas:get_page_data(1)
    test.equal(type(page_data), "string")
    test.equal(#page_data, page.width * page.height)
+
+   atlas:release()
+   sized:release()
+   face:release()
+end)
+
+test.case("font text renderer requires an active runtime service", function()
+   local font_path = find_font_path()
+   if font_path == nil then
+      return
+   end
+
+   local face = font.load_face(font_path)
+   local sized = face:create_sized_face(18)
+   local atlas = sized:create_atlas()
+   atlas:warm_text("Hello")
+
+   local ok, err = pcall(function()
+      atlas:create_text_renderer()
+   end)
+
+   test.falsey(ok)
+    test.match(tostring(err), "font_backend")
 
    atlas:release()
    sized:release()

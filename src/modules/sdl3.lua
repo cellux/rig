@@ -2,6 +2,7 @@ local M = ... or {}
 local ffi = require("ffi")
 local bit = bit
 local sched = require("sched")
+require("font")
 require("time")
 
 ffi.cdef[[
@@ -1608,6 +1609,152 @@ local function present_gl()
    end
 end
 
+local font_src_rect = ffi.new("SDL_FRect[1]")
+local font_dst_rect = ffi.new("SDL_FRect[1]")
+
+local function upload_font_page_texture(page, texture)
+   local pixel_count = page.width * page.height
+   local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
+
+   for i = 0, pixel_count - 1 do
+      local alpha = page.buffer[i]
+      local base = i * 4
+      rgba[base] = 255
+      rgba[base + 1] = 255
+      rgba[base + 2] = 255
+      rgba[base + 3] = alpha
+   end
+
+   local page_texture = texture
+   if page_texture == nil or page_texture == ffi.NULL then
+      page_texture = M.CreateTexture(
+         M._renderer,
+         M.PIXELFORMAT_RGBA32,
+         M.TEXTUREACCESS_STATIC,
+         page.width,
+         page.height
+      )
+      if page_texture == nil or page_texture == ffi.NULL then
+         error("failed to create SDL texture: " .. ffi.string(M.GetError()), 0)
+      end
+
+      if not M.SetTextureBlendMode(page_texture, M.BLENDMODE_BLEND) then
+         M.DestroyTexture(page_texture)
+         error("failed to set SDL texture blend mode: " .. ffi.string(M.GetError()), 0)
+      end
+   end
+
+   if not M.UpdateTexture(page_texture, nil, rgba, page.width * 4) then
+      if texture == nil or texture == ffi.NULL then
+         M.DestroyTexture(page_texture)
+      end
+      error("failed to upload SDL texture: " .. ffi.string(M.GetError()), 0)
+   end
+
+   return page_texture
+end
+
+local function ensure_font_page_texture(text_renderer, page_index)
+   local atlas = text_renderer.atlas
+   local state = text_renderer._state
+   local page = atlas.pages[page_index]
+   if page == nil then
+      error(("font atlas has no page %d"):format(page_index), 0)
+   end
+
+   local revision = page.revision or 0
+   if state.revisions[page_index] == revision and state.textures[page_index] ~= nil then
+      return state.textures[page_index]
+   end
+
+   local texture = upload_font_page_texture(page, state.textures[page_index])
+   state.textures[page_index] = texture
+   state.revisions[page_index] = revision
+   return texture
+end
+
+local sdl3_font_backend = {}
+
+function sdl3_font_backend.create_text_renderer(text_renderer)
+   return {
+      textures = {},
+      revisions = {},
+   }
+end
+
+function sdl3_font_backend.release_text_renderer(text_renderer)
+   local state = text_renderer._state
+   if state == nil then
+      return
+   end
+
+   for i = 1, #state.textures do
+      local texture = state.textures[i]
+      if texture ~= nil and texture ~= ffi.NULL then
+         M.DestroyTexture(texture)
+      end
+      state.textures[i] = nil
+      state.revisions[i] = nil
+   end
+end
+
+function sdl3_font_backend.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+   if packed.width <= 0 or packed.height <= 0 then
+      return
+   end
+
+   local texture = ensure_font_page_texture(text_renderer, packed.page_index)
+   if not M.SetTextureColorMod(texture, r, g, b) then
+      error("failed to set texture color modulation: " .. ffi.string(M.GetError()), 0)
+   end
+   if not M.SetTextureAlphaMod(texture, a) then
+      error("failed to set texture alpha modulation: " .. ffi.string(M.GetError()), 0)
+   end
+
+   font_src_rect[0].x = packed.x
+   font_src_rect[0].y = packed.y
+   font_src_rect[0].w = packed.width
+   font_src_rect[0].h = packed.height
+
+   font_dst_rect[0].x = x
+   font_dst_rect[0].y = y
+   font_dst_rect[0].w = packed.width * scale
+   font_dst_rect[0].h = packed.height * scale
+
+   if not M.RenderTexture(M._renderer, texture, font_src_rect, font_dst_rect) then
+      error("failed to render SDL texture: " .. ffi.string(M.GetError()), 0)
+   end
+end
+
+function sdl3_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+   for i = 1, #run.entries do
+      local entry = run.entries[i]
+      local r = 255
+      local g = 255
+      local b = 255
+      local a = 255
+
+      if color_fn ~= nil then
+         r, g, b, a = color_fn(i, entry, run)
+      end
+      if a == nil then
+         a = 255
+      end
+
+      sdl3_font_backend.draw_packed_glyph(
+         text_renderer,
+         entry.packed,
+         base_x + entry.layout_x,
+         baseline_y + entry.layout_y,
+         1.0,
+         r,
+         g,
+         b,
+         a
+      )
+   end
+end
+
 function M.upload_to_gpu_buffer(device, buffer, data)
    if device == nil then
       error("sdl3.upload_to_gpu_buffer requires an SDL_GPUDevice*", 0)
@@ -1949,6 +2096,7 @@ local sdl3_time_service = {
 rig.register_service_impl("time", "sdl3", sdl3_time_service)
 rig.register_service_impl("time", "sdl3_gl", sdl3_time_service)
 rig.register_service_impl("time", "sdl3_gpu", sdl3_time_service)
+rig.register_service_impl("font_backend", "sdl3", sdl3_font_backend)
 
 local function setup_scheduler(label)
    M._scheduler = sched.create(label)

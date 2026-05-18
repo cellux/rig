@@ -1,6 +1,7 @@
 local M = ... or {}
 local freetype = require("freetype")
 local harfbuzz = require("harfbuzz")
+local rig = require("rig")
 local ffi = require("ffi")
 local bit = bit
 
@@ -12,6 +13,9 @@ sized_face_mt.__index = sized_face_mt
 
 local atlas_mt = {}
 atlas_mt.__index = atlas_mt
+
+local text_renderer_mt = {}
+text_renderer_mt.__index = text_renderer_mt
 
 local freetype_library = M._freetype_library or nil
 
@@ -148,6 +152,24 @@ local function ensure_sized_face(sized_face)
    end
 end
 
+local function ensure_atlas(atlas)
+   if getmetatable(atlas) ~= atlas_mt then
+      error("font operation expects an atlas created by font.create_atlas", 0)
+   end
+   if atlas._released then
+      error("font atlas has been released", 0)
+   end
+end
+
+local function ensure_text_renderer(text_renderer)
+   if getmetatable(text_renderer) ~= text_renderer_mt then
+      error("font operation expects a text renderer created by font.create_text_renderer", 0)
+   end
+   if text_renderer._released then
+      error("font text renderer has been released", 0)
+   end
+end
+
 function face_mt:release()
    if self._released then
       return
@@ -222,6 +244,30 @@ function atlas_mt:get_page_data(page_index)
    end
 
    return ffi.string(page.buffer, page.width * page.height)
+end
+
+function atlas_mt:build_text_run(text, options)
+   return M.build_text_run(self, text, options)
+end
+
+function atlas_mt:warm_text(text, options)
+   return M.warm_text(self, text, options)
+end
+
+function atlas_mt:create_text_renderer()
+   return M.create_text_renderer(self)
+end
+
+function text_renderer_mt:release()
+   return M.release_text_renderer(self)
+end
+
+function text_renderer_mt:draw_packed_glyph(packed, x, y, scale, r, g, b, a)
+   return M.draw_packed_glyph(self, packed, x, y, scale, r, g, b, a)
+end
+
+function text_renderer_mt:draw_text_run(run, base_x, baseline_y, color_fn)
+   return M.draw_text_run(self, run, base_x, baseline_y, color_fn)
 end
 
 function M.load_face(path, face_index)
@@ -363,6 +409,56 @@ function M.shape(sized_face, text, options)
    }
 end
 
+function M.build_text_run(atlas, text, options)
+   ensure_atlas(atlas)
+   if type(text) ~= "string" then
+      error("font.build_text_run expects text to be a string", 0)
+   end
+   if options ~= nil and type(options) ~= "table" then
+      error("font.build_text_run expects options to be a table if provided", 0)
+   end
+
+   local shaped = M.shape(atlas.sized_face, text, options)
+   local entries = {}
+   local pen_x = 0.0
+   local pen_y = 0.0
+
+   for i = 1, #shaped.glyphs do
+      local glyph = shaped.glyphs[i]
+      local packed = atlas:get_glyph(glyph.glyph_id)
+      entries[#entries + 1] = {
+         packed = packed,
+         layout_x = pen_x + glyph.x_offset + packed.left,
+         layout_y = pen_y - glyph.y_offset - packed.top,
+         cluster = glyph.cluster,
+      }
+      pen_x = pen_x + glyph.x_advance
+      pen_y = pen_y + glyph.y_advance
+   end
+
+   return {
+      text = text,
+      width = shaped.x_advance,
+      glyph_count = shaped.glyph_count,
+      entries = entries,
+   }
+end
+
+function M.warm_text(atlas, text, options)
+   ensure_atlas(atlas)
+   if type(text) ~= "string" then
+      error("font.warm_text expects text to be a string", 0)
+   end
+   if options ~= nil and type(options) ~= "table" then
+      error("font.warm_text expects options to be a table if provided", 0)
+   end
+
+   local shaped = M.shape(atlas.sized_face, text, options)
+   for i = 1, #shaped.glyphs do
+      atlas:get_glyph(shaped.glyphs[i].glyph_id)
+   end
+end
+
 function M.rasterize_glyph(sized_face, glyph_id, options)
    ensure_sized_face(sized_face)
 
@@ -459,6 +555,7 @@ local function create_atlas_page(page_index, width, height)
       height = height,
       pixel_mode = freetype.PIXEL_MODE_GRAY,
       buffer = ffi.new("uint8_t[?]", width * height),
+      revision = 0,
       next_x = 0,
       next_y = 0,
       row_height = 0,
@@ -562,11 +659,20 @@ function M.create_atlas(sized_face, options)
       error("font.create_atlas expects options to be a table if provided", 0)
    end
 
+   local page_width = nil
+   local page_height = nil
+   local padding = nil
+   if options ~= nil then
+      page_width = options.page_width
+      page_height = options.page_height
+      padding = options.padding
+   end
+
    local atlas = setmetatable({
       sized_face = sized_face,
-      page_width = normalize_atlas_dimension("page_width", options ~= nil and options.page_width, 256),
-      page_height = normalize_atlas_dimension("page_height", options ~= nil and options.page_height, 256),
-      padding = normalize_atlas_dimension("padding", options ~= nil and options.padding, 1),
+      page_width = normalize_atlas_dimension("page_width", page_width, 256),
+      page_height = normalize_atlas_dimension("page_height", page_height, 256),
+      padding = normalize_atlas_dimension("padding", padding, 1),
       pages = {},
       _glyphs = {},
       _released = false,
@@ -576,12 +682,7 @@ function M.create_atlas(sized_face, options)
 end
 
 function M.atlas_get_glyph(atlas, glyph_id)
-   if getmetatable(atlas) ~= atlas_mt then
-      error("font.atlas_get_glyph expects an atlas created by font.create_atlas", 0)
-   end
-   if atlas._released then
-      error("font atlas has been released", 0)
-   end
+   ensure_atlas(atlas)
 
    local normalized_glyph_id = tonumber(glyph_id)
    if normalized_glyph_id == nil or normalized_glyph_id < 0 then
@@ -597,6 +698,7 @@ function M.atlas_get_glyph(atlas, glyph_id)
    local glyph = M.get_cached_glyph(atlas.sized_face, normalized_glyph_id)
    local page, x, y = choose_page_for_glyph(atlas, glyph.width, glyph.height)
    write_gray_glyph(page, glyph, x, y)
+   page.revision = page.revision + 1
 
    page.next_x = x + glyph.width + atlas.padding
    if y ~= page.next_y then
@@ -627,6 +729,108 @@ function M.atlas_get_glyph(atlas, glyph_id)
 
    atlas._glyphs[normalized_glyph_id] = packed
    return packed
+end
+
+rig.create_service("font_backend", {
+   "create_text_renderer",
+   "release_text_renderer",
+   "draw_packed_glyph",
+   "draw_text_run",
+})
+
+function M.create_text_renderer(atlas)
+   ensure_atlas(atlas)
+
+   local backend = rig.require_service("font_backend")
+   local text_renderer = setmetatable({
+      atlas = atlas,
+      _backend = backend,
+      _released = false,
+   }, text_renderer_mt)
+
+   text_renderer._state = backend.create_text_renderer(text_renderer)
+   return text_renderer
+end
+
+function M.release_text_renderer(text_renderer)
+   ensure_text_renderer(text_renderer)
+   text_renderer._backend.release_text_renderer(text_renderer)
+   text_renderer._state = nil
+   text_renderer._released = true
+end
+
+function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+   ensure_text_renderer(text_renderer)
+   if type(packed) ~= "table" then
+      error("font.draw_packed_glyph expects packed to be a table", 0)
+   end
+   if type(x) ~= "number" then
+      error("font.draw_packed_glyph expects x to be a number", 0)
+   end
+   if type(y) ~= "number" then
+      error("font.draw_packed_glyph expects y to be a number", 0)
+   end
+
+   local draw_scale = scale
+   if draw_scale == nil then
+      draw_scale = 1.0
+   end
+   if type(draw_scale) ~= "number" then
+      error("font.draw_packed_glyph expects scale to be a number if provided", 0)
+   end
+
+   local draw_r = r
+   local draw_g = g
+   local draw_b = b
+   local draw_a = a
+   if draw_r == nil then
+      draw_r = 255
+   end
+   if draw_g == nil then
+      draw_g = 255
+   end
+   if draw_b == nil then
+      draw_b = 255
+   end
+   if draw_a == nil then
+      draw_a = 255
+   end
+
+   text_renderer._backend.draw_packed_glyph(
+      text_renderer,
+      packed,
+      x,
+      y,
+      draw_scale,
+      draw_r,
+      draw_g,
+      draw_b,
+      draw_a
+   )
+end
+
+function M.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+   ensure_text_renderer(text_renderer)
+   if type(run) ~= "table" then
+      error("font.draw_text_run expects run to be a table", 0)
+   end
+   if type(base_x) ~= "number" then
+      error("font.draw_text_run expects base_x to be a number", 0)
+   end
+   if type(baseline_y) ~= "number" then
+      error("font.draw_text_run expects baseline_y to be a number", 0)
+   end
+   if color_fn ~= nil and type(color_fn) ~= "function" then
+      error("font.draw_text_run expects color_fn to be a function if provided", 0)
+   end
+
+   text_renderer._backend.draw_text_run(
+      text_renderer,
+      run,
+      base_x,
+      baseline_y,
+      color_fn
+   )
 end
 
 return M

@@ -2,7 +2,13 @@
 
 Backend-neutral font shaping and rasterization built on top of `freetype` and `harfbuzz`.
 
-This first version stops before atlas generation or backend texture upload.
+The `font` module owns:
+- shaping
+- glyph rasterization
+- atlas packing
+- text-run construction
+
+Backend-specific atlas upload and drawing are provided through the `"font_backend"` runtime service.
 
 ## API
 
@@ -65,6 +71,28 @@ This first version stops before atlas generation or backend texture upload.
     - `page_width`
     - `page_height`
     - `padding`
+- `font.build_text_run(atlas, text[, options])`
+  - Shapes text against the atlas sized face and packs referenced glyphs.
+  - Returns:
+    - `text`
+    - `width`
+    - `glyph_count`
+    - `entries`
+  - Each entry has:
+    - `packed`
+    - `layout_x`
+    - `layout_y`
+    - `cluster`
+- `font.warm_text(atlas, text[, options])`
+  - Shapes text and ensures all referenced glyphs are packed into the atlas.
+- `font.create_text_renderer(atlas)`
+  - Requires an active runtime mode that implements the `"font_backend"` service.
+  - Returns a text-renderer object tied to that atlas.
+- `font.draw_packed_glyph(text_renderer, packed, x, y[, scale, r, g, b, a])`
+  - Draws one packed glyph through the active backend.
+- `font.draw_text_run(text_renderer, run, base_x, baseline_y[, color_fn])`
+  - Draws a text run through the active backend.
+  - `color_fn(index, entry, run)` may return `r, g, b, a`.
 
 ## Face Object
 
@@ -105,6 +133,17 @@ Atlas objects returned by `font.create_atlas(...)` provide:
 - `atlas:get_page_data(page_index)`
   - Returns the grayscale page bytes as a Lua string.
 - `atlas:release()`
+- `atlas:build_text_run(text[, options])`
+- `atlas:warm_text(text[, options])`
+- `atlas:create_text_renderer()`
+
+## Text Renderer Object
+
+Text renderers returned by `font.create_text_renderer(...)` provide:
+
+- `text_renderer:draw_packed_glyph(packed, x, y[, scale, r, g, b, a])`
+- `text_renderer:draw_text_run(run, base_x, baseline_y[, color_fn])`
+- `text_renderer:release()`
 
 Atlas objects also expose:
 
@@ -124,9 +163,9 @@ Atlas objects also expose:
   - This avoids size mutation conflicts between independently sized faces.
 - `font.create_atlas(...)` currently produces a single-channel grayscale atlas.
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
-- This version does not yet:
-  - upload textures to `sdl3`, `sdl3_gpu`, or `sdl3_gl`
-  - draw text directly
+- `font.create_text_renderer(...)` resolves through `rig.require_service("font_backend")`.
+- `mode = "sdl3"` currently provides the `"font_backend"` service.
+- `mode = "sdl3_gl"` and `mode = "sdl3_gpu"` do not provide it yet.
 
 ## Example
 
@@ -140,4 +179,5 @@ local shaped = font.shape(sized, "Hello")
 local first = shaped.glyphs[1]
 local atlas = sized:create_atlas()
 local packed = atlas:get_glyph(first.glyph_id)
+local run = atlas:build_text_run("Hello")
 ```

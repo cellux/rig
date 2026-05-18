@@ -47,10 +47,10 @@ local scene = {
    profiler_atlas = nil,
    raster_texture = nil,
    raster_texture_height = nil,
-   title_textures = nil,
-   scroll_textures = nil,
-   sprite_textures = nil,
-   profiler_textures = nil,
+   title_text_renderer = nil,
+   scroll_text_renderer = nil,
+   sprite_text_renderer = nil,
+   profiler_text_renderer = nil,
    title_run = nil,
    scroll_run = nil,
    sprite_glyphs = nil,
@@ -167,52 +167,6 @@ local function fill_rect(renderer, x, y, w, h)
    end
 end
 
-local function upload_gray_page_texture(renderer, page)
-   local pixel_count = page.width * page.height
-   local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
-
-   for i = 0, pixel_count - 1 do
-      local alpha = page.buffer[i]
-      local base = i * 4
-      rgba[base] = 255
-      rgba[base + 1] = 255
-      rgba[base + 2] = 255
-      rgba[base + 3] = alpha
-   end
-
-   local texture = sdl3.CreateTexture(
-      renderer,
-      sdl3.PIXELFORMAT_RGBA32,
-      sdl3.TEXTUREACCESS_STATIC,
-      page.width,
-      page.height
-   )
-   if texture == nil or texture == ffi.NULL then
-      error("failed to create SDL texture: " .. ffi.string(sdl3.GetError()), 0)
-   end
-
-   if not sdl3.UpdateTexture(texture, nil, rgba, page.width * 4) then
-      sdl3.DestroyTexture(texture)
-      error("failed to upload SDL texture: " .. ffi.string(sdl3.GetError()), 0)
-   end
-
-   if not sdl3.SetTextureBlendMode(texture, sdl3.BLENDMODE_BLEND) then
-      sdl3.DestroyTexture(texture)
-      error("failed to set SDL texture blend mode: " .. ffi.string(sdl3.GetError()), 0)
-   end
-
-   return texture
-end
-
-local function upload_atlas_textures(renderer, atlas)
-   local textures = {}
-   for i = 1, #atlas.pages do
-      local page = atlas.pages[i]
-      textures[page.index] = upload_gray_page_texture(renderer, page)
-   end
-   return textures
-end
-
 local function upload_raster_texture(renderer, field, line_height)
    local texture_height = #field * line_height
    local rgba = ffi.new("uint8_t[?]", texture_height * 4)
@@ -252,85 +206,7 @@ local function upload_raster_texture(renderer, field, line_height)
    return texture, texture_height
 end
 
-local function destroy_textures(textures)
-   if textures == nil then
-      return
-   end
-   for i = 1, #textures do
-      local texture = textures[i]
-      if texture ~= nil and texture ~= ffi.NULL then
-         sdl3.DestroyTexture(texture)
-      end
-   end
-end
-
-local function build_text_run(sized_face, atlas, text, options)
-   local shaped = font.shape(sized_face, text, options)
-   local entries = {}
-   local pen_x = 0.0
-   local pen_y = 0.0
-
-   for i = 1, #shaped.glyphs do
-      local glyph = shaped.glyphs[i]
-      local packed = atlas:get_glyph(glyph.glyph_id)
-      entries[#entries + 1] = {
-         packed = packed,
-         layout_x = pen_x + glyph.x_offset + packed.left,
-         layout_y = pen_y - glyph.y_offset - packed.top,
-         cluster = glyph.cluster,
-      }
-      pen_x = pen_x + glyph.x_advance
-      pen_y = pen_y + glyph.y_advance
-   end
-
-   return {
-      text = text,
-      width = shaped.x_advance,
-      glyph_count = shaped.glyph_count,
-      entries = entries,
-   }
-end
-
-local function warm_atlas_text(sized_face, atlas, text)
-   local shaped = font.shape(sized_face, text)
-   for i = 1, #shaped.glyphs do
-      atlas:get_glyph(shaped.glyphs[i].glyph_id)
-   end
-end
-
-local function draw_packed_glyph(renderer, textures, packed, x, y, scale, r, g, b, a)
-   if packed.width <= 0 or packed.height <= 0 then
-      return
-   end
-
-   local texture = textures[packed.page_index]
-   if texture == nil or texture == ffi.NULL then
-      return
-   end
-
-   if not sdl3.SetTextureColorMod(texture, r, g, b) then
-      error("failed to set texture color modulation: " .. ffi.string(sdl3.GetError()), 0)
-   end
-   if not sdl3.SetTextureAlphaMod(texture, a) then
-      error("failed to set texture alpha modulation: " .. ffi.string(sdl3.GetError()), 0)
-   end
-
-   src_rect[0].x = packed.x
-   src_rect[0].y = packed.y
-   src_rect[0].w = packed.width
-   src_rect[0].h = packed.height
-
-   dst_rect[0].x = x
-   dst_rect[0].y = y
-   dst_rect[0].w = packed.width * scale
-   dst_rect[0].h = packed.height * scale
-
-   if not sdl3.RenderTexture(renderer, texture, src_rect, dst_rect) then
-      error("failed to render SDL texture: " .. ffi.string(sdl3.GetError()), 0)
-   end
-end
-
-local function draw_text_run(renderer, textures, run, base_x, baseline_y, color_fn)
+local function draw_text_run(renderer, text_renderer, run, base_x, baseline_y, color_fn)
    for i = 1, #run.entries do
       local entry = run.entries[i]
       local packed = entry.packed
@@ -340,18 +216,7 @@ local function draw_text_run(renderer, textures, run, base_x, baseline_y, color_
       if draw_x + packed.width >= -32 then
          if draw_x <= window_width + 32 then
             local r, g, b, a = color_fn(i, entry, draw_x, draw_y)
-            draw_packed_glyph(
-               renderer,
-               textures,
-               packed,
-               draw_x,
-               draw_y,
-               1.0,
-               r,
-               g,
-               b,
-               a
-            )
+            text_renderer:draw_packed_glyph(packed, draw_x, draw_y, 1.0, r, g, b, a)
          elseif draw_x > window_width + 32 then
             break
          end
@@ -359,9 +224,9 @@ local function draw_text_run(renderer, textures, run, base_x, baseline_y, color_
    end
 end
 
-local function draw_label(renderer, sized_face, atlas, textures, text, x, baseline_y, r, g, b, a)
-   local run = build_text_run(sized_face, atlas, text)
-   draw_text_run(renderer, textures, run, x, baseline_y, function()
+local function draw_label(renderer, sized_face, atlas, text_renderer, text, x, baseline_y, r, g, b, a)
+   local run = atlas:build_text_run(text)
+   draw_text_run(renderer, text_renderer, run, x, baseline_y, function()
       return r, g, b, a
    end)
 end
@@ -565,11 +430,11 @@ local function draw_title(renderer)
    local run = scene.title_run
    local base_x = (window_width - run.width) * 0.5
 
-   draw_text_run(renderer, scene.title_textures, run, base_x + title_shadow_offset, title_baseline_y + title_shadow_offset, function()
+   draw_text_run(renderer, scene.title_text_renderer, run, base_x + title_shadow_offset, title_baseline_y + title_shadow_offset, function()
       return 0, 0, 0, 220
    end)
 
-   draw_text_run(renderer, scene.title_textures, run, base_x, title_baseline_y, function(index)
+   draw_text_run(renderer, scene.title_text_renderer, run, base_x, title_baseline_y, function(index)
       return title_color(index)
    end)
 end
@@ -598,7 +463,7 @@ local function draw_scroller_copy(renderer, base_x)
       if x + packed.width >= -48 then
          if x <= window_width + 48 then
             local r, g, b, a = scroll_color(i, x, y)
-            draw_packed_glyph(renderer, scene.scroll_textures, packed, x, y, 1.0, r, g, b, a)
+            scene.scroll_text_renderer:draw_packed_glyph(packed, x, y, 1.0, r, g, b, a)
          elseif x > window_width + 48 then
             break
          end
@@ -642,20 +507,20 @@ local function draw_profiler(renderer)
    local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
    local line_13 = "PROFILER ON [0]"
 
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, header, text_x, panel_y + 16, 255, 184, 150, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_textures, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, header, text_x, panel_y + 16, 255, 184, 150, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
+   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
 end
 
 local function make_sprite(i, character)
@@ -768,9 +633,7 @@ local function draw_sprites(renderer)
       if scene.sprite_outline_enabled then
          for j = 1, #sprite_outline_offsets do
             local offset = sprite_outline_offsets[j]
-            draw_packed_glyph(
-               renderer,
-               scene.sprite_textures,
+            scene.sprite_text_renderer:draw_packed_glyph(
                sprite.glyph,
                x + offset[1],
                y + offset[2],
@@ -783,9 +646,7 @@ local function draw_sprites(renderer)
          end
       end
 
-      draw_packed_glyph(
-         renderer,
-         scene.sprite_textures,
+      scene.sprite_text_renderer:draw_packed_glyph(
          sprite.glyph,
          x,
          y,
@@ -916,23 +777,21 @@ local function initialize_scene()
       padding = 1,
    }
 
-   scene.title_run = build_text_run(scene.title_face, scene.title_atlas, "NEON PHANTOMS")
-   scene.scroll_run = build_text_run(scene.scroll_face, scene.scroll_atlas, scroll_text)
+   scene.title_run = scene.title_atlas:build_text_run("NEON PHANTOMS")
+   scene.scroll_run = scene.scroll_atlas:build_text_run(scroll_text)
    scene.sprite_glyphs = create_sprite_glyphs(
       scene.sprite_face,
       scene.sprite_atlas,
       sprite_text
    )
-   warm_atlas_text(
-      scene.profiler_face,
-      scene.profiler_atlas,
+   scene.profiler_atlas:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM PROFILER ON OFF [] 0123456789./-"
    )
 
-   scene.title_textures = upload_atlas_textures(renderer, scene.title_atlas)
-   scene.scroll_textures = upload_atlas_textures(renderer, scene.scroll_atlas)
-   scene.sprite_textures = upload_atlas_textures(renderer, scene.sprite_atlas)
-   scene.profiler_textures = upload_atlas_textures(renderer, scene.profiler_atlas)
+   scene.title_text_renderer = scene.title_atlas:create_text_renderer()
+   scene.scroll_text_renderer = scene.scroll_atlas:create_text_renderer()
+   scene.sprite_text_renderer = scene.sprite_atlas:create_text_renderer()
+   scene.profiler_text_renderer = scene.profiler_atlas:create_text_renderer()
 
    scene.raster_field = build_raster_field()
    scene.raster_texture, scene.raster_texture_height =
@@ -953,14 +812,22 @@ local function initialize_scene()
 end
 
 local function release_scene()
-   destroy_textures(scene.title_textures)
-   destroy_textures(scene.scroll_textures)
-   destroy_textures(scene.sprite_textures)
-    destroy_textures(scene.profiler_textures)
-   scene.title_textures = nil
-   scene.scroll_textures = nil
-   scene.sprite_textures = nil
-   scene.profiler_textures = nil
+   if scene.title_text_renderer ~= nil then
+      scene.title_text_renderer:release()
+      scene.title_text_renderer = nil
+   end
+   if scene.scroll_text_renderer ~= nil then
+      scene.scroll_text_renderer:release()
+      scene.scroll_text_renderer = nil
+   end
+   if scene.sprite_text_renderer ~= nil then
+      scene.sprite_text_renderer:release()
+      scene.sprite_text_renderer = nil
+   end
+   if scene.profiler_text_renderer ~= nil then
+      scene.profiler_text_renderer:release()
+      scene.profiler_text_renderer = nil
+   end
    if scene.raster_texture ~= nil and scene.raster_texture ~= ffi.NULL then
       sdl3.DestroyTexture(scene.raster_texture)
       scene.raster_texture = nil

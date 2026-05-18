@@ -15,7 +15,7 @@ local scene = {
    face = nil,
    profiler_face = nil,
    profiler_atlas = nil,
-   profiler_textures = nil,
+   profiler_text_renderer = nil,
    profiler_cpu_ms = 0.0,
    profiler_cpu_max_1s_ms = 0.0,
    profiler_cpu_max_ms = 0.0,
@@ -85,144 +85,11 @@ local function fill_rect(renderer, x, y, w, h)
    end
 end
 
-local function upload_gray_page_texture(renderer, page)
-   local texture = sdl3.CreateTexture(
-      renderer,
-      sdl3.PIXELFORMAT_RGBA32,
-      sdl3.TEXTUREACCESS_STATIC,
-      page.width,
-      page.height
-   )
-   if texture == nil then
-      error("failed to create SDL texture: " .. ffi.string(sdl3.GetError()), 0)
-   end
-
-   local rgba = ffi.new("uint8_t[?]", page.width * page.height * 4)
-   for i = 0, (page.width * page.height) - 1 do
-      local alpha = page.buffer[i]
-      local base = i * 4
-      rgba[base + 0] = 255
-      rgba[base + 1] = 255
-      rgba[base + 2] = 255
-      rgba[base + 3] = alpha
-   end
-
-   if not sdl3.UpdateTexture(texture, nil, rgba, page.width * 4) then
-      error("failed to upload SDL texture: " .. ffi.string(sdl3.GetError()), 0)
-   end
-   if not sdl3.SetTextureBlendMode(texture, sdl3.BLENDMODE_BLEND) then
-      error("failed to set SDL texture blend mode: " .. ffi.string(sdl3.GetError()), 0)
-   end
-
-   return texture
-end
-
-local function upload_atlas_textures(renderer, atlas)
-   local textures = {}
-   local pages = atlas.pages
-   for i = 1, #pages do
-      textures[i] = upload_gray_page_texture(renderer, pages[i])
-   end
-   return textures
-end
-
-local function destroy_textures(textures)
-   if textures == nil then
-      return
-   end
-   for i = 1, #textures do
-      if textures[i] ~= nil and textures[i] ~= ffi.NULL then
-         sdl3.DestroyTexture(textures[i])
-      end
-   end
-end
-
-local function build_text_run(sized_face, atlas, text)
-   local shaped = font.shape(sized_face, text)
-   local entries = {}
-   local pen_x = 0.0
-   local pen_y = 0.0
-
-   for i = 1, #shaped.glyphs do
-      local glyph = shaped.glyphs[i]
-      local packed = atlas:get_glyph(glyph.glyph_id)
-      entries[#entries + 1] = {
-         packed = packed,
-         layout_x = pen_x + glyph.x_offset + packed.left,
-         layout_y = pen_y - glyph.y_offset - packed.top,
-      }
-      pen_x = pen_x + glyph.x_advance
-      pen_y = pen_y + glyph.y_advance
-   end
-
-   return {
-      entries = entries,
-      width = shaped.x_advance,
-   }
-end
-
-local function warm_atlas_text(sized_face, atlas, text)
-   local shaped = font.shape(sized_face, text)
-   for i = 1, #shaped.glyphs do
-      atlas:get_glyph(shaped.glyphs[i].glyph_id)
-   end
-end
-
-local src_rect = ffi.new("SDL_FRect[1]")
-local dst_rect = ffi.new("SDL_FRect[1]")
-
-local function draw_packed_glyph(renderer, textures, packed, x, y, scale, r, g, b, a)
-   if packed.width <= 0 or packed.height <= 0 then
-      return
-   end
-
-   local texture = textures[packed.page_index]
-   if texture == nil or texture == ffi.NULL then
-      return
-   end
-
-   src_rect[0].x = packed.x
-   src_rect[0].y = packed.y
-   src_rect[0].w = packed.width
-   src_rect[0].h = packed.height
-
-   dst_rect[0].x = x
-   dst_rect[0].y = y
-   dst_rect[0].w = packed.width * scale
-   dst_rect[0].h = packed.height * scale
-
-   if not sdl3.SetTextureColorMod(texture, r, g, b) then
-      error("failed to set SDL texture color mod: " .. ffi.string(sdl3.GetError()), 0)
-   end
-   if not sdl3.SetTextureAlphaMod(texture, a) then
-      error("failed to set SDL texture alpha mod: " .. ffi.string(sdl3.GetError()), 0)
-   end
-   if not sdl3.RenderTexture(renderer, texture, src_rect, dst_rect) then
-      error("failed to render SDL texture: " .. ffi.string(sdl3.GetError()), 0)
-   end
-end
-
-local function draw_text_run(renderer, textures, run, base_x, baseline_y, r, g, b, a)
-   for i = 1, #run.entries do
-      local entry = run.entries[i]
-      draw_packed_glyph(
-         renderer,
-         textures,
-         entry.packed,
-         base_x + entry.layout_x,
-         baseline_y + entry.layout_y,
-         1.0,
-         r,
-         g,
-         b,
-         a
-      )
-   end
-end
-
 local function draw_label(renderer, text, x, baseline_y, r, g, b, a)
-   local run = build_text_run(scene.profiler_face, scene.profiler_atlas, text)
-   draw_text_run(renderer, scene.profiler_textures, run, x, baseline_y, r, g, b, a)
+   local run = scene.profiler_atlas:build_text_run(text)
+   scene.profiler_text_renderer:draw_text_run(run, x, baseline_y, function()
+      return r, g, b, a
+   end)
 end
 
 local function update_metric_history(history, now_seconds, value)
@@ -306,7 +173,6 @@ local function draw_profiler(renderer)
 end
 
 local function initialize_scene()
-   local renderer = sdl3.get_renderer()
    scene.start_time = time.monotonic()
    scene.font_path = find_font_path()
    scene.face = font.load_face(scene.font_path)
@@ -316,17 +182,17 @@ local function initialize_scene()
       page_height = 128,
       padding = 1,
    }
-   warm_atlas_text(
-      scene.profiler_face,
-      scene.profiler_atlas,
+   scene.profiler_atlas:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )
-   scene.profiler_textures = upload_atlas_textures(renderer, scene.profiler_atlas)
+   scene.profiler_text_renderer = scene.profiler_atlas:create_text_renderer()
 end
 
 local function release_scene()
-   destroy_textures(scene.profiler_textures)
-   scene.profiler_textures = nil
+   if scene.profiler_text_renderer ~= nil then
+      scene.profiler_text_renderer:release()
+      scene.profiler_text_renderer = nil
+   end
 
    if scene.profiler_atlas ~= nil then
       scene.profiler_atlas:release()
