@@ -142,7 +142,7 @@ end
 local function draw_profiler(renderer)
    local panel_x = 18
    local panel_y = 16
-   local panel_w = 378
+   local panel_w = math.min(378, math.max(220, window_width - panel_x * 2))
    local panel_h = 162
 
    set_draw_color(renderer, 0, 0, 0, 150)
@@ -170,6 +170,11 @@ local function draw_profiler(renderer)
    draw_label(renderer, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
    draw_label(renderer, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
    draw_label(renderer, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
+end
+
+local function on_resize(info)
+   window_width = math.max(1, info.width)
+   window_height = math.max(1, info.height)
 end
 
 local function initialize_scene()
@@ -316,8 +321,10 @@ rig.run {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Renderer Baseline",
          [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
          [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
+         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       on_key = on_key,
+      on_resize = on_resize,
       on_render = render_frame,
    },
    hooks = {

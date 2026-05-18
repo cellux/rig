@@ -4,16 +4,14 @@ local font = require("font")
 local time = require("time")
 local ffi = require("ffi")
 
-local window_width = 1280
-local window_height = 720
+local window_width = 960
+local window_height = 540
 local background_color = { 6, 8, 18, 255 }
-local scroll_baseline_y = 596
 local scroll_speed = 204.0
 local scroll_wave_amplitude = 48.0
 local scroll_wave_frequency = 0.001
 local scroll_wave_speed = 2.8
 local scroll_loop_gap = 240.0
-local title_baseline_y = 126
 local title_shadow_offset = 4
 local raster_split_count = 8
 local sprite_text = "NEON PHANTOMS"
@@ -151,6 +149,16 @@ local function lerp(a, b, t)
    return a + (b - a) * t
 end
 
+local function current_layout()
+   return {
+      title_y = math.floor(window_height * 0.175 + 0.5),
+      split_top = math.floor(window_height * 0.214 + 0.5),
+      split_height = math.floor(window_height * 0.433 + 0.5),
+      left = math.floor(window_width * 0.069 + 0.5),
+      scroll_y = math.floor(window_height * 0.828 + 0.5),
+   }
+end
+
 local function set_draw_color(renderer, r, g, b, a)
    if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
       error("failed to set renderer color: " .. ffi.string(sdl3.GetError()), 0)
@@ -256,13 +264,12 @@ local function apply_preset(index)
    end
 end
 
-local function draw_rasterbars(renderer)
-   local split_top = 154
-   local split_height = 312
+local function draw_rasterbars(renderer, layout)
+   local split_top = layout.split_top
+   local split_height = layout.split_height
    local split_gap = 1
    local line_height = 2.0
-   local left = 88
-   local total_width = window_width - left * 2
+   local total_width = window_width - layout.left * 2
    local split_width = (total_width - split_gap * (raster_split_count - 1)) / raster_split_count
    local field_height = #scene.raster_field
    local visible_lines = math.floor(split_height / line_height)
@@ -277,7 +284,7 @@ local function draw_rasterbars(renderer)
 
    for split_index = 1, #scene.raster_splits do
       local split = scene.raster_splits[split_index]
-      local base_x = left + (split_index - 1) * (split_width + split_gap)
+      local base_x = layout.left + (split_index - 1) * (split_width + split_gap)
       local split_phase = scene.raster_phase * split.speed + split.offset
       local center_offset = split.base_offset + math.sin(split_phase) * half_motion_range
       center_offset = math.floor(center_offset + 0.5)
@@ -426,7 +433,8 @@ local function title_color(index)
    return r, g, b, full_alpha
 end
 
-local function draw_title(renderer)
+local function draw_title(renderer, layout)
+   local title_baseline_y = layout.title_y
    local run = scene.title_run
    local base_x = (window_width - run.width) * 0.5
 
@@ -448,7 +456,8 @@ local function scroll_color(index, x, y)
    return r, g, b, a
 end
 
-local function draw_scroller_copy(renderer, base_x)
+local function draw_scroller_copy(renderer, layout, base_x)
+   local scroll_baseline_y = layout.scroll_y
    local run = scene.scroll_run
    for i = 1, #run.entries do
       local entry = run.entries[i]
@@ -471,14 +480,14 @@ local function draw_scroller_copy(renderer, base_x)
    end
 end
 
-local function draw_scroller(renderer)
+local function draw_scroller(renderer, layout)
    local run = scene.scroll_run
    local first_x = window_width - scene.scroll_offset
-   draw_scroller_copy(renderer, first_x)
+   draw_scroller_copy(renderer, layout, first_x)
 
    local second_x = first_x + run.width + scroll_loop_gap
    if second_x < window_width + 96 then
-      draw_scroller_copy(renderer, second_x)
+      draw_scroller_copy(renderer, layout, second_x)
    end
 end
 
@@ -608,9 +617,9 @@ local function on_key(key_info)
    end
 end
 
-local function draw_sprites(renderer)
-   local split_top = 154
-   local split_height = 312
+local function draw_sprites(renderer, layout)
+   local split_top = layout.split_top
+   local split_height = layout.split_height
    local split_bottom = split_top + split_height
 
    for i = 1, #scene.sprites do
@@ -936,6 +945,7 @@ end
 local function render_frame()
    local frame_start = tonumber(sdl3.GetPerformanceCounter())
    local renderer = sdl3.get_renderer()
+   local layout = current_layout()
    set_draw_color(
       renderer,
       background_color[1],
@@ -948,14 +958,14 @@ local function render_frame()
    end
 
    if scene.raster_enabled then
-      draw_rasterbars(renderer)
+      draw_rasterbars(renderer, layout)
    end
    if scene.sprites_enabled then
-      draw_sprites(renderer)
+      draw_sprites(renderer, layout)
    end
-   --draw_title(renderer)
+   --draw_title(renderer, layout)
    if scene.scroller_enabled then
-      draw_scroller(renderer)
+      draw_scroller(renderer, layout)
    end
    if scene.profiler_enabled then
       draw_profiler(renderer)
@@ -971,6 +981,11 @@ local function render_frame()
       update_metric_history(scene.profiler_cpu_history, frame_end_seconds, scene.profiler_cpu_ms)
 end
 
+local function on_resize(info)
+   window_width = math.max(1, info.width)
+   window_height = math.max(1, info.height)
+end
+
 rig.run {
    mode = "sdl3",
    sdl3 = {
@@ -978,8 +993,10 @@ rig.run {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
          [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
          [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
+         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       on_key = on_key,
+      on_resize = on_resize,
       on_render = render_frame,
    },
    hooks = {

@@ -90,6 +90,11 @@ local function release_resources()
    end
 end
 
+local function on_resize(info)
+   viewport_width = math.max(1, info.pixel_width)
+   viewport_height = math.max(1, info.pixel_height)
+end
+
 local function on_render()
    build_mvp(mvp, viewport_width / viewport_height, time.monotonic())
 
@@ -164,6 +169,7 @@ rig.run {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Spinning Cube",
          [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = viewport_width,
          [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = viewport_height,
+         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       gl_attributes = {
          context_major_version = 4,
@@ -173,6 +179,7 @@ rig.run {
          depth_size = 24,
       },
       swap_interval = 1,
+      on_resize = on_resize,
       on_render = on_render,
    },
 }

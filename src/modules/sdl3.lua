@@ -42,6 +42,14 @@ typedef struct SDL_KeyboardEvent {
    bool down;
    bool repeat;
 } SDL_KeyboardEvent;
+typedef struct SDL_WindowEvent {
+   SDL_EventType type;
+   Uint32 reserved;
+   Uint64 timestamp;
+   SDL_WindowID windowID;
+   Sint32 data1;
+   Sint32 data2;
+} SDL_WindowEvent;
 typedef struct SDL_QuitEvent {
    SDL_EventType type;
    Uint32 reserved;
@@ -74,6 +82,7 @@ typedef struct SDL_MouseButtonEvent {
 } SDL_MouseButtonEvent;
 typedef union SDL_Event {
    Uint32 type;
+   SDL_WindowEvent window;
    SDL_KeyboardEvent key;
    SDL_QuitEvent quit;
    SDL_MouseMotionEvent motion;
@@ -110,6 +119,7 @@ bool SDL_SetFloatProperty(SDL_PropertiesID props, const char *name, float value)
 bool SDL_SetBooleanProperty(SDL_PropertiesID props, const char *name, bool value);
 bool SDL_PollEvent(SDL_Event *event);
 Uint32 SDL_GetMouseState(float *x, float *y);
+bool SDL_GetWindowSize(SDL_Window *window, int *w, int *h);
 bool SDL_GetWindowSizeInPixels(SDL_Window *window, int *w, int *h);
 const char *SDL_GetError(void);
 const char *SDL_GetKeyName(SDL_Keycode key);
@@ -463,6 +473,7 @@ export_sdl_function("SetFloatProperty", "SDL_SetFloatProperty")
 export_sdl_function("SetBooleanProperty", "SDL_SetBooleanProperty")
 export_sdl_function("PollEvent", "SDL_PollEvent")
 export_sdl_function("GetMouseState", "SDL_GetMouseState")
+export_sdl_function("GetWindowSize", "SDL_GetWindowSize")
 export_sdl_function("GetWindowSizeInPixels", "SDL_GetWindowSizeInPixels")
 export_sdl_function("GetError", "SDL_GetError")
 export_sdl_function("GetKeyName", "SDL_GetKeyName")
@@ -1246,6 +1257,16 @@ end
 
 local shutdown
 local destroy_gl_font_backend_state
+local window_size_width = ffi.new("int[1]")
+local window_size_height = ffi.new("int[1]")
+local gl_font_vertex_arrays = ffi.new("unsigned int[1]")
+local gl_font_buffers = ffi.new("unsigned int[1]")
+local gl_font_textures = ffi.new("unsigned int[1]")
+local gl_font_quad_vertices = ffi.new("float[24]")
+local gl_font_window_width = ffi.new("int[1]")
+local gl_font_window_height = ffi.new("int[1]")
+local gl_font_backend_state = nil
+local resize_state = nil
 
 function M.get_window()
    return M._window
@@ -1274,6 +1295,19 @@ function M.get_gl_proc_address(name)
    end
 
    return ptr
+end
+
+local function get_window_size()
+   if M._window == nil then
+      error("an SDL window must exist before querying window size", 0)
+   end
+
+   if not M.GetWindowSize(M._window, window_size_width, window_size_height) then
+      error("failed to query window size: " .. get_error_string(), 0)
+   end
+
+   return tonumber(window_size_width[0]) or 0,
+      tonumber(window_size_height[0]) or 0
 end
 
 local function initialize_windowed_sdl(options)
@@ -1363,6 +1397,7 @@ local function setup(options)
    M._window = window_ptr
    M._renderer = renderer_ptr
    M._owned_init_flags = owned_init_flags
+   resize_state = nil
 end
 
 local function setup_gpu(options)
@@ -1417,6 +1452,7 @@ local function setup_gpu(options)
    M._window = window_ptr
    M._gpu_device = gpu_device
    M._owned_init_flags = owned_init_flags
+   resize_state = nil
 end
 
 local GL_PROFILE_VALUES = {
@@ -1565,6 +1601,7 @@ local function setup_gl(options)
    M._window = window_ptr
    M._gl_context = gl_context
    M._owned_init_flags = owned_init_flags
+   resize_state = nil
 end
 
 shutdown = function()
@@ -1589,6 +1626,7 @@ shutdown = function()
       M.DestroyWindow(M._window)
       M._window = nil
    end
+   resize_state = nil
    if M._owned_init_flags ~= nil then
       M.QuitSubSystem(M._owned_init_flags)
       M._owned_init_flags = nil
@@ -1615,13 +1653,6 @@ end
 
 local font_src_rect = ffi.new("SDL_FRect[1]")
 local font_dst_rect = ffi.new("SDL_FRect[1]")
-local gl_font_vertex_arrays = ffi.new("unsigned int[1]")
-local gl_font_buffers = ffi.new("unsigned int[1]")
-local gl_font_textures = ffi.new("unsigned int[1]")
-local gl_font_quad_vertices = ffi.new("float[24]")
-local gl_font_window_width = ffi.new("int[1]")
-local gl_font_window_height = ffi.new("int[1]")
-local gl_font_backend_state = nil
 
 local gl_font_vertex_source = [[
 #version 330 core
@@ -1765,6 +1796,45 @@ local function get_window_size_in_pixels()
 
    return tonumber(gl_font_window_width[0]) or 0,
       tonumber(gl_font_window_height[0]) or 0
+end
+
+local function dispatch_resize_if_changed(handler, event_name, timestamp_ns)
+   if type(handler) ~= "function" then
+      return
+   end
+
+   local width, height = get_window_size()
+   local pixel_width, pixel_height = get_window_size_in_pixels()
+   local previous = resize_state
+
+   if previous ~= nil
+      and previous.width == width
+      and previous.height == height
+      and previous.pixel_width == pixel_width
+      and previous.pixel_height == pixel_height
+      and event_name ~= "initial" then
+      return
+   end
+
+   resize_state = {
+      width = width,
+      height = height,
+      pixel_width = pixel_width,
+      pixel_height = pixel_height,
+   }
+
+   local ns = timestamp_ns or 0
+   handler({
+      type = "resize",
+      event = event_name,
+      width = width,
+      height = height,
+      pixel_width = pixel_width,
+      pixel_height = pixel_height,
+      initial = event_name == "initial",
+      timestamp_ns = ns,
+      timestamp_ms = math.floor(ns / 1000000),
+   })
 end
 
 local function upload_gl_font_page_texture(page, texture)
@@ -2325,7 +2395,7 @@ local function dispatch_mouse_button_event(event, handler)
    })
 end
 
-local function pump_events(on_key, on_mouse)
+local function pump_events(on_key, on_mouse, on_resize)
    if M._window == nil then
       error("an SDL window must be initialized before sdl3.pump_events")
    end
@@ -2341,6 +2411,18 @@ local function pump_events(on_key, on_mouse)
 
       if event_type == M.EVENT_KEY_DOWN or event_type == M.EVENT_KEY_UP then
          dispatch_keyboard_event(current.key, on_key)
+      elseif event_type == M.EVENT_WINDOW_RESIZED then
+         dispatch_resize_if_changed(
+            on_resize,
+            "resized",
+            tonumber(current.window.timestamp) or 0
+         )
+      elseif event_type == M.EVENT_WINDOW_PIXEL_SIZE_CHANGED then
+         dispatch_resize_if_changed(
+            on_resize,
+            "pixel_size_changed",
+            tonumber(current.window.timestamp) or 0
+         )
       elseif event_type == M.EVENT_MOUSE_MOTION then
          dispatch_mouse_motion_event(current.motion, on_mouse)
       elseif event_type == M.EVENT_MOUSE_BUTTON_DOWN or event_type == M.EVENT_MOUSE_BUTTON_UP then
@@ -2490,15 +2572,17 @@ rig.register_runtime_mode("sdl3", {
       require_render_callback(options)
       setup(sdl3_options)
       setup_scheduler("sdl3 scheduler")
+      dispatch_resize_if_changed(sdl3_options.on_resize, "initial", 0)
    end,
    loop = function(options, run_hooks)
       local sdl3_options = normalize_runtime_options(options.sdl3)
       local on_render = require_render_callback(options)
       local on_key = sdl3_options.on_key
       local on_mouse = sdl3_options.on_mouse
+      local on_resize = sdl3_options.on_resize
       while true do
          run_hooks("before_poll", options)
-         if pump_events(on_key, on_mouse) == false then
+         if pump_events(on_key, on_mouse, on_resize) == false then
             break
          end
          run_hooks("after_poll", options)
@@ -2527,15 +2611,17 @@ rig.register_runtime_mode("sdl3_gpu", {
          backend_name = sdl3_options.backend_name,
       }
       setup_scheduler("sdl3_gpu scheduler")
+      dispatch_resize_if_changed(sdl3_options.on_resize, "initial", 0)
    end,
    loop = function(options, run_hooks)
       local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
       local on_render = require_render_callback(options)
       local on_key = sdl3_options.on_key
       local on_mouse = sdl3_options.on_mouse
+      local on_resize = sdl3_options.on_resize
       while true do
          run_hooks("before_poll", options)
-         if pump_events(on_key, on_mouse) == false then
+         if pump_events(on_key, on_mouse, on_resize) == false then
             break
          end
          run_hooks("after_poll", options)
@@ -2557,15 +2643,17 @@ rig.register_runtime_mode("sdl3_gl", {
       require_render_callback(options)
       setup_gl(sdl3_options)
       setup_scheduler("sdl3_gl scheduler")
+      dispatch_resize_if_changed(sdl3_options.on_resize, "initial", 0)
    end,
    loop = function(options, run_hooks)
       local sdl3_options = normalize_runtime_options(options.sdl3_gl)
       local on_render = require_render_callback(options)
       local on_key = sdl3_options.on_key
       local on_mouse = sdl3_options.on_mouse
+      local on_resize = sdl3_options.on_resize
       while true do
          run_hooks("before_poll", options)
-         if pump_events(on_key, on_mouse) == false then
+         if pump_events(on_key, on_mouse, on_resize) == false then
             break
          end
          run_hooks("after_poll", options)

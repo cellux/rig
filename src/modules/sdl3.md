@@ -42,6 +42,22 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Optional keyboard event callback.
 - `on_mouse(mouse_info)`
   - Optional mouse event callback.
+- `on_resize(resize_info)`
+  - Optional window resize callback.
+  - Called once during setup with `resize_info.initial == true`.
+  - Called again when the window size or pixel size changes.
+  - `resize_info` currently includes:
+    - `type = "resize"`
+    - `event`
+      - `"initial"`
+      - `"resized"`
+      - `"pixel_size_changed"`
+    - `width`
+    - `height`
+    - `pixel_width`
+    - `pixel_height`
+    - `timestamp_ns`
+    - `timestamp_ms`
 
 Additional fields accepted by `options.sdl3_gl`:
 

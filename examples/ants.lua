@@ -776,6 +776,18 @@ local function on_render()
    draw_slider(renderer)
 end
 
+local function handle_resize(info)
+   window_width = math.max(1, info.width)
+   window_height = math.max(1, info.height)
+   slider.x = window_width - 184
+
+   for i = 1, #ants do
+      local ant = ants[i]
+      ant.x = clamp(ant.x, ant_margin, window_width - ant_margin)
+      ant.y = clamp(ant.y, ant_margin, window_height - ant_margin)
+   end
+end
+
 rig.run {
    mode = "sdl3",
    hooks = {
@@ -790,5 +802,6 @@ rig.run {
       },
       on_render = on_render,
       on_mouse = handle_mouse,
+      on_resize = handle_resize,
    },
 }
