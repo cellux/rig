@@ -164,8 +164,9 @@ Atlas objects also expose:
 - `font.create_atlas(...)` currently produces a single-channel grayscale atlas.
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
 - `font.create_text_renderer(...)` resolves through `rig.require_service("font_backend")`.
-- `mode = "sdl3"` currently provides the `"font_backend"` service.
-- `mode = "sdl3_gl"` and `mode = "sdl3_gpu"` do not provide it yet.
+- `mode = "sdl3"` currently provides the `"font_backend"` service through SDL renderer textures.
+- `mode = "sdl3_gl"` currently provides the `"font_backend"` service through OpenGL textures and textured quads.
+- `mode = "sdl3_gpu"` does not provide it yet.
 
 ## Example
 

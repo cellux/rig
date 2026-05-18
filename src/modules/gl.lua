@@ -19,37 +19,48 @@ typedef char GLchar;
 typedef ptrdiff_t GLintptr;
 typedef ptrdiff_t GLsizeiptr;
 
-typedef const GLubyte *(*rig_gl_GetString_fn)(GLenum name);
-typedef void (*rig_gl_Viewport_fn)(GLint x, GLint y, GLsizei width, GLsizei height);
-typedef void (*rig_gl_ClearColor_fn)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
-typedef void (*rig_gl_Clear_fn)(GLbitfield mask);
-typedef void (*rig_gl_Enable_fn)(GLenum cap);
-typedef void (*rig_gl_DepthFunc_fn)(GLenum func);
-typedef GLuint (*rig_gl_CreateShader_fn)(GLenum type);
-typedef void (*rig_gl_ShaderSource_fn)(GLuint shader, GLsizei count, const GLchar *const* string, const GLint *length);
-typedef void (*rig_gl_CompileShader_fn)(GLuint shader);
-typedef void (*rig_gl_GetShaderiv_fn)(GLuint shader, GLenum pname, GLint *params);
-typedef void (*rig_gl_GetShaderInfoLog_fn)(GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
-typedef void (*rig_gl_DeleteShader_fn)(GLuint shader);
-typedef GLuint (*rig_gl_CreateProgram_fn)(void);
-typedef void (*rig_gl_AttachShader_fn)(GLuint program, GLuint shader);
-typedef void (*rig_gl_LinkProgram_fn)(GLuint program);
-typedef void (*rig_gl_GetProgramiv_fn)(GLuint program, GLenum pname, GLint *params);
-typedef void (*rig_gl_GetProgramInfoLog_fn)(GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
-typedef void (*rig_gl_DeleteProgram_fn)(GLuint program);
-typedef void (*rig_gl_UseProgram_fn)(GLuint program);
-typedef void (*rig_gl_GenVertexArrays_fn)(GLsizei n, GLuint *arrays);
-typedef void (*rig_gl_BindVertexArray_fn)(GLuint array);
-typedef void (*rig_gl_DeleteVertexArrays_fn)(GLsizei n, const GLuint *arrays);
-typedef void (*rig_gl_GenBuffers_fn)(GLsizei n, GLuint *buffers);
-typedef void (*rig_gl_BindBuffer_fn)(GLenum target, GLuint buffer);
-typedef void (*rig_gl_BufferData_fn)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
-typedef void (*rig_gl_DeleteBuffers_fn)(GLsizei n, const GLuint *buffers);
-typedef void (*rig_gl_EnableVertexAttribArray_fn)(GLuint index);
-typedef void (*rig_gl_VertexAttribPointer_fn)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
-typedef GLint (*rig_gl_GetUniformLocation_fn)(GLuint program, const GLchar *name);
-typedef void (*rig_gl_UniformMatrix4fv_fn)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
-typedef void (*rig_gl_DrawArrays_fn)(GLenum mode, GLint first, GLsizei count);
+typedef const GLubyte *(*rig_gl__GetString)(GLenum name);
+typedef void (*rig_gl__Viewport)(GLint x, GLint y, GLsizei width, GLsizei height);
+typedef void (*rig_gl__ClearColor)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+typedef void (*rig_gl__Clear)(GLbitfield mask);
+typedef void (*rig_gl__Enable)(GLenum cap);
+typedef void (*rig_gl__DepthFunc)(GLenum func);
+typedef GLuint (*rig_gl__CreateShader)(GLenum type);
+typedef void (*rig_gl__ShaderSource)(GLuint shader, GLsizei count, const GLchar *const* string, const GLint *length);
+typedef void (*rig_gl__CompileShader)(GLuint shader);
+typedef void (*rig_gl__GetShaderiv)(GLuint shader, GLenum pname, GLint *params);
+typedef void (*rig_gl__GetShaderInfoLog)(GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+typedef void (*rig_gl__DeleteShader)(GLuint shader);
+typedef GLuint (*rig_gl__CreateProgram)(void);
+typedef void (*rig_gl__AttachShader)(GLuint program, GLuint shader);
+typedef void (*rig_gl__LinkProgram)(GLuint program);
+typedef void (*rig_gl__GetProgramiv)(GLuint program, GLenum pname, GLint *params);
+typedef void (*rig_gl__GetProgramInfoLog)(GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+typedef void (*rig_gl__DeleteProgram)(GLuint program);
+typedef void (*rig_gl__UseProgram)(GLuint program);
+typedef void (*rig_gl__GenVertexArrays)(GLsizei n, GLuint *arrays);
+typedef void (*rig_gl__BindVertexArray)(GLuint array);
+typedef void (*rig_gl__DeleteVertexArrays)(GLsizei n, const GLuint *arrays);
+typedef void (*rig_gl__GenBuffers)(GLsizei n, GLuint *buffers);
+typedef void (*rig_gl__BindBuffer)(GLenum target, GLuint buffer);
+typedef void (*rig_gl__BufferData)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+typedef void (*rig_gl__DeleteBuffers)(GLsizei n, const GLuint *buffers);
+typedef void (*rig_gl__GenTextures)(GLsizei n, GLuint *textures);
+typedef void (*rig_gl__BindTexture)(GLenum target, GLuint texture);
+typedef void (*rig_gl__TexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels);
+typedef void (*rig_gl__TexParameteri)(GLenum target, GLenum pname, GLint param);
+typedef void (*rig_gl__DeleteTextures)(GLsizei n, const GLuint *textures);
+typedef void (*rig_gl__ActiveTexture)(GLenum texture);
+typedef void (*rig_gl__Disable)(GLenum cap);
+typedef void (*rig_gl__BlendFunc)(GLenum sfactor, GLenum dfactor);
+typedef void (*rig_gl__EnableVertexAttribArray)(GLuint index);
+typedef void (*rig_gl__VertexAttribPointer)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+typedef GLint (*rig_gl__GetUniformLocation)(GLuint program, const GLchar *name);
+typedef void (*rig_gl__Uniform1i)(GLint location, GLint v0);
+typedef void (*rig_gl__Uniform2f)(GLint location, GLfloat v0, GLfloat v1);
+typedef void (*rig_gl__Uniform4f)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+typedef void (*rig_gl__UniformMatrix4fv)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+typedef void (*rig_gl__DrawArrays)(GLenum mode, GLint first, GLsizei count);
 ]]
 
 local function bind_function(name)
@@ -64,7 +75,7 @@ local function bind_function(name)
       )
    end
 
-   local typedef_name = "rig_gl_" .. name .. "_fn"
+   local typedef_name = "rig_gl__" .. name
    local ok, fn_or_err = pcall(ffi.cast, typedef_name, ptr)
    if not ok then
       error(

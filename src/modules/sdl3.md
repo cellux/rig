@@ -109,6 +109,10 @@ Additional fields accepted by `options.sdl3_gpu`:
 - `mode = "sdl3"` also provides the `"font_backend"` service used by `font.create_text_renderer(...)`.
   - Atlas pages are uploaded lazily as SDL textures.
   - Updated atlas pages are re-uploaded automatically when their page revision changes.
+- `mode = "sdl3_gl"` also provides the `"font_backend"` service used by `font.create_text_renderer(...)`.
+  - Atlas pages are uploaded lazily as OpenGL textures.
+  - Updated atlas pages are re-uploaded automatically when their page revision changes.
+  - Text is drawn through a small OpenGL shader pipeline owned by the runtime.
 - `sdl3.SetRenderDrawColor(renderer, r, g, b, a)`
   - Raw SDL renderer color setter.
 - `sdl3.RenderClear(renderer)`
@@ -149,6 +153,8 @@ Additional fields accepted by `options.sdl3_gpu`:
   - Returns the current `SDL_GLContext`.
 - `sdl3.get_gl_proc_address(name)`
   - Resolves an OpenGL entry point through SDL.
+- `sdl3.GetWindowSizeInPixels(window, w_out, h_out)`
+  - Raw SDL pixel-size query for windows.
 - `sdl3.upload_to_gpu_buffer(device, buffer, data_string)`
   - Uploads raw byte data into an SDL GPU buffer.
   - Raises an error if upload staging or submission fails.

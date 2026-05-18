@@ -110,6 +110,7 @@ bool SDL_SetFloatProperty(SDL_PropertiesID props, const char *name, float value)
 bool SDL_SetBooleanProperty(SDL_PropertiesID props, const char *name, bool value);
 bool SDL_PollEvent(SDL_Event *event);
 Uint32 SDL_GetMouseState(float *x, float *y);
+bool SDL_GetWindowSizeInPixels(SDL_Window *window, int *w, int *h);
 const char *SDL_GetError(void);
 const char *SDL_GetKeyName(SDL_Keycode key);
 bool SDL_GetCurrentTime(Sint64 *ticks);
@@ -462,6 +463,7 @@ export_sdl_function("SetFloatProperty", "SDL_SetFloatProperty")
 export_sdl_function("SetBooleanProperty", "SDL_SetBooleanProperty")
 export_sdl_function("PollEvent", "SDL_PollEvent")
 export_sdl_function("GetMouseState", "SDL_GetMouseState")
+export_sdl_function("GetWindowSizeInPixels", "SDL_GetWindowSizeInPixels")
 export_sdl_function("GetError", "SDL_GetError")
 export_sdl_function("GetKeyName", "SDL_GetKeyName")
 export_sdl_function("GetCurrentTime", "SDL_GetCurrentTime")
@@ -1243,6 +1245,7 @@ local function get_mode_options(options)
 end
 
 local shutdown
+local destroy_gl_font_backend_state
 
 function M.get_window()
    return M._window
@@ -1565,6 +1568,7 @@ local function setup_gl(options)
 end
 
 shutdown = function()
+   destroy_gl_font_backend_state()
    if M._gl_context ~= nil then
       M.GL_DestroyContext(M._gl_context)
       M._gl_context = nil
@@ -1611,6 +1615,258 @@ end
 
 local font_src_rect = ffi.new("SDL_FRect[1]")
 local font_dst_rect = ffi.new("SDL_FRect[1]")
+local gl_font_vertex_arrays = ffi.new("unsigned int[1]")
+local gl_font_buffers = ffi.new("unsigned int[1]")
+local gl_font_textures = ffi.new("unsigned int[1]")
+local gl_font_quad_vertices = ffi.new("float[24]")
+local gl_font_window_width = ffi.new("int[1]")
+local gl_font_window_height = ffi.new("int[1]")
+local gl_font_backend_state = nil
+
+local gl_font_vertex_source = [[
+#version 330 core
+
+layout(location = 0) in vec2 in_position;
+layout(location = 1) in vec2 in_uv;
+
+out vec2 out_uv;
+
+uniform vec2 u_view_size;
+
+void main()
+{
+   vec2 normalized = vec2(
+      (in_position.x / u_view_size.x) * 2.0 - 1.0,
+      1.0 - (in_position.y / u_view_size.y) * 2.0
+   );
+   gl_Position = vec4(normalized, 0.0, 1.0);
+   out_uv = in_uv;
+}
+]]
+
+local gl_font_fragment_source = [[
+#version 330 core
+
+in vec2 out_uv;
+out vec4 frag_color;
+
+uniform sampler2D u_atlas;
+uniform vec4 u_color;
+
+void main()
+{
+   vec4 sample = texture(u_atlas, out_uv);
+   frag_color = vec4(u_color.rgb, u_color.a * sample.a);
+}
+]]
+
+destroy_gl_font_backend_state = function()
+   local state = gl_font_backend_state
+   if state == nil then
+      return
+   end
+
+   local gl = state.gl
+
+   if state.vbo ~= 0 then
+      gl_font_buffers[0] = state.vbo
+      gl.DeleteBuffers(1, gl_font_buffers)
+   end
+   if state.vao ~= 0 then
+      gl_font_vertex_arrays[0] = state.vao
+      gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
+   end
+   if state.program ~= 0 then
+      gl.DeleteProgram(state.program)
+   end
+
+   gl_font_backend_state = nil
+end
+
+local function ensure_gl_font_backend_state()
+   if gl_font_backend_state ~= nil then
+      return gl_font_backend_state
+   end
+
+   local gl = require("gl")
+   local program = gl.create_program {
+      vertex_source = gl_font_vertex_source,
+      fragment_source = gl_font_fragment_source,
+   }
+
+   gl.GenVertexArrays(1, gl_font_vertex_arrays)
+   gl.GenBuffers(1, gl_font_buffers)
+
+   local vao = tonumber(gl_font_vertex_arrays[0]) or 0
+   local vbo = tonumber(gl_font_buffers[0]) or 0
+   if vao == 0 or vbo == 0 then
+      if vbo ~= 0 then
+         gl_font_buffers[0] = vbo
+         gl.DeleteBuffers(1, gl_font_buffers)
+      end
+      if vao ~= 0 then
+         gl_font_vertex_arrays[0] = vao
+         gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
+      end
+      gl.DeleteProgram(program)
+      error("failed to create OpenGL font vertex objects", 0)
+   end
+
+   gl.BindVertexArray(vao)
+   gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
+   gl.BufferData(
+      gl.ARRAY_BUFFER,
+      ffi.sizeof(gl_font_quad_vertices),
+      nil,
+      gl.DYNAMIC_DRAW
+   )
+
+   gl.EnableVertexAttribArray(0)
+   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 0))
+   gl.EnableVertexAttribArray(1)
+   gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 8))
+
+   local atlas_location = gl.get_uniform_location(program, "u_atlas")
+   local view_size_location = gl.get_uniform_location(program, "u_view_size")
+   local color_location = gl.get_uniform_location(program, "u_color")
+   if atlas_location < 0 or view_size_location < 0 or color_location < 0 then
+      gl_font_buffers[0] = vbo
+      gl.DeleteBuffers(1, gl_font_buffers)
+      gl_font_vertex_arrays[0] = vao
+      gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
+      gl.DeleteProgram(program)
+      error("failed to locate OpenGL font shader uniforms", 0)
+   end
+
+   gl.UseProgram(program)
+   gl.Uniform1i(atlas_location, 0)
+
+   gl_font_backend_state = {
+      gl = gl,
+      program = program,
+      vao = vao,
+      vbo = vbo,
+      atlas_location = atlas_location,
+      view_size_location = view_size_location,
+      color_location = color_location,
+   }
+
+   return gl_font_backend_state
+end
+
+local function get_window_size_in_pixels()
+   if M._window == nil then
+      error("an SDL window must exist before querying pixel size", 0)
+   end
+
+   if not M.GetWindowSizeInPixels(M._window, gl_font_window_width, gl_font_window_height) then
+      error("failed to query window size in pixels: " .. get_error_string(), 0)
+   end
+
+   return tonumber(gl_font_window_width[0]) or 0,
+      tonumber(gl_font_window_height[0]) or 0
+end
+
+local function upload_gl_font_page_texture(page, texture)
+   local state = ensure_gl_font_backend_state()
+   local gl = state.gl
+   local pixel_count = page.width * page.height
+   local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
+
+   for i = 0, pixel_count - 1 do
+      local alpha = page.buffer[i]
+      local base = i * 4
+      rgba[base] = 255
+      rgba[base + 1] = 255
+      rgba[base + 2] = 255
+      rgba[base + 3] = alpha
+   end
+
+   local texture_id = texture
+   if texture_id == nil or texture_id == 0 then
+      gl.GenTextures(1, gl_font_textures)
+      texture_id = tonumber(gl_font_textures[0]) or 0
+      if texture_id == 0 then
+         error("failed to create OpenGL font texture", 0)
+      end
+   end
+
+   gl.ActiveTexture(gl.TEXTURE0)
+   gl.BindTexture(gl.TEXTURE_2D, texture_id)
+   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+   gl.TexImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      page.width,
+      page.height,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      rgba
+   )
+
+   return texture_id
+end
+
+local function ensure_gl_font_page_texture(text_renderer, page_index)
+   local atlas = text_renderer.atlas
+   local state = text_renderer._state
+   local page = atlas.pages[page_index]
+   if page == nil then
+      error(("font atlas has no page %d"):format(page_index), 0)
+   end
+
+   local revision = page.revision or 0
+   if state.revisions[page_index] == revision and state.textures[page_index] ~= nil then
+      return state.textures[page_index]
+   end
+
+   local texture = upload_gl_font_page_texture(page, state.textures[page_index])
+   state.textures[page_index] = texture
+   state.revisions[page_index] = revision
+   return texture
+end
+
+local function write_gl_font_quad_vertices(packed, x, y, scale)
+   local x0 = x
+   local y0 = y
+   local x1 = x + packed.width * scale
+   local y1 = y + packed.height * scale
+
+   gl_font_quad_vertices[0] = x0
+   gl_font_quad_vertices[1] = y0
+   gl_font_quad_vertices[2] = packed.u0
+   gl_font_quad_vertices[3] = packed.v0
+
+   gl_font_quad_vertices[4] = x1
+   gl_font_quad_vertices[5] = y0
+   gl_font_quad_vertices[6] = packed.u1
+   gl_font_quad_vertices[7] = packed.v0
+
+   gl_font_quad_vertices[8] = x1
+   gl_font_quad_vertices[9] = y1
+   gl_font_quad_vertices[10] = packed.u1
+   gl_font_quad_vertices[11] = packed.v1
+
+   gl_font_quad_vertices[12] = x0
+   gl_font_quad_vertices[13] = y0
+   gl_font_quad_vertices[14] = packed.u0
+   gl_font_quad_vertices[15] = packed.v0
+
+   gl_font_quad_vertices[16] = x1
+   gl_font_quad_vertices[17] = y1
+   gl_font_quad_vertices[18] = packed.u1
+   gl_font_quad_vertices[19] = packed.v1
+
+   gl_font_quad_vertices[20] = x0
+   gl_font_quad_vertices[21] = y1
+   gl_font_quad_vertices[22] = packed.u0
+   gl_font_quad_vertices[23] = packed.v1
+end
 
 local function upload_font_page_texture(page, texture)
    local pixel_count = page.width * page.height
@@ -1674,6 +1930,7 @@ local function ensure_font_page_texture(text_renderer, page_index)
 end
 
 local sdl3_font_backend = {}
+local sdl3_gl_font_backend = {}
 
 function sdl3_font_backend.create_text_renderer(text_renderer)
    return {
@@ -1742,6 +1999,104 @@ function sdl3_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y,
       end
 
       sdl3_font_backend.draw_packed_glyph(
+         text_renderer,
+         entry.packed,
+         base_x + entry.layout_x,
+         baseline_y + entry.layout_y,
+         1.0,
+         r,
+         g,
+         b,
+         a
+      )
+   end
+end
+
+function sdl3_gl_font_backend.create_text_renderer(text_renderer)
+   return {
+      textures = {},
+      revisions = {},
+   }
+end
+
+function sdl3_gl_font_backend.release_text_renderer(text_renderer)
+   local state = text_renderer._state
+   if state == nil then
+      return
+   end
+
+   local backend_state = gl_font_backend_state
+   if backend_state == nil then
+      return
+   end
+
+   local gl = backend_state.gl
+   for i = 1, #state.textures do
+      local texture = state.textures[i]
+      if texture ~= nil and texture ~= 0 then
+         gl_font_textures[0] = texture
+         gl.DeleteTextures(1, gl_font_textures)
+      end
+      state.textures[i] = nil
+      state.revisions[i] = nil
+   end
+end
+
+function sdl3_gl_font_backend.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+   if packed.width <= 0 or packed.height <= 0 then
+      return
+   end
+
+   local backend_state = ensure_gl_font_backend_state()
+   local gl = backend_state.gl
+   local texture = ensure_gl_font_page_texture(text_renderer, packed.page_index)
+   local window_width, window_height = get_window_size_in_pixels()
+   if window_width <= 0 or window_height <= 0 then
+      return
+   end
+
+   write_gl_font_quad_vertices(packed, x, y, scale)
+
+   gl.Enable(gl.BLEND)
+   gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+   gl.UseProgram(backend_state.program)
+   gl.Uniform2f(backend_state.view_size_location, window_width, window_height)
+   gl.Uniform4f(
+      backend_state.color_location,
+      r / 255.0,
+      g / 255.0,
+      b / 255.0,
+      a / 255.0
+   )
+   gl.ActiveTexture(gl.TEXTURE0)
+   gl.BindTexture(gl.TEXTURE_2D, texture)
+   gl.BindVertexArray(backend_state.vao)
+   gl.BindBuffer(gl.ARRAY_BUFFER, backend_state.vbo)
+   gl.BufferData(
+      gl.ARRAY_BUFFER,
+      ffi.sizeof(gl_font_quad_vertices),
+      gl_font_quad_vertices,
+      gl.DYNAMIC_DRAW
+   )
+   gl.DrawArrays(gl.TRIANGLES, 0, 6)
+end
+
+function sdl3_gl_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+   for i = 1, #run.entries do
+      local entry = run.entries[i]
+      local r = 255
+      local g = 255
+      local b = 255
+      local a = 255
+
+      if color_fn ~= nil then
+         r, g, b, a = color_fn(i, entry, run)
+      end
+      if a == nil then
+         a = 255
+      end
+
+      sdl3_gl_font_backend.draw_packed_glyph(
          text_renderer,
          entry.packed,
          base_x + entry.layout_x,
@@ -2097,6 +2452,7 @@ rig.register_service_impl("time", "sdl3", sdl3_time_service)
 rig.register_service_impl("time", "sdl3_gl", sdl3_time_service)
 rig.register_service_impl("time", "sdl3_gpu", sdl3_time_service)
 rig.register_service_impl("font_backend", "sdl3", sdl3_font_backend)
+rig.register_service_impl("font_backend", "sdl3_gl", sdl3_gl_font_backend)
 
 local function setup_scheduler(label)
    M._scheduler = sched.create(label)
