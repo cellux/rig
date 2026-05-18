@@ -33,6 +33,18 @@ Backend-specific atlas upload and drawing are provided through the `"font_backen
     - `max_advance`
     - `x_ppem`
     - `y_ppem`
+- `font.create_style(face, options)`
+  - Creates a higher-level text style bundle for one pixel size.
+  - Requires:
+    - `options.pixel_size`
+  - Optional atlas options:
+    - `page_width`
+    - `page_height`
+    - `padding`
+  - Returns a style object that owns:
+    - `sized_face`
+    - `atlas`
+    - `text_renderer`
 - `font.shape(sized_face, text[, options])`
   - Shapes UTF-8 text through HarfBuzz.
   - Returns:
@@ -109,6 +121,23 @@ Sized faces returned by `font.create_sized_face(...)` also provide:
 - `sized_face:get_cached_glyph(glyph_id)`
 - `sized_face:create_atlas(options?)`
 
+## Style Object
+
+Styles returned by `font.create_style(...)` provide:
+
+- `style.face`
+- `style.sized_face`
+- `style.atlas`
+- `style.text_renderer`
+- `style.pixel_size`
+- `style:get_glyph(glyph_id)`
+- `style:build_run(text[, options])`
+- `style:warm_text(text[, options])`
+- `style:draw_packed_glyph(packed, x, y[, scale, r, g, b, a])`
+- `style:draw_run(run, base_x, baseline_y[, color_fn])`
+- `style:draw_text(text, base_x, baseline_y[, color_fn[, options]])`
+- `style:release()`
+
 ## Atlas Object
 
 Atlas objects returned by `font.create_atlas(...)` provide:
@@ -164,6 +193,7 @@ Atlas objects also expose:
 - `font.create_atlas(...)` currently produces a single-channel grayscale atlas.
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
 - `font.create_text_renderer(...)` resolves through `rig.require_service("font_backend")`.
+- `font.create_style(...)` currently creates a text renderer immediately, so it also requires an active runtime mode that provides `"font_backend"`.
 - `mode = "sdl3"` currently provides the `"font_backend"` service through SDL renderer textures.
 - `mode = "sdl3_gl"` currently provides the `"font_backend"` service through OpenGL textures and textured quads.
 - `mode = "sdl3_gpu"` does not provide it yet.

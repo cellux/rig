@@ -24,9 +24,7 @@ local scene = {
    start_time = nil,
    font_path = nil,
    face = nil,
-   profiler_face = nil,
-   profiler_atlas = nil,
-   profiler_text_renderer = nil,
+   profiler_style = nil,
    profiler_cpu_ms = 0.0,
    profiler_cpu_max_1s_ms = 0.0,
    profiler_cpu_max_ms = 0.0,
@@ -111,8 +109,8 @@ local function find_font_path()
 end
 
 local function draw_label(text, x, baseline_y, r, g, b, a)
-   local run = scene.profiler_atlas:build_text_run(text)
-   scene.profiler_text_renderer:draw_text_run(run, x, baseline_y, function()
+   local run = scene.profiler_style:build_run(text)
+   scene.profiler_style:draw_run(run, x, baseline_y, function()
       return r, g, b, a
    end)
 end
@@ -238,16 +236,15 @@ local function initialize_scene()
    scene.start_time = time.monotonic()
    scene.font_path = find_font_path()
    scene.face = font.load_face(scene.font_path)
-   scene.profiler_face = scene.face:create_sized_face(14)
-   scene.profiler_atlas = scene.profiler_face:create_atlas {
+   scene.profiler_style = font.create_style(scene.face, {
+      pixel_size = 14,
       page_width = 256,
       page_height = 128,
       padding = 1,
-   }
-   scene.profiler_atlas:warm_text(
+   })
+   scene.profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )
-   scene.profiler_text_renderer = scene.profiler_atlas:create_text_renderer()
 end
 
 local function initialize_gl_resources()
@@ -278,18 +275,9 @@ local function initialize_gl_resources()
 end
 
 local function release_scene()
-   if scene.profiler_text_renderer ~= nil then
-      scene.profiler_text_renderer:release()
-      scene.profiler_text_renderer = nil
-   end
-
-   if scene.profiler_atlas ~= nil then
-      scene.profiler_atlas:release()
-      scene.profiler_atlas = nil
-   end
-   if scene.profiler_face ~= nil then
-      scene.profiler_face:release()
-      scene.profiler_face = nil
+   if scene.profiler_style ~= nil then
+      scene.profiler_style:release()
+      scene.profiler_style = nil
    end
    if scene.face ~= nil then
       scene.face:release()

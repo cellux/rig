@@ -17,6 +17,9 @@ atlas_mt.__index = atlas_mt
 local text_renderer_mt = {}
 text_renderer_mt.__index = text_renderer_mt
 
+local style_mt = {}
+style_mt.__index = style_mt
+
 local freetype_library = M._freetype_library or nil
 
 local function normalize_face_index(face_index)
@@ -170,6 +173,15 @@ local function ensure_text_renderer(text_renderer)
    end
 end
 
+local function ensure_style(style)
+   if getmetatable(style) ~= style_mt then
+      error("font operation expects a style created by font.create_style", 0)
+   end
+   if style._released then
+      error("font style has been released", 0)
+   end
+end
+
 function face_mt:release()
    if self._released then
       return
@@ -270,6 +282,41 @@ function text_renderer_mt:draw_text_run(run, base_x, baseline_y, color_fn)
    return M.draw_text_run(self, run, base_x, baseline_y, color_fn)
 end
 
+function style_mt:release()
+   return M.release_style(self)
+end
+
+function style_mt:get_glyph(glyph_id)
+   ensure_style(self)
+   return self.atlas:get_glyph(glyph_id)
+end
+
+function style_mt:build_run(text, options)
+   ensure_style(self)
+   return self.atlas:build_text_run(text, options)
+end
+
+function style_mt:warm_text(text, options)
+   ensure_style(self)
+   return self.atlas:warm_text(text, options)
+end
+
+function style_mt:draw_packed_glyph(packed, x, y, scale, r, g, b, a)
+   ensure_style(self)
+   return self.text_renderer:draw_packed_glyph(packed, x, y, scale, r, g, b, a)
+end
+
+function style_mt:draw_run(run, base_x, baseline_y, color_fn)
+   ensure_style(self)
+   return self.text_renderer:draw_text_run(run, base_x, baseline_y, color_fn)
+end
+
+function style_mt:draw_text(text, base_x, baseline_y, color_fn, options)
+   ensure_style(self)
+   local run = self:build_run(text, options)
+   return self:draw_run(run, base_x, baseline_y, color_fn)
+end
+
 function M.load_face(path, face_index)
    if type(path) ~= "string" or path == "" then
       error("font.load_face expects path to be a non-empty string", 0)
@@ -323,6 +370,43 @@ function M.create_sized_face(face, pixel_size)
       _hb_font = ffi.gc(hb_font, harfbuzz.font_destroy),
       _released = false,
    }, sized_face_mt)
+end
+
+function M.create_style(face, options)
+   ensure_face(face)
+   if type(options) ~= "table" then
+      error("font.create_style expects options to be a table", 0)
+   end
+
+   local sized_face = M.create_sized_face(face, options.pixel_size)
+   local atlas = nil
+   local text_renderer = nil
+
+   local ok, err = pcall(function()
+      atlas = M.create_atlas(sized_face, {
+         page_width = options.page_width,
+         page_height = options.page_height,
+         padding = options.padding,
+      })
+      text_renderer = M.create_text_renderer(atlas)
+   end)
+
+   if not ok then
+      if atlas ~= nil then
+         atlas:release()
+      end
+      sized_face:release()
+      error(err, 0)
+   end
+
+   return setmetatable({
+      face = face,
+      sized_face = sized_face,
+      atlas = atlas,
+      text_renderer = text_renderer,
+      pixel_size = sized_face.pixel_size,
+      _released = false,
+   }, style_mt)
 end
 
 function M.shape(sized_face, text, options)
@@ -757,6 +841,25 @@ function M.release_text_renderer(text_renderer)
    text_renderer._backend.release_text_renderer(text_renderer)
    text_renderer._state = nil
    text_renderer._released = true
+end
+
+function M.release_style(style)
+   ensure_style(style)
+
+   if style.text_renderer ~= nil and not style.text_renderer._released then
+      style.text_renderer:release()
+   end
+   if style.atlas ~= nil and not style.atlas._released then
+      style.atlas:release()
+   end
+   if style.sized_face ~= nil and not style.sized_face._released then
+      style.sized_face:release()
+   end
+
+   style.text_renderer = nil
+   style.atlas = nil
+   style.sized_face = nil
+   style._released = true
 end
 
 function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)

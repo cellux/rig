@@ -36,20 +36,12 @@ local sprite_outline_offsets = {
 local scene = {
    font_path = nil,
    face = nil,
-   title_face = nil,
-   scroll_face = nil,
-   sprite_face = nil,
-   profiler_face = nil,
-   title_atlas = nil,
-   scroll_atlas = nil,
-   sprite_atlas = nil,
-   profiler_atlas = nil,
+   title_style = nil,
+   scroll_style = nil,
+   sprite_style = nil,
+   profiler_style = nil,
    raster_texture = nil,
    raster_texture_height = nil,
-   title_text_renderer = nil,
-   scroll_text_renderer = nil,
-   sprite_text_renderer = nil,
-   profiler_text_renderer = nil,
    title_run = nil,
    scroll_run = nil,
    sprite_glyphs = nil,
@@ -215,7 +207,7 @@ local function upload_raster_texture(renderer, field, line_height)
    return texture, texture_height
 end
 
-local function draw_text_run(renderer, text_renderer, run, base_x, baseline_y, color_fn)
+local function draw_text_run(style, run, base_x, baseline_y, color_fn)
    for i = 1, #run.entries do
       local entry = run.entries[i]
       local packed = entry.packed
@@ -225,7 +217,7 @@ local function draw_text_run(renderer, text_renderer, run, base_x, baseline_y, c
       if draw_x + packed.width >= -32 then
          if draw_x <= window_width + 32 then
             local r, g, b, a = color_fn(i, entry, draw_x, draw_y)
-            text_renderer:draw_packed_glyph(packed, draw_x, draw_y, 1.0, r, g, b, a)
+            style:draw_packed_glyph(packed, draw_x, draw_y, 1.0, r, g, b, a)
          elseif draw_x > window_width + 32 then
             break
          end
@@ -233,9 +225,9 @@ local function draw_text_run(renderer, text_renderer, run, base_x, baseline_y, c
    end
 end
 
-local function draw_label(renderer, sized_face, atlas, text_renderer, text, x, baseline_y, r, g, b, a)
-   local run = atlas:build_text_run(text)
-   draw_text_run(renderer, text_renderer, run, x, baseline_y, function()
+local function draw_label(style, text, x, baseline_y, r, g, b, a)
+   local run = style:build_run(text)
+   draw_text_run(style, run, x, baseline_y, function()
       return r, g, b, a
    end)
 end
@@ -439,11 +431,11 @@ local function draw_title(renderer, layout)
    local run = scene.title_run
    local base_x = (window_width - run.width) * 0.5
 
-   draw_text_run(renderer, scene.title_text_renderer, run, base_x + title_shadow_offset, title_baseline_y + title_shadow_offset, function()
+   draw_text_run(scene.title_style, run, base_x + title_shadow_offset, title_baseline_y + title_shadow_offset, function()
       return 0, 0, 0, 220
    end)
 
-   draw_text_run(renderer, scene.title_text_renderer, run, base_x, title_baseline_y, function(index)
+   draw_text_run(scene.title_style, run, base_x, title_baseline_y, function(index)
       return title_color(index)
    end)
 end
@@ -473,7 +465,7 @@ local function draw_scroller_copy(renderer, layout, base_x)
       if x + packed.width >= -48 then
          if x <= window_width + 48 then
             local r, g, b, a = scroll_color(i, x, y)
-            scene.scroll_text_renderer:draw_packed_glyph(packed, x, y, 1.0, r, g, b, a)
+            scene.scroll_style:draw_packed_glyph(packed, x, y, 1.0, r, g, b, a)
          elseif x > window_width + 48 then
             break
          end
@@ -517,20 +509,20 @@ local function draw_profiler(renderer)
    local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
    local line_13 = "PROFILER ON [0]"
 
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, header, text_x, panel_y + 16, 255, 184, 150, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
-   draw_label(renderer, scene.profiler_face, scene.profiler_atlas, scene.profiler_text_renderer, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, header, text_x, panel_y + 16, 255, 184, 150, 255)
+   draw_label(scene.profiler_style, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
+   draw_label(scene.profiler_style, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
+   draw_label(scene.profiler_style, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
+   draw_label(scene.profiler_style, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
+   draw_label(scene.profiler_style, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
+   draw_label(scene.profiler_style, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
+   draw_label(scene.profiler_style, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
+   draw_label(scene.profiler_style, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
 end
 
 local function make_sprite(i, character)
@@ -643,7 +635,7 @@ local function draw_sprites(renderer, layout)
       if scene.sprite_outline_enabled then
          for j = 1, #sprite_outline_offsets do
             local offset = sprite_outline_offsets[j]
-            scene.sprite_text_renderer:draw_packed_glyph(
+            scene.sprite_style:draw_packed_glyph(
                sprite.glyph,
                x + offset[1],
                y + offset[2],
@@ -656,7 +648,7 @@ local function draw_sprites(renderer, layout)
          end
       end
 
-      scene.sprite_text_renderer:draw_packed_glyph(
+      scene.sprite_style:draw_packed_glyph(
          sprite.glyph,
          x,
          y,
@@ -745,13 +737,13 @@ local function animate_scroller()
    end
 end
 
-local function create_sprite_glyphs(sprite_face, sprite_atlas, text)
+local function create_sprite_glyphs(sprite_style, text)
    local glyphs = {}
    for i = 1, #text do
       local character = text:sub(i, i)
       if glyphs[character] == nil then
-         local shaped = font.shape(sprite_face, character)
-         glyphs[character] = sprite_atlas:get_glyph(shaped.glyphs[1].glyph_id)
+         local shaped = font.shape(sprite_style.sized_face, character)
+         glyphs[character] = sprite_style:get_glyph(shaped.glyphs[1].glyph_id)
       end
    end
    return glyphs
@@ -761,47 +753,37 @@ local function initialize_scene()
    local renderer = sdl3.get_renderer()
    scene.font_path = find_font_path()
    scene.face = font.load_face(scene.font_path)
-   scene.title_face = scene.face:create_sized_face(74)
-   scene.scroll_face = scene.face:create_sized_face(38)
-   scene.sprite_face = scene.face:create_sized_face(82)
-   scene.profiler_face = scene.face:create_sized_face(14)
-
-   scene.title_atlas = scene.title_face:create_atlas {
+   scene.title_style = font.create_style(scene.face, {
+      pixel_size = 74,
       page_width = 512,
       page_height = 256,
       padding = 2,
-   }
-   scene.scroll_atlas = scene.scroll_face:create_atlas {
+   })
+   scene.scroll_style = font.create_style(scene.face, {
+      pixel_size = 38,
       page_width = 1024,
       page_height = 512,
       padding = 2,
-   }
-   scene.sprite_atlas = scene.sprite_face:create_atlas {
+   })
+   scene.sprite_style = font.create_style(scene.face, {
+      pixel_size = 82,
       page_width = 256,
       page_height = 256,
       padding = 2,
-   }
-   scene.profiler_atlas = scene.profiler_face:create_atlas {
+   })
+   scene.profiler_style = font.create_style(scene.face, {
+      pixel_size = 14,
       page_width = 256,
       page_height = 128,
       padding = 1,
-   }
+   })
 
-   scene.title_run = scene.title_atlas:build_text_run("NEON PHANTOMS")
-   scene.scroll_run = scene.scroll_atlas:build_text_run(scroll_text)
-   scene.sprite_glyphs = create_sprite_glyphs(
-      scene.sprite_face,
-      scene.sprite_atlas,
-      sprite_text
-   )
-   scene.profiler_atlas:warm_text(
+   scene.title_run = scene.title_style:build_run("NEON PHANTOMS")
+   scene.scroll_run = scene.scroll_style:build_run(scroll_text)
+   scene.sprite_glyphs = create_sprite_glyphs(scene.sprite_style, sprite_text)
+   scene.profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM PROFILER ON OFF [] 0123456789./-"
    )
-
-   scene.title_text_renderer = scene.title_atlas:create_text_renderer()
-   scene.scroll_text_renderer = scene.scroll_atlas:create_text_renderer()
-   scene.sprite_text_renderer = scene.sprite_atlas:create_text_renderer()
-   scene.profiler_text_renderer = scene.profiler_atlas:create_text_renderer()
 
    scene.raster_field = build_raster_field()
    scene.raster_texture, scene.raster_texture_height =
@@ -822,60 +804,27 @@ local function initialize_scene()
 end
 
 local function release_scene()
-   if scene.title_text_renderer ~= nil then
-      scene.title_text_renderer:release()
-      scene.title_text_renderer = nil
-   end
-   if scene.scroll_text_renderer ~= nil then
-      scene.scroll_text_renderer:release()
-      scene.scroll_text_renderer = nil
-   end
-   if scene.sprite_text_renderer ~= nil then
-      scene.sprite_text_renderer:release()
-      scene.sprite_text_renderer = nil
-   end
-   if scene.profiler_text_renderer ~= nil then
-      scene.profiler_text_renderer:release()
-      scene.profiler_text_renderer = nil
-   end
    if scene.raster_texture ~= nil and scene.raster_texture ~= ffi.NULL then
       sdl3.DestroyTexture(scene.raster_texture)
       scene.raster_texture = nil
    end
    scene.raster_texture_height = nil
 
-   if scene.title_atlas ~= nil then
-      scene.title_atlas:release()
-      scene.title_atlas = nil
+   if scene.title_style ~= nil then
+      scene.title_style:release()
+      scene.title_style = nil
    end
-   if scene.scroll_atlas ~= nil then
-      scene.scroll_atlas:release()
-      scene.scroll_atlas = nil
+   if scene.scroll_style ~= nil then
+      scene.scroll_style:release()
+      scene.scroll_style = nil
    end
-   if scene.sprite_atlas ~= nil then
-      scene.sprite_atlas:release()
-      scene.sprite_atlas = nil
+   if scene.sprite_style ~= nil then
+      scene.sprite_style:release()
+      scene.sprite_style = nil
    end
-   if scene.profiler_atlas ~= nil then
-      scene.profiler_atlas:release()
-      scene.profiler_atlas = nil
-   end
-
-   if scene.title_face ~= nil then
-      scene.title_face:release()
-      scene.title_face = nil
-   end
-   if scene.scroll_face ~= nil then
-      scene.scroll_face:release()
-      scene.scroll_face = nil
-   end
-   if scene.sprite_face ~= nil then
-      scene.sprite_face:release()
-      scene.sprite_face = nil
-   end
-   if scene.profiler_face ~= nil then
-      scene.profiler_face:release()
-      scene.profiler_face = nil
+   if scene.profiler_style ~= nil then
+      scene.profiler_style:release()
+      scene.profiler_style = nil
    end
    if scene.face ~= nil then
       scene.face:release()
