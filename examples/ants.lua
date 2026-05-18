@@ -1,5 +1,6 @@
 local sdl3 = require("sdl3")
 local sched = require("sched")
+local profiler = require("profiler")
 local ffi = require("ffi")
 
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
@@ -17,11 +18,7 @@ local ant_scale = 1.0
 
 local ants = {}
 local rect = ffi.new("SDL_FRect[1]")
-local perf_frequency = tonumber(sdl3.GetPerformanceFrequency())
-local fps_counter_started = tonumber(sdl3.GetPerformanceCounter())
-local fps_last_sample = fps_counter_started
-local fps_frame_count = 0
-local fps_value = 0.0
+local frame_profiler = profiler.create_frame_profiler()
 local slider = {
    x = nil,
    y = 14,
@@ -293,7 +290,8 @@ local function draw_text(renderer, text, x, y, scale, color)
 end
 
 local function draw_fps_overlay(renderer)
-   local label = ("FPS %d"):format(math.floor(fps_value + 0.5))
+   local profile = frame_profiler:snapshot()
+   local label = ("FPS %d"):format(math.floor(profile.fps + 0.5))
    local panel_w = (#label * 4 * font_scale) + 8
    local panel_h = (5 * font_scale) + 8
    local panel_x = 12
@@ -422,20 +420,6 @@ local function draw_slider(renderer)
       slider.knob_size,
       slider.knob_size
    )
-end
-
-local function update_fps()
-   fps_frame_count = fps_frame_count + 1
-
-   local now = tonumber(sdl3.GetPerformanceCounter())
-   local elapsed = (now - fps_last_sample) / perf_frequency
-   if elapsed < 0.25 then
-      return
-   end
-
-   fps_value = fps_frame_count / elapsed
-   fps_frame_count = 0
-   fps_last_sample = now
 end
 
 local function draw_ant(renderer, ant)
@@ -761,12 +745,12 @@ local function initialize_ants()
 end
 
 local function on_render()
+   frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
    if renderer == nil then
       error("sdl3 runtime did not provide a renderer", 0)
    end
 
-   update_fps()
    sdl3.clear(0.06, 0.08, 0.05, 1.0)
 
    for i = 1, #ants do
@@ -775,6 +759,7 @@ local function on_render()
 
    draw_fps_overlay(renderer)
    draw_slider(renderer)
+   frame_profiler:end_cpu()
 end
 
 local function handle_resize(info)
@@ -793,6 +778,12 @@ rig.run {
    mode = "sdl3",
    hooks = {
       after_setup = initialize_ants,
+      before_frame = function()
+         frame_profiler:begin_frame()
+      end,
+      after_frame = function()
+         frame_profiler:end_frame()
+      end,
    },
    sdl3 = {
       window_props = {

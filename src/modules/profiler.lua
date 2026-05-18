@@ -31,6 +31,8 @@ local function ensure_frame_profiler(frame_profiler)
 end
 
 function frame_profiler_mt:reset()
+   self.fps = 0.0
+   self.fps_instant = 0.0
    self.cpu_ms = 0.0
    self.cpu_max_1s_ms = 0.0
    self.cpu_max_ms = 0.0
@@ -57,6 +59,8 @@ function frame_profiler_mt:reset()
    self._total_history = {}
    self._interval_history = {}
    self._gap_history = {}
+   self._fps_sample_start_seconds = nil
+   self._fps_sample_frame_count = 0
 end
 
 function frame_profiler_mt:begin_frame()
@@ -65,6 +69,7 @@ function frame_profiler_mt:begin_frame()
 
    if last_frame_seconds ~= nil then
       self.interval_ms = (frame_start_seconds - last_frame_seconds) * 1000.0
+      self.fps_instant = 1000.0 / self.interval_ms
       if self.interval_ms > self.interval_max_ms then
          self.interval_max_ms = self.interval_ms
       end
@@ -74,6 +79,21 @@ function frame_profiler_mt:begin_frame()
          self.interval_ms,
          self.history_window_seconds
       )
+
+      if self._fps_sample_start_seconds == nil then
+         self._fps_sample_start_seconds = last_frame_seconds
+         self._fps_sample_frame_count = 0
+      end
+      self._fps_sample_frame_count = self._fps_sample_frame_count + 1
+
+      local fps_elapsed_seconds = frame_start_seconds - self._fps_sample_start_seconds
+      if fps_elapsed_seconds >= self.fps_window_seconds then
+         self.fps = self._fps_sample_frame_count / fps_elapsed_seconds
+         self._fps_sample_start_seconds = frame_start_seconds
+         self._fps_sample_frame_count = 0
+      elseif self.fps == 0.0 then
+         self.fps = self.fps_instant
+      end
 
       local gap_ms = self.interval_ms - self.total_ms
       if gap_ms < 0.0 then
@@ -221,9 +241,22 @@ function M.create_frame_profiler(options)
       )
    end
 
+   local fps_window_seconds = settings.fps_window_seconds
+   if fps_window_seconds == nil then
+      fps_window_seconds = 0.25
+   end
+   fps_window_seconds = tonumber(fps_window_seconds)
+   if fps_window_seconds == nil or fps_window_seconds <= 0 then
+      error(
+         "profiler.create_frame_profiler expects options.fps_window_seconds to be a positive number if provided",
+         0
+      )
+   end
+
    local frame_profiler = setmetatable({
       budget_ms = budget_ms,
       history_window_seconds = history_window_seconds,
+      fps_window_seconds = fps_window_seconds,
    }, frame_profiler_mt)
    frame_profiler:reset()
    return frame_profiler

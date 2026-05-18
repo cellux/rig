@@ -15,6 +15,9 @@ The first version provides frame-timing collection only. It does not draw anythi
     - `history_window_seconds`
       - Rolling window used for `*_max_1s_ms` style metrics.
       - Defaults to `1.0`.
+    - `fps_window_seconds`
+      - Averaging window used for the smoothed `fps` field.
+      - Defaults to `0.25`.
 
 ## Frame Profiler Object
 
@@ -41,6 +44,8 @@ The first version provides frame-timing collection only. It does not draw anythi
 
 The frame profiler exposes these fields directly:
 
+- `fps`
+- `fps_instant`
 - `cpu_ms`
 - `cpu_max_1s_ms`
 - `cpu_max_ms`
@@ -61,5 +66,6 @@ The frame profiler exposes these fields directly:
 ## Notes
 
 - The profiler uses `time.monotonic()`, so it works in runtime modes that provide the `"time"` service.
+- `fps` is averaged over `fps_window_seconds` and held until the next sample window completes, while `fps_instant` is derived from the most recent `interval_ms`.
 - The frame profiler measures only what the caller brackets with `begin_cpu()` / `end_cpu()` as CPU work.
 - `present_ms` is computed as `total_ms - cpu_ms`, so the caller should end the CPU section before presentation occurs.
