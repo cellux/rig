@@ -19,6 +19,9 @@ local draw_rect = ffi.new("SDL_FRect[1]")
 local src_rect = ffi.new("SDL_FRect[1]")
 local dst_rect = ffi.new("SDL_FRect[1]")
 local full_alpha = 255
+local fixed_animation_dt = 1.0 / 120.0
+local max_animation_dt = 0.05
+local max_animation_steps_per_frame = 6
 local sprite_outline_offsets = {
    { -2, -2 },
    { 0, -2 },
@@ -53,7 +56,7 @@ local scene = {
    raster_field = {},
    raster_alpha = 1.0,
    raster_preset_index = 1,
-   raster_transition_timer = 0.0,
+   raster_transition_state = "VISIBLE",
    scroll_offset = 0.0,
    scroll_wave_phase = 0.0,
    raster_phase = 0.0,
@@ -64,7 +67,11 @@ local scene = {
    sprite_outline_enabled = true,
    scroller_enabled = true,
    animate_enabled = true,
-   animate_task = nil,
+   animation_driver_task = nil,
+   animation_step_generation = 0,
+   animation_step_count = 0,
+   animation_step_tasks = {},
+   animate_tasks = {},
 }
 
 local scroll_text = table.concat({
@@ -534,10 +541,15 @@ end
 local function set_animation_enabled(enabled)
    scene.animate_enabled = enabled
 
-   if enabled and scene.animate_task ~= nil then
+   if enabled then
       local scheduler = sched._active_scheduler
       if scheduler ~= nil then
-         scheduler:wake(scene.animate_task)
+         if scene.animation_driver_task ~= nil then
+            scheduler:wake(scene.animation_driver_task)
+         end
+         for i = 1, #scene.animate_tasks do
+            scheduler:wake(scene.animate_tasks[i])
+         end
       end
    end
 end
@@ -619,50 +631,9 @@ local function draw_sprites(renderer, layout)
    end
 end
 
-local function animate_scroller()
+local function run_animation_driver()
    local last = time.monotonic()
-   local period = scene.scroll_run.width + scene.scroll_loop_gap
-   local transition_duration = 0.5
-   local visible_duration = 4.0
-   local fixed_dt = 1.0 / 120.0
-   local max_dt = 0.05
-   local max_steps_per_frame = 6
    local accumulator = 0.0
-   local state = "VISIBLE" -- VISIBLE, FADING_OUT, FADING_IN
-
-   local function update_simulation(dt)
-      scene.raster_transition_timer = scene.raster_transition_timer + dt
-
-      if state == "VISIBLE" then
-         scene.raster_alpha = 1.0
-         if scene.raster_transition_timer >= visible_duration then
-            state = "FADING_OUT"
-            scene.raster_transition_timer = 0.0
-         end
-      elseif state == "FADING_OUT" then
-         scene.raster_alpha = 1.0 - (scene.raster_transition_timer / transition_duration)
-         if scene.raster_transition_timer >= transition_duration then
-            scene.raster_alpha = 0.0
-            state = "FADING_IN"
-            scene.raster_transition_timer = 0.0
-            scene.raster_preset_index = (scene.raster_preset_index % 4) + 1
-            apply_preset(scene.raster_preset_index)
-         end
-      elseif state == "FADING_IN" then
-         scene.raster_alpha = scene.raster_transition_timer / transition_duration
-         if scene.raster_transition_timer >= transition_duration then
-            scene.raster_alpha = 1.0
-            state = "VISIBLE"
-            scene.raster_transition_timer = 0.0
-         end
-      end
-
-      scene.scroll_offset = (scene.scroll_offset + scene.scroll_speed * dt) % period
-      scene.scroll_wave_phase = scene.scroll_wave_phase + dt * scene.scroll_wave_speed
-      scene.raster_phase = scene.raster_phase + dt * 1.6
-      scene.sprite_snake_phase = scene.sprite_snake_phase + dt * 2.35
-      scene.title_phase = scene.title_phase + dt * 1.8
-   end
 
    while true do
       if not scene.animate_enabled then
@@ -675,24 +646,139 @@ local function animate_scroller()
       last = now
       if dt < 0.0 then
          dt = 0.0
-      elseif dt > max_dt then
-         dt = max_dt
+      elseif dt > max_animation_dt then
+         dt = max_animation_dt
       end
 
       accumulator = accumulator + dt
       local steps = 0
-      while accumulator >= fixed_dt and steps < max_steps_per_frame do
-         update_simulation(fixed_dt)
-         accumulator = accumulator - fixed_dt
+      while accumulator >= fixed_animation_dt and steps < max_animation_steps_per_frame do
+         accumulator = accumulator - fixed_animation_dt
          steps = steps + 1
       end
 
-      if steps == max_steps_per_frame and accumulator > fixed_dt then
-         accumulator = fixed_dt
+      if steps == max_animation_steps_per_frame and accumulator > fixed_animation_dt then
+         accumulator = fixed_animation_dt
+      end
+
+      if steps > 0 then
+         scene.animation_step_count = steps
+         scene.animation_step_generation = scene.animation_step_generation + 1
+
+         local scheduler = sched._active_scheduler
+         if scheduler ~= nil then
+            for i = 1, #scene.animation_step_tasks do
+               scheduler:wake(scene.animation_step_tasks[i])
+            end
+         end
       end
 
       sched.yield()
    end
+end
+
+local function next_animation_steps(last_generation)
+   while true do
+      if not scene.animate_enabled then
+         sched.park()
+      elseif scene.animation_step_generation ~= last_generation then
+         return scene.animation_step_generation, scene.animation_step_count
+      else
+         sched.park()
+      end
+   end
+end
+
+local function run_object_animation(update_step)
+   local generation = scene.animation_step_generation
+   while true do
+      local step_count
+      generation, step_count = next_animation_steps(generation)
+      for _ = 1, step_count do
+         update_step(fixed_animation_dt)
+      end
+   end
+end
+
+local function sleep_scene_time(duration)
+   local deadline = time.monotonic() + duration
+
+   while true do
+      if not scene.animate_enabled then
+         sched.park()
+      else
+         local remaining = deadline - time.monotonic()
+         if remaining <= 0.0 then
+            return
+         end
+         local slice = math.min(remaining, 0.05)
+         sched.sleep(slice)
+      end
+   end
+end
+
+local function fade_raster_alpha(from_alpha, to_alpha, duration)
+   local generation = scene.animation_step_generation
+   local elapsed = 0.0
+
+   while elapsed < duration do
+      local step_count
+      generation, step_count = next_animation_steps(generation)
+      for _ = 1, step_count do
+         elapsed = math.min(duration, elapsed + fixed_animation_dt)
+         local t = elapsed / duration
+         scene.raster_alpha = lerp(from_alpha, to_alpha, t)
+      end
+   end
+end
+
+local function animate_raster_phase()
+   run_object_animation(function(dt)
+      scene.raster_phase = scene.raster_phase + dt * 1.6
+   end)
+end
+
+local function animate_raster_transition()
+   local visible_duration = 4.0
+   local fade_duration = 0.5
+
+   while true do
+      scene.raster_transition_state = "VISIBLE"
+      scene.raster_alpha = 1.0
+      sleep_scene_time(visible_duration)
+
+      scene.raster_transition_state = "FADING_OUT"
+      fade_raster_alpha(1.0, 0.0, fade_duration)
+      scene.raster_alpha = 0.0
+
+      scene.raster_transition_state = "SWITCHING"
+      scene.raster_preset_index = (scene.raster_preset_index % 4) + 1
+      apply_preset(scene.raster_preset_index)
+
+      scene.raster_transition_state = "FADING_IN"
+      fade_raster_alpha(0.0, 1.0, fade_duration)
+      scene.raster_alpha = 1.0
+   end
+end
+
+local function animate_scroller()
+   local period = scene.scroll_run.width + scene.scroll_loop_gap
+   run_object_animation(function(dt)
+      scene.scroll_offset = (scene.scroll_offset + scene.scroll_speed * dt) % period
+      scene.scroll_wave_phase = scene.scroll_wave_phase + dt * scene.scroll_wave_speed
+   end)
+end
+
+local function animate_sprites()
+   run_object_animation(function(dt)
+      scene.sprite_snake_phase = scene.sprite_snake_phase + dt * 2.35
+   end)
+end
+
+local function animate_title()
+   run_object_animation(function(dt)
+      scene.title_phase = scene.title_phase + dt * 1.8
+   end)
 end
 
 local function create_sprite_glyphs(sprite_style, text)
@@ -751,6 +837,10 @@ local function initialize_scene()
    for i = 1, scene.raster_split_count do
       scene.raster_splits[i] = {}
    end
+   scene.raster_alpha = 1.0
+   scene.raster_transition_state = "VISIBLE"
+   scene.animation_step_generation = 0
+   scene.animation_step_count = 0
    apply_preset(1)
 
    scene.sprites = {}
@@ -759,11 +849,30 @@ local function initialize_scene()
       scene.sprites[i] = sprite
    end
 
-   scene.animate_task = sched.spawn(animate_scroller)
+   scene.animation_driver_task = sched.spawn(run_animation_driver)
+   scene.animation_step_tasks = {
+      sched.spawn(animate_raster_phase),
+      sched.spawn(animate_raster_transition),
+      sched.spawn(animate_scroller),
+      sched.spawn(animate_sprites),
+      sched.spawn(animate_title),
+   }
+   scene.animate_tasks = {
+      scene.animation_step_tasks[1],
+      scene.animation_step_tasks[2],
+      scene.animation_step_tasks[3],
+      scene.animation_step_tasks[4],
+      scene.animation_step_tasks[5],
+   }
 end
 
 local function release_scene()
    frame_profiler = nil
+   scene.animation_driver_task = nil
+   scene.animation_step_generation = 0
+   scene.animation_step_count = 0
+   scene.animation_step_tasks = {}
+   scene.animate_tasks = {}
    if scene.raster_texture ~= nil and scene.raster_texture ~= ffi.NULL then
       sdl3.DestroyTexture(scene.raster_texture)
       scene.raster_texture = nil
