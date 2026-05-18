@@ -16,5 +16,6 @@ dxc
 spirvcross
 shader
 time
+profiler
 math3d
 mesh3d

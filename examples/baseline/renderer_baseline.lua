@@ -1,12 +1,12 @@
 local sdl3 = require("sdl3")
 local time = require("time")
 local font = require("font")
+local profiler = require("profiler")
 local ffi = require("ffi")
 
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
 local window_width
 local window_height
-local perf_frequency = tonumber(sdl3.GetPerformanceFrequency())
 
 local draw_rect = ffi.new("SDL_FRect[1]")
 
@@ -15,29 +15,7 @@ local scene = {
    font_path = nil,
    face = nil,
    profiler_style = nil,
-   profiler_cpu_ms = 0.0,
-   profiler_cpu_max_1s_ms = 0.0,
-   profiler_cpu_max_ms = 0.0,
-   profiler_present_ms = 0.0,
-   profiler_present_max_1s_ms = 0.0,
-   profiler_present_max_ms = 0.0,
-   profiler_total_ms = 0.0,
-   profiler_total_max_1s_ms = 0.0,
-   profiler_total_max_ms = 0.0,
-   profiler_interval_ms = 0.0,
-   profiler_interval_max_1s_ms = 0.0,
-   profiler_interval_max_ms = 0.0,
-   profiler_gap_ms = 0.0,
-   profiler_gap_max_1s_ms = 0.0,
-   profiler_gap_max_ms = 0.0,
-   profiler_overruns = 0,
-   profiler_last_frame_counter = nil,
-   profiler_frame_start_counter = nil,
-   profiler_cpu_history = {},
-   profiler_present_history = {},
-   profiler_total_history = {},
-   profiler_interval_history = {},
-   profiler_gap_history = {},
+   frame_profiler = nil,
    profiler_enabled = true,
    vsync_enabled = true,
    animation_enabled = true,
@@ -91,26 +69,6 @@ local function draw_label(renderer, text, x, baseline_y, r, g, b, a)
    end)
 end
 
-local function update_metric_history(history, now_seconds, value)
-   history[#history + 1] = {
-      t = now_seconds,
-      v = value,
-   }
-
-   local cutoff = now_seconds - 1.0
-   while history[1] ~= nil and history[1].t < cutoff do
-      table.remove(history, 1)
-   end
-
-   local max_1s = 0.0
-   for i = 1, #history do
-      if history[i].v > max_1s then
-         max_1s = history[i].v
-      end
-   end
-   return max_1s
-end
-
 local function set_vsync(enabled)
    local renderer = sdl3.get_renderer()
    local interval = enabled and 1 or 0
@@ -139,6 +97,7 @@ local function on_key(key_info)
 end
 
 local function draw_profiler(renderer)
+   local profile = scene.frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
    local panel_w = math.min(378, math.max(220, window_width - panel_x * 2))
@@ -149,12 +108,12 @@ local function draw_profiler(renderer)
 
    local text_x = panel_x + 10
    local header = "      CUR / 1S / MAX"
-   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(scene.profiler_cpu_ms, scene.profiler_cpu_max_1s_ms, scene.profiler_cpu_max_ms)
-   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(scene.profiler_present_ms, scene.profiler_present_max_1s_ms, scene.profiler_present_max_ms)
-   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(scene.profiler_total_ms, scene.profiler_total_max_1s_ms, scene.profiler_total_max_ms)
-   local line_4 = ("INT %.2f / %.2f / %.2f"):format(scene.profiler_interval_ms, scene.profiler_interval_max_1s_ms, scene.profiler_interval_max_ms)
-   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(scene.profiler_gap_ms, scene.profiler_gap_max_1s_ms, scene.profiler_gap_max_ms)
-   local line_6 = ("OVR %d"):format(scene.profiler_overruns)
+   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(profile.cpu_ms, profile.cpu_max_1s_ms, profile.cpu_max_ms)
+   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(profile.present_ms, profile.present_max_1s_ms, profile.present_max_ms)
+   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(profile.total_ms, profile.total_max_1s_ms, profile.total_max_ms)
+   local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_max_1s_ms, profile.interval_max_ms)
+   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
+   local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = scene.vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
    local line_8 = scene.animation_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
@@ -180,6 +139,7 @@ local function initialize_scene()
    scene.start_time = time.monotonic()
    scene.font_path = find_font_path()
    scene.face = font.load_face(scene.font_path)
+   scene.frame_profiler = profiler.create_frame_profiler()
    scene.profiler_style = font.create_style(scene.face, {
       pixel_size = 14,
       page_width = 256,
@@ -192,6 +152,7 @@ local function initialize_scene()
 end
 
 local function release_scene()
+   scene.frame_profiler = nil
    if scene.profiler_style ~= nil then
       scene.profiler_style:release()
       scene.profiler_style = nil
@@ -202,71 +163,8 @@ local function release_scene()
    end
 end
 
-local function begin_frame_profile()
-   local frame_start = tonumber(sdl3.GetPerformanceCounter())
-   local frame_start_seconds = frame_start / perf_frequency
-   local last_frame_counter = scene.profiler_last_frame_counter
-
-   if last_frame_counter ~= nil then
-      scene.profiler_interval_ms = (frame_start - last_frame_counter) * 1000.0 / perf_frequency
-      if scene.profiler_interval_ms > scene.profiler_interval_max_ms then
-         scene.profiler_interval_max_ms = scene.profiler_interval_ms
-      end
-      scene.profiler_interval_max_1s_ms =
-         update_metric_history(scene.profiler_interval_history, frame_start_seconds, scene.profiler_interval_ms)
-
-      local gap_ms = scene.profiler_interval_ms - scene.profiler_total_ms
-      if gap_ms < 0.0 then
-         gap_ms = 0.0
-      end
-      scene.profiler_gap_ms = gap_ms
-      if scene.profiler_gap_ms > scene.profiler_gap_max_ms then
-         scene.profiler_gap_max_ms = scene.profiler_gap_ms
-      end
-      scene.profiler_gap_max_1s_ms =
-         update_metric_history(scene.profiler_gap_history, frame_start_seconds, scene.profiler_gap_ms)
-   end
-
-   scene.profiler_last_frame_counter = frame_start
-   scene.profiler_frame_start_counter = frame_start
-end
-
-local function end_frame_profile()
-   local frame_start = scene.profiler_frame_start_counter
-   if frame_start == nil then
-      return
-   end
-
-   local frame_end = tonumber(sdl3.GetPerformanceCounter())
-   local frame_end_seconds = frame_end / perf_frequency
-
-   scene.profiler_total_ms = (frame_end - frame_start) * 1000.0 / perf_frequency
-   if scene.profiler_total_ms > scene.profiler_total_max_ms then
-      scene.profiler_total_max_ms = scene.profiler_total_ms
-   end
-   scene.profiler_total_max_1s_ms =
-      update_metric_history(scene.profiler_total_history, frame_end_seconds, scene.profiler_total_ms)
-
-   local present_ms = scene.profiler_total_ms - scene.profiler_cpu_ms
-   if present_ms < 0.0 then
-      present_ms = 0.0
-   end
-   scene.profiler_present_ms = present_ms
-   if scene.profiler_present_ms > scene.profiler_present_max_ms then
-      scene.profiler_present_max_ms = scene.profiler_present_ms
-   end
-   scene.profiler_present_max_1s_ms =
-      update_metric_history(scene.profiler_present_history, frame_end_seconds, scene.profiler_present_ms)
-
-   if scene.profiler_total_ms > 16.67 then
-      scene.profiler_overruns = scene.profiler_overruns + 1
-   end
-
-   scene.profiler_frame_start_counter = nil
-end
-
 local function render_frame()
-   local frame_start = tonumber(sdl3.GetPerformanceCounter())
+   scene.frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
 
    set_draw_color(renderer, 6, 8, 18, 255)
@@ -292,15 +190,7 @@ local function render_frame()
    if scene.profiler_enabled then
       draw_profiler(renderer)
    end
-
-   local frame_end = tonumber(sdl3.GetPerformanceCounter())
-   local frame_end_seconds = frame_end / perf_frequency
-   scene.profiler_cpu_ms = (frame_end - frame_start) * 1000.0 / perf_frequency
-   if scene.profiler_cpu_ms > scene.profiler_cpu_max_ms then
-      scene.profiler_cpu_max_ms = scene.profiler_cpu_ms
-   end
-   scene.profiler_cpu_max_1s_ms =
-      update_metric_history(scene.profiler_cpu_history, frame_end_seconds, scene.profiler_cpu_ms)
+   scene.frame_profiler:end_cpu()
 end
 
 rig.run {
@@ -316,8 +206,12 @@ rig.run {
    },
    hooks = {
       after_setup = initialize_scene,
-      before_frame = begin_frame_profile,
-      after_frame = end_frame_profile,
+      before_frame = function()
+         scene.frame_profiler:begin_frame()
+      end,
+      after_frame = function()
+         scene.frame_profiler:end_frame()
+      end,
       before_shutdown = release_scene,
    },
 }
