@@ -237,8 +237,6 @@ rig.run {
    sdl3_gpu = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
-         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 960,
-         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = 540,
          [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       on_render = on_render,

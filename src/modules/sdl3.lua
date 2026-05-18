@@ -18,6 +18,7 @@ typedef int32_t Sint32;
 typedef int64_t Sint64;
 typedef void* SDL_GLContext;
 typedef uint32_t SDL_EventType;
+typedef uint32_t SDL_DisplayID;
 typedef uint32_t SDL_WindowID;
 typedef uint32_t SDL_KeyboardID;
 typedef uint32_t SDL_MouseID;
@@ -103,6 +104,8 @@ bool SDL_RenderTexture(SDL_Renderer *renderer, SDL_Texture *texture, const struc
 void SDL_DestroyTexture(SDL_Texture *texture);
 SDL_Window *SDL_CreateWindowWithProperties(SDL_PropertiesID props);
 SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, const char *name);
+SDL_DisplayID SDL_GetPrimaryDisplay(void);
+bool SDL_GetDisplayUsableBounds(SDL_DisplayID displayID, SDL_Rect *rect);
 bool SDL_SetRenderVSync(SDL_Renderer *renderer, int vsync);
 bool SDL_RenderPresent(SDL_Renderer *renderer);
 void SDL_DestroyRenderer(SDL_Renderer *renderer);
@@ -457,6 +460,8 @@ export_sdl_function("RenderTexture", "SDL_RenderTexture")
 export_sdl_function("DestroyTexture", "SDL_DestroyTexture")
 export_sdl_function("CreateWindowWithProperties", "SDL_CreateWindowWithProperties")
 export_sdl_function("CreateRenderer", "SDL_CreateRenderer")
+export_sdl_function("GetPrimaryDisplay", "SDL_GetPrimaryDisplay")
+export_sdl_function("GetDisplayUsableBounds", "SDL_GetDisplayUsableBounds")
 export_sdl_function("SetRenderVSync", "SDL_SetRenderVSync")
 export_sdl_function("RenderPresent", "SDL_RenderPresent")
 export_sdl_function("DestroyRenderer", "SDL_DestroyRenderer")
@@ -540,10 +545,11 @@ M._gl_context = nil
 M._owned_init_flags = nil
 M._scheduler = nil
 
+local DEFAULT_WINDOW_WIDTH = 640
+local DEFAULT_WINDOW_HEIGHT = 360
+
 M.default_window_props = {
    [M.PROP_WINDOW_CREATE_TITLE_STRING] = "rig",
-   [M.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 640,
-   [M.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = 360,
 }
 
 local function merge_props(base_props, override_props)
@@ -572,6 +578,34 @@ local function default_create_window(options)
       merge_props(M.default_window_props, options.window_props)
    if merged_props == nil then
       return nil, merge_error
+   end
+
+   local width_key = M.PROP_WINDOW_CREATE_WIDTH_NUMBER
+   local height_key = M.PROP_WINDOW_CREATE_HEIGHT_NUMBER
+   if merged_props[width_key] == nil or merged_props[height_key] == nil then
+      local default_width = DEFAULT_WINDOW_WIDTH
+      local default_height = DEFAULT_WINDOW_HEIGHT
+      local primary_display = M.GetPrimaryDisplay()
+      if primary_display ~= nil and primary_display ~= 0 then
+         local usable_bounds = ffi.new("SDL_Rect[1]")
+         if M.GetDisplayUsableBounds(primary_display, usable_bounds) then
+            default_width = math.max(
+               1,
+               math.floor((tonumber(usable_bounds[0].w) or default_width) * 0.75)
+            )
+            default_height = math.max(
+               1,
+               math.floor((tonumber(usable_bounds[0].h) or default_height) * 0.75)
+            )
+         end
+      end
+
+      if merged_props[width_key] == nil then
+         merged_props[width_key] = default_width
+      end
+      if merged_props[height_key] == nil then
+         merged_props[height_key] = default_height
+      end
    end
 
    local properties_id, props_error = M.build_properties(merged_props)

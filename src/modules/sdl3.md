@@ -30,6 +30,8 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
 - `window_props`
   - Optional window property overrides merged into `sdl3.default_window_props`.
+  - If width or height are not provided, the builtin window factory defaults each missing dimension to 75% of the primary display's usable size.
+  - If SDL cannot report the usable display size, the fallback remains `640x360`.
 - `create_window(options) -> window_ptr | nil, err`
   - Overrides window creation.
   - Defaults to the builtin `SDL_CreateWindowWithProperties` path.
@@ -94,6 +96,8 @@ Additional fields accepted by `options.sdl3_gpu`:
 
 - `sdl3.default_window_props`
   - Default property table used by the builtin SDL window factory.
+  - The builtin defaults only force the window title.
+  - Width and height are filled in dynamically at window-creation time when omitted.
 - `sdl3.build_properties(props)`
   - Converts a Lua table into `SDL_PropertiesID`.
 - `sdl3.destroy_properties(properties_id)`

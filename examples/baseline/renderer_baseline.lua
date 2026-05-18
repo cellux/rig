@@ -3,8 +3,9 @@ local time = require("time")
 local font = require("font")
 local ffi = require("ffi")
 
-local window_width = 1280
-local window_height = 720
+-- Populated by the initial sdl3 on_resize callback before after_setup runs.
+local window_width
+local window_height
 local perf_frequency = tonumber(sdl3.GetPerformanceFrequency())
 
 local draw_rect = ffi.new("SDL_FRect[1]")
@@ -319,8 +320,6 @@ rig.run {
    sdl3 = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Renderer Baseline",
-         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
-         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
          [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       on_key = on_key,

@@ -4,8 +4,9 @@ local font = require("font")
 local time = require("time")
 local ffi = require("ffi")
 
-local window_width = 960
-local window_height = 540
+-- Populated by the initial sdl3 on_resize callback before after_setup runs.
+local window_width
+local window_height
 local background_color = { 6, 8, 18, 255 }
 local scroll_speed = 204.0
 local scroll_wave_amplitude = 48.0
@@ -991,8 +992,6 @@ rig.run {
    sdl3 = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
-         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
-         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
          [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       on_key = on_key,

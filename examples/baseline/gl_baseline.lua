@@ -5,8 +5,9 @@ local gl = require("gl")
 local sdl3 = require("sdl3")
 local time = require("time")
 
-local window_width = 1280
-local window_height = 720
+-- Populated by the initial sdl3_gl on_resize callback before after_setup runs.
+local window_width
+local window_height
 local perf_frequency = tonumber(sdl3.GetPerformanceFrequency())
 
 local rect_program = 0
@@ -425,8 +426,6 @@ rig.run {
    sdl3_gl = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Baseline",
-         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
-         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
          [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       gl_attributes = {

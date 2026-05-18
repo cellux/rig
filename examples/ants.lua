@@ -2,8 +2,9 @@ local sdl3 = require("sdl3")
 local sched = require("sched")
 local ffi = require("ffi")
 
-local window_width = 960
-local window_height = 540
+-- Populated by the initial sdl3 on_resize callback before after_setup runs.
+local window_width
+local window_height
 local ant_count = 96
 local ant_speed = 52.0
 local ant_margin = 8
@@ -22,7 +23,7 @@ local fps_last_sample = fps_counter_started
 local fps_frame_count = 0
 local fps_value = 0.0
 local slider = {
-   x = window_width - 184,
+   x = nil,
    y = 14,
    w = 152,
    h = 18,
@@ -796,8 +797,6 @@ rig.run {
    sdl3 = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
-         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = window_width,
-         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = window_height,
          [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       on_render = on_render,

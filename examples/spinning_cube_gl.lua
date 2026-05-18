@@ -68,8 +68,9 @@ local program = 0
 local vao = 0
 local vbo = 0
 local mvp_location = -1
-local viewport_width = 960
-local viewport_height = 540
+-- Populated by the initial sdl3_gl on_resize callback before rendering starts.
+local viewport_width
+local viewport_height
 local gl_vertex_arrays = ffi.new("GLuint[1]")
 local gl_buffers = ffi.new("GLuint[1]")
 
@@ -167,8 +168,6 @@ rig.run {
    sdl3_gl = {
       window_props = {
          [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Spinning Cube",
-         [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = viewport_width,
-         [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = viewport_height,
          [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
       },
       gl_attributes = {
