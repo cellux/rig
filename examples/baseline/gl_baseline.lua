@@ -9,12 +9,12 @@ local time = require("time")
 -- Populated by the initial sdl3_gl on_resize callback before after_setup runs.
 local window_width
 local window_height
-
-local rect_program = 0
-local rect_vao = 0
-local rect_vbo = 0
-local rect_view_size_location = -1
-local rect_color_location = -1
+local font_path
+local face
+local profiler_style
+local frame_profiler
+local profiler_enabled = true
+local vsync_enabled = true
 
 local gl_vertex_arrays = ffi.new("GLuint[1]")
 local gl_buffers = ffi.new("GLuint[1]")
@@ -22,12 +22,11 @@ local rect_vertices = ffi.new("float[12]")
 
 local scene = {
    start_time = nil,
-   font_path = nil,
-   face = nil,
-   profiler_style = nil,
-   frame_profiler = nil,
-   profiler_enabled = true,
-   vsync_enabled = true,
+   rect_program = 0,
+   rect_vao = 0,
+   rect_vbo = 0,
+   rect_view_size_location = -1,
+   rect_color_location = -1,
    animation_enabled = true,
 }
 
@@ -87,8 +86,8 @@ local function find_font_path()
 end
 
 local function draw_label(text, x, baseline_y, r, g, b, a)
-   local run = scene.profiler_style:build_run(text)
-   scene.profiler_style:draw_run(run, x, baseline_y, function()
+   local run = profiler_style:build_run(text)
+   profiler_style:draw_run(run, x, baseline_y, function()
       return r, g, b, a
    end)
 end
@@ -118,11 +117,11 @@ local function draw_rect(x, y, w, h, r, g, b, a)
 
    gl.Enable(gl.BLEND)
    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-   gl.UseProgram(rect_program)
-   gl.Uniform2f(rect_view_size_location, window_width, window_height)
-   gl.Uniform4f(rect_color_location, r / 255.0, g / 255.0, b / 255.0, a / 255.0)
-   gl.BindVertexArray(rect_vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, rect_vbo)
+   gl.UseProgram(scene.rect_program)
+   gl.Uniform2f(scene.rect_view_size_location, window_width, window_height)
+   gl.Uniform4f(scene.rect_color_location, r / 255.0, g / 255.0, b / 255.0, a / 255.0)
+   gl.BindVertexArray(scene.rect_vao)
+   gl.BindBuffer(gl.ARRAY_BUFFER, scene.rect_vbo)
    gl.BufferData(gl.ARRAY_BUFFER, ffi.sizeof(rect_vertices), rect_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
 end
@@ -132,11 +131,11 @@ local function set_vsync(enabled)
    if not sdl3.GL_SetSwapInterval(interval) then
       error("failed to set OpenGL swap interval: " .. ffi.string(sdl3.GetError()), 0)
    end
-   scene.vsync_enabled = enabled
+   vsync_enabled = enabled
 end
 
 local function toggle_vsync()
-   set_vsync(not scene.vsync_enabled)
+   set_vsync(not vsync_enabled)
 end
 
 local function on_key(key_info)
@@ -145,7 +144,7 @@ local function on_key(key_info)
    end
 
    if key_info.key == "0" then
-      scene.profiler_enabled = not scene.profiler_enabled
+      profiler_enabled = not profiler_enabled
    elseif key_info.key == "1" then
       scene.animation_enabled = not scene.animation_enabled
    elseif key_info.key == "V" or key_info.key == "v" then
@@ -154,7 +153,7 @@ local function on_key(key_info)
 end
 
 local function draw_profiler()
-   local profile = scene.frame_profiler:snapshot()
+   local profile = frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
    local panel_w = math.min(378, math.max(220, window_width - panel_x * 2))
@@ -170,7 +169,7 @@ local function draw_profiler()
    local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_max_1s_ms, profile.interval_max_ms)
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
-   local line_7 = scene.vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
+   local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
    local line_8 = scene.animation_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
 
@@ -193,78 +192,81 @@ end
 
 local function initialize_scene()
    scene.start_time = time.monotonic()
-   scene.font_path = find_font_path()
-   scene.face = font.load_face(scene.font_path)
-   scene.frame_profiler = profiler.create_frame_profiler()
-   scene.profiler_style = font.create_style(scene.face, {
+   font_path = find_font_path()
+   face = font.load_face(font_path)
+   frame_profiler = profiler.create_frame_profiler()
+   profiler_style = font.create_style(face, {
       pixel_size = 14,
       page_width = 256,
       page_height = 128,
       padding = 1,
    })
-   scene.profiler_style:warm_text(
+   profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )
 end
 
 local function initialize_gl_resources()
-   rect_program = gl.create_program {
+   scene.rect_program = gl.create_program {
       vertex_source = rect_vertex_shader_source,
       fragment_source = rect_fragment_shader_source,
    }
 
    gl.GenVertexArrays(1, gl_vertex_arrays)
    gl.GenBuffers(1, gl_buffers)
-   rect_vao = tonumber(gl_vertex_arrays[0]) or 0
-   rect_vbo = tonumber(gl_buffers[0]) or 0
+   scene.rect_vao = tonumber(gl_vertex_arrays[0]) or 0
+   scene.rect_vbo = tonumber(gl_buffers[0]) or 0
 
-   if rect_vao == 0 or rect_vbo == 0 then
+   if scene.rect_vao == 0 or scene.rect_vbo == 0 then
       error("failed to create OpenGL rectangle resources", 0)
    end
 
-   gl.BindVertexArray(rect_vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, rect_vbo)
+   gl.BindVertexArray(scene.rect_vao)
+   gl.BindBuffer(gl.ARRAY_BUFFER, scene.rect_vbo)
    gl.EnableVertexAttribArray(0)
    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, ffi.sizeof("float") * 2, ffi.cast("const void *", 0))
 
-   rect_view_size_location = gl.get_uniform_location(rect_program, "u_view_size")
-   rect_color_location = gl.get_uniform_location(rect_program, "u_color")
-   if rect_view_size_location < 0 or rect_color_location < 0 then
+   scene.rect_view_size_location = gl.get_uniform_location(scene.rect_program, "u_view_size")
+   scene.rect_color_location = gl.get_uniform_location(scene.rect_program, "u_color")
+   if scene.rect_view_size_location < 0 or scene.rect_color_location < 0 then
       error("failed to locate OpenGL rectangle uniforms", 0)
    end
 end
 
 local function release_scene()
-   scene.frame_profiler = nil
-   if scene.profiler_style ~= nil then
-      scene.profiler_style:release()
-      scene.profiler_style = nil
+   frame_profiler = nil
+   if profiler_style ~= nil then
+      profiler_style:release()
+      profiler_style = nil
    end
-   if scene.face ~= nil then
-      scene.face:release()
-      scene.face = nil
+   if face ~= nil then
+      face:release()
+      face = nil
    end
+   font_path = nil
 end
 
 local function release_gl_resources()
-   if rect_vbo ~= 0 then
-      gl_buffers[0] = rect_vbo
+   if scene.rect_vbo ~= 0 then
+      gl_buffers[0] = scene.rect_vbo
       gl.DeleteBuffers(1, gl_buffers)
-      rect_vbo = 0
+      scene.rect_vbo = 0
    end
-   if rect_vao ~= 0 then
-      gl_vertex_arrays[0] = rect_vao
+   if scene.rect_vao ~= 0 then
+      gl_vertex_arrays[0] = scene.rect_vao
       gl.DeleteVertexArrays(1, gl_vertex_arrays)
-      rect_vao = 0
+      scene.rect_vao = 0
    end
-   if rect_program ~= 0 then
-      gl.DeleteProgram(rect_program)
-      rect_program = 0
+   if scene.rect_program ~= 0 then
+      gl.DeleteProgram(scene.rect_program)
+      scene.rect_program = 0
    end
+   scene.rect_view_size_location = -1
+   scene.rect_color_location = -1
 end
 
 local function render_frame()
-   scene.frame_profiler:begin_cpu()
+   frame_profiler:begin_cpu()
 
    gl.Viewport(0, 0, window_width, window_height)
    gl.ClearColor(6.0 / 255.0, 8.0 / 255.0, 18.0 / 255.0, 1.0)
@@ -283,10 +285,10 @@ local function render_frame()
       draw_rect(x, y, size, size, 240, 246, 255, 255)
    end
 
-   if scene.profiler_enabled then
+   if profiler_enabled then
       draw_profiler()
    end
-   scene.frame_profiler:end_cpu()
+   frame_profiler:end_cpu()
 end
 
 local function after_setup()
@@ -320,10 +322,10 @@ rig.run {
    hooks = {
       after_setup = after_setup,
       before_frame = function()
-         scene.frame_profiler:begin_frame()
+         frame_profiler:begin_frame()
       end,
       after_frame = function()
-         scene.frame_profiler:end_frame()
+         frame_profiler:end_frame()
       end,
       before_shutdown = before_shutdown,
    },

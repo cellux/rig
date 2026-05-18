@@ -8,15 +8,12 @@ local ffi = require("ffi")
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
 local window_width
 local window_height
-local background_color = { 6, 8, 18, 255 }
-local scroll_speed = 204.0
-local scroll_wave_amplitude = 48.0
-local scroll_wave_frequency = 0.001
-local scroll_wave_speed = 2.8
-local scroll_loop_gap = 240.0
-local title_shadow_offset = 4
-local raster_split_count = 8
-local sprite_text = "NEON PHANTOMS"
+local font_path
+local face
+local profiler_style
+local frame_profiler
+local profiler_enabled = true
+local vsync_enabled = true
 
 local draw_rect = ffi.new("SDL_FRect[1]")
 local src_rect = ffi.new("SDL_FRect[1]")
@@ -34,12 +31,18 @@ local sprite_outline_offsets = {
 }
 
 local scene = {
-   font_path = nil,
-   face = nil,
+   background_color = { 6, 8, 18, 255 },
+   scroll_speed = 204.0,
+   scroll_wave_amplitude = 48.0,
+   scroll_wave_frequency = 0.001,
+   scroll_wave_speed = 2.8,
+   scroll_loop_gap = 240.0,
+   title_shadow_offset = 4,
+   raster_split_count = 8,
+   sprite_text = "NEON PHANTOMS",
    title_style = nil,
    scroll_style = nil,
    sprite_style = nil,
-   profiler_style = nil,
    raster_texture = nil,
    raster_texture_height = nil,
    title_run = nil,
@@ -56,9 +59,6 @@ local scene = {
    raster_phase = 0.0,
    sprite_snake_phase = 0.0,
    title_phase = 0.0,
-   frame_profiler = nil,
-   vsync_enabled = true,
-   profiler_enabled = true,
    raster_enabled = true,
    sprites_enabled = true,
    sprite_outline_enabled = true,
@@ -211,15 +211,15 @@ local function draw_label(style, text, x, baseline_y, r, g, b, a)
 end
 
 local function apply_preset(index)
-   local offset_step = raster_split_count > 0 and (#scene.raster_field / raster_split_count) or 0
-   for i = 1, raster_split_count do
+   local offset_step = scene.raster_split_count > 0 and (#scene.raster_field / scene.raster_split_count) or 0
+   for i = 1, scene.raster_split_count do
       local split = scene.raster_splits[i]
       if index == 1 then -- Random (Original)
          split.offset = math.random() * math.pi * 2.0
          split.speed = 0.5 + math.random() * 0.4
          split.base_offset = (i - 1) * offset_step
       elseif index == 2 then -- Smooth Sine
-         split.offset = (i - 1) * (math.pi * 2.0 / raster_split_count)
+         split.offset = (i - 1) * (math.pi * 2.0 / scene.raster_split_count)
          split.speed = 0.7
          split.base_offset = (i - 1) * offset_step * 0.5
       elseif index == 3 then -- Linear Slant
@@ -241,7 +241,7 @@ local function draw_rasterbars(renderer, layout)
    local split_gap = 1
    local line_height = 2.0
    local total_width = window_width - layout.left * 2
-   local split_width = (total_width - split_gap * (raster_split_count - 1)) / raster_split_count
+   local split_width = (total_width - split_gap * (scene.raster_split_count - 1)) / scene.raster_split_count
    local field_height = #scene.raster_field
    local visible_lines = math.floor(split_height / line_height)
    local visible_height = visible_lines * line_height
@@ -409,7 +409,7 @@ local function draw_title(renderer, layout)
    local run = scene.title_run
    local base_x = (window_width - run.width) * 0.5
 
-   draw_text_run(scene.title_style, run, base_x + title_shadow_offset, title_baseline_y + title_shadow_offset, function()
+   draw_text_run(scene.title_style, run, base_x + scene.title_shadow_offset, title_baseline_y + scene.title_shadow_offset, function()
       return 0, 0, 0, 220
    end)
 
@@ -436,9 +436,9 @@ local function draw_scroller_copy(renderer, layout, base_x)
       local x = base_x + entry.layout_x
       local y = scroll_baseline_y + entry.layout_y
       local wave_phase = scene.scroll_wave_phase
-         + entry.layout_x * scroll_wave_frequency
+         + entry.layout_x * scene.scroll_wave_frequency
          + i * 0.11
-      y = y + math.sin(wave_phase) * scroll_wave_amplitude
+      y = y + math.sin(wave_phase) * scene.scroll_wave_amplitude
 
       if x + packed.width >= -48 then
          if x <= window_width + 48 then
@@ -456,14 +456,14 @@ local function draw_scroller(renderer, layout)
    local first_x = window_width - scene.scroll_offset
    draw_scroller_copy(renderer, layout, first_x)
 
-   local second_x = first_x + run.width + scroll_loop_gap
+   local second_x = first_x + run.width + scene.scroll_loop_gap
    if second_x < window_width + 96 then
       draw_scroller_copy(renderer, layout, second_x)
    end
 end
 
 local function draw_profiler(renderer)
-   local profile = scene.frame_profiler:snapshot()
+   local profile = frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
    local panel_w = 378
@@ -480,7 +480,7 @@ local function draw_profiler(renderer)
    local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_max_1s_ms, profile.interval_max_ms)
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
-   local line_7 = scene.vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
+   local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
    local line_8 = scene.raster_enabled and "RASTER ON [1]" or "RASTER OFF [1]"
    local line_9 = scene.sprites_enabled and "SPRITES ON [2]" or "SPRITES OFF [2]"
    local line_10 = scene.sprite_outline_enabled and "OUTLINE ON [3]" or "OUTLINE OFF [3]"
@@ -488,20 +488,20 @@ local function draw_profiler(renderer)
    local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
    local line_13 = "PROFILER ON [0]"
 
-   draw_label(scene.profiler_style, header, text_x, panel_y + 16, 255, 184, 150, 255)
-   draw_label(scene.profiler_style, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
-   draw_label(scene.profiler_style, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
-   draw_label(scene.profiler_style, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
-   draw_label(scene.profiler_style, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
-   draw_label(scene.profiler_style, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
-   draw_label(scene.profiler_style, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
-   draw_label(scene.profiler_style, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
-   draw_label(scene.profiler_style, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
-   draw_label(scene.profiler_style, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
-   draw_label(scene.profiler_style, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
-   draw_label(scene.profiler_style, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
-   draw_label(scene.profiler_style, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
-   draw_label(scene.profiler_style, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
+   draw_label(profiler_style, header, text_x, panel_y + 16, 255, 184, 150, 255)
+   draw_label(profiler_style, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
+   draw_label(profiler_style, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
+   draw_label(profiler_style, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
+   draw_label(profiler_style, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
+   draw_label(profiler_style, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
+   draw_label(profiler_style, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
+   draw_label(profiler_style, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
+   draw_label(profiler_style, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
+   draw_label(profiler_style, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
+   draw_label(profiler_style, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
+   draw_label(profiler_style, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
+   draw_label(profiler_style, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
+   draw_label(profiler_style, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
 end
 
 local function make_sprite(i, character)
@@ -524,11 +524,11 @@ local function set_vsync(enabled)
    if not sdl3.SetRenderVSync(renderer, interval) then
       error("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()), 0)
    end
-   scene.vsync_enabled = enabled
+   vsync_enabled = enabled
 end
 
 local function toggle_vsync()
-   set_vsync(not scene.vsync_enabled)
+   set_vsync(not vsync_enabled)
 end
 
 local function set_animation_enabled(enabled)
@@ -552,7 +552,7 @@ local function on_key(key_info)
    end
 
    if key_info.key == "0" then
-      scene.profiler_enabled = not scene.profiler_enabled
+      profiler_enabled = not profiler_enabled
    elseif key_info.key == "V" or key_info.key == "v" then
       toggle_vsync()
    elseif key_info.key == "1" then
@@ -621,7 +621,7 @@ end
 
 local function animate_scroller()
    local last = time.monotonic()
-   local period = scene.scroll_run.width + scroll_loop_gap
+   local period = scene.scroll_run.width + scene.scroll_loop_gap
    local transition_duration = 0.5
    local visible_duration = 4.0
    local fixed_dt = 1.0 / 120.0
@@ -657,8 +657,8 @@ local function animate_scroller()
          end
       end
 
-      scene.scroll_offset = (scene.scroll_offset + scroll_speed * dt) % period
-      scene.scroll_wave_phase = scene.scroll_wave_phase + dt * scroll_wave_speed
+      scene.scroll_offset = (scene.scroll_offset + scene.scroll_speed * dt) % period
+      scene.scroll_wave_phase = scene.scroll_wave_phase + dt * scene.scroll_wave_speed
       scene.raster_phase = scene.raster_phase + dt * 1.6
       scene.sprite_snake_phase = scene.sprite_snake_phase + dt * 2.35
       scene.title_phase = scene.title_phase + dt * 1.8
@@ -709,28 +709,28 @@ end
 
 local function initialize_scene()
    local renderer = sdl3.get_renderer()
-   scene.font_path = find_font_path()
-   scene.face = font.load_face(scene.font_path)
-   scene.frame_profiler = profiler.create_frame_profiler()
-   scene.title_style = font.create_style(scene.face, {
+   font_path = find_font_path()
+   face = font.load_face(font_path)
+   frame_profiler = profiler.create_frame_profiler()
+   scene.title_style = font.create_style(face, {
       pixel_size = 74,
       page_width = 512,
       page_height = 256,
       padding = 2,
    })
-   scene.scroll_style = font.create_style(scene.face, {
+   scene.scroll_style = font.create_style(face, {
       pixel_size = 38,
       page_width = 1024,
       page_height = 512,
       padding = 2,
    })
-   scene.sprite_style = font.create_style(scene.face, {
+   scene.sprite_style = font.create_style(face, {
       pixel_size = 82,
       page_width = 256,
       page_height = 256,
       padding = 2,
    })
-   scene.profiler_style = font.create_style(scene.face, {
+   profiler_style = font.create_style(face, {
       pixel_size = 14,
       page_width = 256,
       page_height = 128,
@@ -739,8 +739,8 @@ local function initialize_scene()
 
    scene.title_run = scene.title_style:build_run("NEON PHANTOMS")
    scene.scroll_run = scene.scroll_style:build_run(scroll_text)
-   scene.sprite_glyphs = create_sprite_glyphs(scene.sprite_style, sprite_text)
-   scene.profiler_style:warm_text(
+   scene.sprite_glyphs = create_sprite_glyphs(scene.sprite_style, scene.sprite_text)
+   profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM PROFILER ON OFF [] 0123456789./-"
    )
 
@@ -748,14 +748,14 @@ local function initialize_scene()
    scene.raster_texture, scene.raster_texture_height =
       upload_raster_texture(renderer, scene.raster_field, 2)
    scene.raster_splits = {}
-   for i = 1, raster_split_count do
+   for i = 1, scene.raster_split_count do
       scene.raster_splits[i] = {}
    end
    apply_preset(1)
 
    scene.sprites = {}
-   for i = 1, #sprite_text do
-      local sprite = make_sprite(i, sprite_text:sub(i, i))
+   for i = 1, #scene.sprite_text do
+      local sprite = make_sprite(i, scene.sprite_text:sub(i, i))
       scene.sprites[i] = sprite
    end
 
@@ -763,7 +763,7 @@ local function initialize_scene()
 end
 
 local function release_scene()
-   scene.frame_profiler = nil
+   frame_profiler = nil
    if scene.raster_texture ~= nil and scene.raster_texture ~= ffi.NULL then
       sdl3.DestroyTexture(scene.raster_texture)
       scene.raster_texture = nil
@@ -782,26 +782,27 @@ local function release_scene()
       scene.sprite_style:release()
       scene.sprite_style = nil
    end
-   if scene.profiler_style ~= nil then
-      scene.profiler_style:release()
-      scene.profiler_style = nil
+   if profiler_style ~= nil then
+      profiler_style:release()
+      profiler_style = nil
    end
-   if scene.face ~= nil then
-      scene.face:release()
-      scene.face = nil
+   if face ~= nil then
+      face:release()
+      face = nil
    end
+   font_path = nil
 end
 
 local function render_frame()
-   scene.frame_profiler:begin_cpu()
+   frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
    local layout = current_layout()
    set_draw_color(
       renderer,
-      background_color[1],
-      background_color[2],
-      background_color[3],
-      background_color[4]
+      scene.background_color[1],
+      scene.background_color[2],
+      scene.background_color[3],
+      scene.background_color[4]
    )
    if not sdl3.RenderClear(renderer) then
       error("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()), 0)
@@ -817,10 +818,10 @@ local function render_frame()
    if scene.scroller_enabled then
       draw_scroller(renderer, layout)
    end
-   if scene.profiler_enabled then
+   if profiler_enabled then
       draw_profiler(renderer)
    end
-   scene.frame_profiler:end_cpu()
+   frame_profiler:end_cpu()
 end
 
 local function on_resize(info)
@@ -842,10 +843,10 @@ rig.run {
    hooks = {
       after_setup = initialize_scene,
       before_frame = function()
-         scene.frame_profiler:begin_frame()
+         frame_profiler:begin_frame()
       end,
       after_frame = function()
-         scene.frame_profiler:end_frame()
+         frame_profiler:end_frame()
       end,
       before_shutdown = release_scene,
    },

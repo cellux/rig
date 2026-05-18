@@ -7,17 +7,17 @@ local ffi = require("ffi")
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
 local window_width
 local window_height
+local font_path
+local face
+local profiler_style
+local frame_profiler
+local profiler_enabled = true
+local vsync_enabled = true
 
 local draw_rect = ffi.new("SDL_FRect[1]")
 
 local scene = {
    start_time = nil,
-   font_path = nil,
-   face = nil,
-   profiler_style = nil,
-   frame_profiler = nil,
-   profiler_enabled = true,
-   vsync_enabled = true,
    animation_enabled = true,
 }
 
@@ -63,8 +63,8 @@ local function fill_rect(renderer, x, y, w, h)
 end
 
 local function draw_label(renderer, text, x, baseline_y, r, g, b, a)
-   local run = scene.profiler_style:build_run(text)
-   scene.profiler_style:draw_run(run, x, baseline_y, function()
+   local run = profiler_style:build_run(text)
+   profiler_style:draw_run(run, x, baseline_y, function()
       return r, g, b, a
    end)
 end
@@ -75,11 +75,11 @@ local function set_vsync(enabled)
    if not sdl3.SetRenderVSync(renderer, interval) then
       error("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()), 0)
    end
-   scene.vsync_enabled = enabled
+   vsync_enabled = enabled
 end
 
 local function toggle_vsync()
-   set_vsync(not scene.vsync_enabled)
+   set_vsync(not vsync_enabled)
 end
 
 local function on_key(key_info)
@@ -88,7 +88,7 @@ local function on_key(key_info)
    end
 
    if key_info.key == "0" then
-      scene.profiler_enabled = not scene.profiler_enabled
+      profiler_enabled = not profiler_enabled
    elseif key_info.key == "1" then
       scene.animation_enabled = not scene.animation_enabled
    elseif key_info.key == "V" or key_info.key == "v" then
@@ -97,7 +97,7 @@ local function on_key(key_info)
 end
 
 local function draw_profiler(renderer)
-   local profile = scene.frame_profiler:snapshot()
+   local profile = frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
    local panel_w = math.min(378, math.max(220, window_width - panel_x * 2))
@@ -114,7 +114,7 @@ local function draw_profiler(renderer)
    local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_max_1s_ms, profile.interval_max_ms)
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
-   local line_7 = scene.vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
+   local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
    local line_8 = scene.animation_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
 
@@ -137,34 +137,35 @@ end
 
 local function initialize_scene()
    scene.start_time = time.monotonic()
-   scene.font_path = find_font_path()
-   scene.face = font.load_face(scene.font_path)
-   scene.frame_profiler = profiler.create_frame_profiler()
-   scene.profiler_style = font.create_style(scene.face, {
+   font_path = find_font_path()
+   face = font.load_face(font_path)
+   frame_profiler = profiler.create_frame_profiler()
+   profiler_style = font.create_style(face, {
       pixel_size = 14,
       page_width = 256,
       page_height = 128,
       padding = 1,
    })
-   scene.profiler_style:warm_text(
+   profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )
 end
 
 local function release_scene()
-   scene.frame_profiler = nil
-   if scene.profiler_style ~= nil then
-      scene.profiler_style:release()
-      scene.profiler_style = nil
+   frame_profiler = nil
+   if profiler_style ~= nil then
+      profiler_style:release()
+      profiler_style = nil
    end
-   if scene.face ~= nil then
-      scene.face:release()
-      scene.face = nil
+   if face ~= nil then
+      face:release()
+      face = nil
    end
+   font_path = nil
 end
 
 local function render_frame()
-   scene.frame_profiler:begin_cpu()
+   frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
 
    set_draw_color(renderer, 6, 8, 18, 255)
@@ -187,10 +188,10 @@ local function render_frame()
       fill_rect(renderer, x, y, size, size)
    end
 
-   if scene.profiler_enabled then
+   if profiler_enabled then
       draw_profiler(renderer)
    end
-   scene.frame_profiler:end_cpu()
+   frame_profiler:end_cpu()
 end
 
 rig.run {
@@ -207,10 +208,10 @@ rig.run {
    hooks = {
       after_setup = initialize_scene,
       before_frame = function()
-         scene.frame_profiler:begin_frame()
+         frame_profiler:begin_frame()
       end,
       after_frame = function()
-         scene.frame_profiler:end_frame()
+         frame_profiler:end_frame()
       end,
       before_shutdown = release_scene,
    },
