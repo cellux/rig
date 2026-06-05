@@ -326,6 +326,39 @@ local function validate_runtime_providers(runtime_id, providers)
    end
 end
 
+local function resolve_runtime_service_impls(runtime_id, providers)
+   local service_impls = {}
+
+   for service_id, provider_id in pairs(providers) do
+      local service = M._services[service_id]
+      if service == nil then
+         error(
+            ("rig.run runtime '%s' references unknown service '%s'"):format(
+               runtime_id,
+               service_id
+            ),
+            0
+         )
+      end
+
+      local impl = service.impls[provider_id]
+      if impl == nil then
+         error(
+            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such implementation is registered"):format(
+               runtime_id,
+               provider_id,
+               service_id
+            ),
+            0
+         )
+      end
+
+      service_impls[service_id] = impl
+   end
+
+   return service_impls
+end
+
 function M.require_service(service_id)
    if type(service_id) ~= "string" or service_id == "" then
       error("rig.require_service expects service_id to be a non-empty string", 0)
@@ -349,23 +382,11 @@ function M.require_service(service_id)
       )
    end
 
-   local provider_id = active_runtime.providers[service_id]
-   if provider_id == nil then
+   local impl = active_runtime.service_impls[service_id]
+   if impl == nil then
       error(
          ("rig.require_service('%s') has no implementation for active runtime '%s'"):format(
             service_id,
-            active_runtime.runtime_id
-         ),
-         0
-      )
-   end
-
-   local impl = service.impls[provider_id]
-   if impl == nil then
-      error(
-         ("rig.require_service('%s') has no implementation for provider '%s' in active runtime '%s'"):format(
-            service_id,
-            provider_id,
             active_runtime.runtime_id
          ),
          0
@@ -549,12 +570,14 @@ local function resolve_runtime(options)
 
    local runtime_id = preset_id or driver_id
    validate_runtime_providers(runtime_id, providers)
+   local service_impls = resolve_runtime_service_impls(runtime_id, providers)
 
    return driver, {
       driver_id = driver_id,
       preset_id = preset_id,
       runtime_id = runtime_id,
       providers = providers,
+      service_impls = service_impls,
    }
 end
 
