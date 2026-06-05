@@ -126,10 +126,10 @@ Additional fields accepted by `options.sdl3_gpu`:
 
 - `sdl3.get_renderer()`
   - Returns the current `SDL_Renderer*` when `mode = "sdl3"` owns the runtime.
-- `mode = "sdl3"` also provides the `"font_backend"` service used by `font.create_text_renderer(...)`.
+- `mode = "sdl3"` also provides the `"font.backend"` service used by `font.create_text_renderer(...)`.
   - Atlas pages are uploaded lazily as SDL textures.
   - Updated atlas pages are re-uploaded automatically when their page revision changes.
-- `mode = "sdl3_gl"` also provides the `"font_backend"` service used by `font.create_text_renderer(...)`.
+- `mode = "sdl3_gl"` also provides the `"font.backend"` service used by `font.create_text_renderer(...)`.
   - Atlas pages are uploaded lazily as OpenGL textures.
   - Updated atlas pages are re-uploaded automatically when their page revision changes.
   - Text is drawn through a small OpenGL shader pipeline owned by the runtime.

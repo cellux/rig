@@ -815,7 +815,7 @@ function M.atlas_get_glyph(atlas, glyph_id)
    return packed
 end
 
-rig.create_service("font_backend", {
+rig.create_service("font.backend", {
    "create_text_renderer",
    "release_text_renderer",
    "draw_packed_glyph",
@@ -825,7 +825,7 @@ rig.create_service("font_backend", {
 function M.create_text_renderer(atlas)
    ensure_atlas(atlas)
 
-   local backend = rig.require_service("font_backend")
+   local backend = rig.require_service("font.backend")
    local text_renderer = setmetatable({
       atlas = atlas,
       _backend = backend,

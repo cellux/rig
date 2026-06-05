@@ -212,7 +212,7 @@ test.case("font text renderer requires an active runtime service", function()
    end)
 
    test.falsey(ok)
-    test.match(tostring(err), "font_backend")
+    test.match(tostring(err), "font.backend")
 
    atlas:release()
    sized:release()

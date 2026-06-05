@@ -2567,8 +2567,8 @@ local sdl3_time_service = {
 rig.register_service_impl("time", "sdl3", sdl3_time_service)
 rig.register_service_impl("time", "sdl3_gl", sdl3_time_service)
 rig.register_service_impl("time", "sdl3_gpu", sdl3_time_service)
-rig.register_service_impl("font_backend", "sdl3", sdl3_font_backend)
-rig.register_service_impl("font_backend", "sdl3_gl", sdl3_gl_font_backend)
+rig.register_service_impl("font.backend", "sdl3", sdl3_font_backend)
+rig.register_service_impl("font.backend", "sdl3_gl", sdl3_gl_font_backend)
 
 local function setup_scheduler(label)
    M._scheduler = sched.create(label)

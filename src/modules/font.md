@@ -8,7 +8,7 @@ The `font` module owns:
 - atlas packing
 - text-run construction
 
-Backend-specific atlas upload and drawing are provided through the `"font_backend"` runtime service.
+Backend-specific atlas upload and drawing are provided through the `"font.backend"` runtime service.
 
 ## API
 
@@ -98,7 +98,7 @@ Backend-specific atlas upload and drawing are provided through the `"font_backen
 - `font.warm_text(atlas, text[, options])`
   - Shapes text and ensures all referenced glyphs are packed into the atlas.
 - `font.create_text_renderer(atlas)`
-  - Requires an active runtime mode that implements the `"font_backend"` service.
+  - Requires an active runtime mode that implements the `"font.backend"` service.
   - Returns a text-renderer object tied to that atlas.
 - `font.draw_packed_glyph(text_renderer, packed, x, y[, scale, r, g, b, a])`
   - Draws one packed glyph through the active backend.
@@ -192,10 +192,10 @@ Atlas objects also expose:
   - This avoids size mutation conflicts between independently sized faces.
 - `font.create_atlas(...)` currently produces a single-channel grayscale atlas.
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
-- `font.create_text_renderer(...)` resolves through `rig.require_service("font_backend")`.
-- `font.create_style(...)` currently creates a text renderer immediately, so it also requires an active runtime mode that provides `"font_backend"`.
-- `mode = "sdl3"` currently provides the `"font_backend"` service through SDL renderer textures.
-- `mode = "sdl3_gl"` currently provides the `"font_backend"` service through OpenGL textures and textured quads.
+- `font.create_text_renderer(...)` resolves through `rig.require_service("font.backend")`.
+- `font.create_style(...)` currently creates a text renderer immediately, so it also requires an active runtime mode that provides `"font.backend"`.
+- `mode = "sdl3"` currently provides the `"font.backend"` service through SDL renderer textures.
+- `mode = "sdl3_gl"` currently provides the `"font.backend"` service through OpenGL textures and textured quads.
 - `mode = "sdl3_gpu"` does not provide it yet.
 
 ## Example
