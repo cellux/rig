@@ -182,7 +182,7 @@ Additional fields accepted by `options.driver_config.sdl3_gpu`:
   - Uploads raw byte data into an SDL GPU buffer.
   - Raises an error if upload staging or submission fails.
 - `sdl3.create_gpu_shader(device, compiled, props?)`
-  - Builds an `SDL_GPUShader` from a compiled shader descriptor returned by `shader.compile(...)`.
+  - Builds an `SDL_GPUShader` from a SPIR-V shader artifact returned by `shader.compile(...)`.
 - `sdl3.build_gpu_buffer_create_info(spec)`
   - Builds `SDL_GPUBufferCreateInfo[1]` from a Lua table.
 - `sdl3.build_color_target_descriptions(specs)`
@@ -226,3 +226,5 @@ Additional fields accepted by `options.driver_config.sdl3_gpu`:
 - The SDL runtime presets report backend diagnostics before GPU device creation when SDL rejects the requested shader format/backend combination.
 - On Linux, SDL GPU currently means Vulkan. Old Intel Haswell systems often expose only partial Vulkan support and may still be rejected.
 - The `sdl3_gpu` preset also provides the `mesh3d.vertex_input` service, so `mesh3d.build_vertex_input(mesh)` returns an SDL GPU vertex-input descriptor under that runtime.
+- The `sdl3_gpu` preset also provides the `shader.stage` service.
+  - `shader.create_stage(shader.compile{ ... })` returns `SDL_GPUShader*` objects under that runtime.

@@ -1,28 +1,9 @@
 local M = ... or {}
 
+local rig = require("rig")
 local dxc = require("dxc")
 local shaderc = require("shaderc")
 local spirvcross = require("spirvcross")
-local sdl3 = require("sdl3")
-
-local GRAPHICS_SPIRV_EXPECTED_SETS = {
-   vertex = {
-      sampled_images = 0,
-      separate_samplers = 0,
-      separate_images = 0,
-      storage_images = 0,
-      storage_buffers = 0,
-      uniform_buffers = 1,
-   },
-   fragment = {
-      sampled_images = 2,
-      separate_samplers = 2,
-      separate_images = 2,
-      storage_images = 2,
-      storage_buffers = 2,
-      uniform_buffers = 3,
-   },
-}
 
 local function read_file(path)
    local file, open_err = io.open(path, "rb")
@@ -45,96 +26,112 @@ local function read_file(path)
    return contents
 end
 
+local function normalize_language(language)
+   local normalized = language or "hlsl"
+   if normalized ~= "hlsl" and normalized ~= "glsl" then
+      error("shader operation currently supports only language='hlsl' or language='glsl'", 0)
+   end
+   return normalized
+end
+
+local function normalize_stage(stage)
+   if stage ~= "vertex" and stage ~= "fragment" and stage ~= "compute" then
+      error("shader operation requires stage to be 'vertex', 'fragment', or 'compute'", 0)
+   end
+   return stage
+end
+
 local function load_source(options)
    if type(options.source) == "string" then
-      return options.source
+      return options.source, options.path == nil and options.source_name or options.path
    end
    if type(options.path) == "string" then
-      return read_file(options.path)
+      local source, err = read_file(options.path)
+      if source == nil then
+         return nil, err
+      end
+      return source, options.path
    end
    return nil, "shader source must be provided via source or path"
 end
 
-local function validate_graphics_spirv_layout(compiled)
-   if compiled.format ~= sdl3.GPU_SHADERFORMAT_SPIRV then
-      return true
+local function normalize_source_artifact(options)
+   if type(options) ~= "table" then
+      error("shader operation expects a table", 0)
    end
 
-   local expected_sets = GRAPHICS_SPIRV_EXPECTED_SETS[compiled.stage]
-   if expected_sets == nil then
-      return true
+   local language = normalize_language(options.language)
+   local stage = normalize_stage(options.stage)
+   local source, source_name_or_err = load_source(options)
+   if source == nil then
+      error(source_name_or_err, 0)
    end
 
-   local resources = compiled.reflection and compiled.reflection.resources
-   if type(resources) ~= "table" then
-      return nil, "compiled shader is missing reflection.resources"
-   end
-
-   for kind, expected_set in pairs(expected_sets) do
-      local list = resources[kind]
-      if type(list) == "table" then
-         for _, item in ipairs(list) do
-            if item.set ~= expected_set then
-               return nil, (
-                  "SPIR-V %s shader %s resource '%s' is in descriptor set %s, expected %d for SDL_GPU"
-               ):format(
-                  compiled.stage,
-                  kind,
-                  tostring(item.name or "<unnamed>"),
-                  tostring(item.set),
-                  expected_set
-               )
-            end
-         end
+   local source_name = options.source_name or source_name_or_err
+   if type(source_name) ~= "string" or source_name == "" then
+      if language == "hlsl" then
+         source_name = "shader.hlsl"
+      else
+         source_name = "shader.glsl"
       end
    end
 
-   return true
+   return {
+      artifact_kind = "source",
+      language = language,
+      stage = stage,
+      source = source,
+      source_name = source_name,
+      entrypoint = options.entrypoint,
+      extra_args = options.extra_args,
+      preserve_bindings = options.preserve_bindings,
+      preserve_interface = options.preserve_interface,
+      glsl_version = options.glsl_version,
+      optimization = options.optimization,
+      debug_info = options.debug_info,
+      macro_definitions = options.macro_definitions,
+      props = options.props,
+   }
+end
+
+local function normalize_stage_artifact(spec)
+   if type(spec) ~= "table" then
+      error("shader stage specification expects a table", 0)
+   end
+
+   if type(spec.artifact_kind) == "string" and spec.artifact_kind ~= "" then
+      return spec
+   end
+
+   return normalize_source_artifact(spec)
 end
 
 function M.compile(options)
-   if type(options) ~= "table" then
-      error("shader.compile expects a table")
-   end
-
-   local language = options.language or "hlsl"
-   if language ~= "hlsl" and language ~= "glsl" then
-      error("shader.compile currently supports only language='hlsl' or language='glsl'")
-   end
-
-   local stage = options.stage
-   if stage ~= "vertex" and stage ~= "fragment" and stage ~= "compute" then
-      error("shader.compile requires stage to be 'vertex', 'fragment', or 'compute'")
-   end
-
-   local source, source_err = load_source(options)
-   if source == nil then
-      error(source_err, 0)
-   end
+   local source_artifact = normalize_source_artifact(options)
 
    local compiled
    local compile_err
-   if language == "hlsl" then
+   if source_artifact.language == "hlsl" then
       compiled, compile_err = dxc.compile_spirv {
-         source = source,
-         stage = stage,
-         entrypoint = options.entrypoint,
-         source_name = options.source_name or options.path or "shader.hlsl",
-         extra_args = options.extra_args,
-         preserve_bindings = options.preserve_bindings,
-         preserve_interface = options.preserve_interface,
+         source = source_artifact.source,
+         stage = source_artifact.stage,
+         entrypoint = source_artifact.entrypoint,
+         source_name = source_artifact.source_name,
+         extra_args = source_artifact.extra_args,
+         preserve_bindings = source_artifact.preserve_bindings,
+         preserve_interface = source_artifact.preserve_interface,
       }
    else
       compiled, compile_err = shaderc.compile_spirv {
-         source = source,
-         stage = stage,
-         entrypoint = options.entrypoint,
-         source_name = options.source_name or options.path or "shader.glsl",
-         glsl_version = options.glsl_version,
-         optimization = options.optimization,
-         debug_info = options.debug_info,
-         preserve_bindings = options.preserve_bindings,
-         macro_definitions = options.macro_definitions,
+         source = source_artifact.source,
+         stage = source_artifact.stage,
+         entrypoint = source_artifact.entrypoint,
+         source_name = source_artifact.source_name,
+         glsl_version = source_artifact.glsl_version,
+         optimization = source_artifact.optimization,
+         debug_info = source_artifact.debug_info,
+         preserve_bindings = source_artifact.preserve_bindings,
+         macro_definitions = source_artifact.macro_definitions,
       }
    end
    if compiled == nil then
@@ -146,16 +143,33 @@ function M.compile(options)
       error(tostring(reflection_err or "SPIR-V reflection failed"), 0)
    end
 
-   compiled.language = language
-   compiled.format = sdl3.GPU_SHADERFORMAT_SPIRV
-   compiled.reflection = reflection
+   return {
+      artifact_kind = "spirv",
+      source_language = source_artifact.language,
+      language = source_artifact.language,
+      stage = source_artifact.stage,
+      entrypoint = compiled.entrypoint or source_artifact.entrypoint or "main",
+      source_name = source_artifact.source_name,
+      bytecode = compiled.bytecode,
+      format = "spirv",
+      reflection = reflection,
+      props = source_artifact.props,
+   }
+end
 
-   local valid_layout, layout_err = validate_graphics_spirv_layout(compiled)
-   if not valid_layout then
-      error(tostring(layout_err or "shader layout validation failed"), 0)
-   end
+rig.create_service("shader.stage", {
+   "create_stage",
+   "destroy_stage",
+})
 
-   return compiled
+function M.create_stage(spec)
+   return rig.require_service("shader.stage").create_stage(
+      normalize_stage_artifact(spec)
+   )
+end
+
+function M.destroy_stage(stage)
+   return rig.require_service("shader.stage").destroy_stage(stage)
 end
 
 return M

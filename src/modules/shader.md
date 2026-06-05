@@ -1,6 +1,6 @@
 # `shader`
 
-High-level shader helper layered on top of `dxc`, `shaderc`, `spirvcross`, and `sdl3`.
+High-level shader helper layered on top of `dxc`, `shaderc`, and `spirvcross`.
 
 ## API
 
@@ -8,9 +8,24 @@ High-level shader helper layered on top of `dxc`, `shaderc`, `spirvcross`, and `
   - Loads source from `source` or `path`.
   - Compiles to SPIR-V through `dxc` for HLSL or `shaderc` for GLSL.
   - Reflects the result through `spirvcross`.
-  - Returns a normalized compiled shader table.
-  - Raises on compilation, reflection, or layout-validation failure.
+  - Returns a normalized shader artifact table with:
+    - `artifact_kind = "spirv"`
+    - `stage`
+    - `entrypoint`
+    - `bytecode`
+    - `reflection`
+    - `format = "spirv"`
+  - Raises on compilation or reflection failure.
+- `shader.create_stage(spec_or_artifact)`
+  - Resolves the active `shader.stage` service and creates a runtime-specific shader stage object.
+  - Accepts either:
+    - a source specification with `language`, `stage`, and `source` or `path`
+    - or a normalized artifact such as the result of `shader.compile(...)`
+- `shader.destroy_stage(stage)`
+  - Resolves the active `shader.stage` service and destroys a runtime-specific shader stage object.
 
 ## Notes
 
-- Graphics SPIR-V layouts are validated against SDL GPU descriptor-set expectations before shader creation.
+- `shader` owns the `shader.stage` service namespace.
+- Runtime-specific stage creation stays in service providers, not in the `gl` or `sdl3` module namespaces.
+- SDL GPU descriptor-set validation happens when the SDL GPU runtime creates shader objects, not during generic SPIR-V compilation.

@@ -3,6 +3,7 @@ local ffi = require("ffi")
 local gl = require("gl")
 local math3d = require("math3d")
 local mesh3d = require("mesh3d")
+local shader = require("shader")
 local sdl3 = require("sdl3")
 local time = require("time")
 
@@ -110,10 +111,32 @@ local function on_render()
 end
 
 local function after_setup()
-   program = gl.create_program {
-      vertex_source = vertex_shader_source,
-      fragment_source = fragment_shader_source,
+   local vertex_shader = shader.create_stage {
+      language = "glsl",
+      stage = "vertex",
+      source_name = "spinning_cube_gl.vert.glsl",
+      source = vertex_shader_source,
    }
+   local fragment_shader = shader.create_stage {
+      language = "glsl",
+      stage = "fragment",
+      source_name = "spinning_cube_gl.frag.glsl",
+      source = fragment_shader_source,
+   }
+
+   local ok, linked_or_err = pcall(function()
+      return gl.link_program {
+         vertex_shader,
+         fragment_shader,
+      }
+   end)
+   shader.destroy_stage(vertex_shader)
+   shader.destroy_stage(fragment_shader)
+   if not ok then
+      error(linked_or_err, 0)
+   end
+   program = linked_or_err
+
    gl.GenVertexArrays(1, gl_vertex_arrays)
    gl.GenBuffers(1, gl_buffers)
    vao = tonumber(gl_vertex_arrays[0]) or 0

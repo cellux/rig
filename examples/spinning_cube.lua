@@ -175,8 +175,18 @@ local function after_setup()
    resource_scope = scope
 
    vertex_input = mesh3d.build_vertex_input(cube_mesh)
-   local vertex_shader = scope:create_gpu_shader(vertex_compiled)
-   local fragment_shader = scope:create_gpu_shader(fragment_compiled)
+   local vertex_shader = scope:adopt(
+      shader.create_stage(vertex_compiled),
+      function(_, resource)
+         shader.destroy_stage(resource)
+      end
+   )
+   local fragment_shader = scope:adopt(
+      shader.create_stage(fragment_compiled),
+      function(_, resource)
+         shader.destroy_stage(resource)
+      end
+   )
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)
    depth_format = sdl3.choose_depth_format(device)
 

@@ -4,6 +4,7 @@ local bit = bit
 local sched = require("sched")
 require("font")
 require("mesh3d")
+local shader = require("shader")
 require("time")
 
 ffi.cdef[[
@@ -750,6 +751,25 @@ local STAGE_TO_SDL = {
    fragment = M.GPU_SHADERSTAGE_FRAGMENT,
 }
 
+local GRAPHICS_SPIRV_EXPECTED_SETS = {
+   vertex = {
+      sampled_images = 0,
+      separate_samplers = 0,
+      separate_images = 0,
+      storage_images = 0,
+      storage_buffers = 0,
+      uniform_buffers = 1,
+   },
+   fragment = {
+      sampled_images = 2,
+      separate_samplers = 2,
+      separate_images = 2,
+      storage_images = 2,
+      storage_buffers = 2,
+      uniform_buffers = 3,
+   },
+}
+
 function M.build_vertex_buffer_descriptions(buffers)
    if type(buffers) ~= "table" then
       error("sdl3.build_vertex_buffer_descriptions expects a table")
@@ -1033,6 +1053,59 @@ function M.build_graphics_pipeline_create_info(spec)
    }
 end
 
+local function normalize_gpu_shader_format(compiled)
+   local format = compiled.format
+   if format == nil or format == "spirv" then
+      return M.GPU_SHADERFORMAT_SPIRV
+   end
+
+   local numeric = tonumber(format)
+   if numeric == nil then
+      error(("compiled shader format '%s' is not supported by SDL GPU"):format(
+         tostring(format)
+      ), 0)
+   end
+
+   return numeric
+end
+
+local function validate_graphics_spirv_layout(compiled)
+   if normalize_gpu_shader_format(compiled) ~= M.GPU_SHADERFORMAT_SPIRV then
+      return true
+   end
+
+   local expected_sets = GRAPHICS_SPIRV_EXPECTED_SETS[compiled.stage]
+   if expected_sets == nil then
+      return true
+   end
+
+   local resources = compiled.reflection and compiled.reflection.resources
+   if type(resources) ~= "table" then
+      return nil, "compiled shader is missing reflection.resources"
+   end
+
+   for kind, expected_set in pairs(expected_sets) do
+      local list = resources[kind]
+      if type(list) == "table" then
+         for _, item in ipairs(list) do
+            if item.set ~= expected_set then
+               return nil, (
+                  "SPIR-V %s shader %s resource '%s' is in descriptor set %s, expected %d for SDL_GPU"
+               ):format(
+                  compiled.stage,
+                  kind,
+                  tostring(item.name or "<unnamed>"),
+                  tostring(item.set),
+                  expected_set
+               )
+            end
+         end
+      end
+   end
+
+   return true
+end
+
 function M.create_gpu_shader(device, compiled, props)
    if device == nil then
       error("sdl3.create_gpu_shader requires an SDL_GPUDevice*")
@@ -1048,6 +1121,11 @@ function M.create_gpu_shader(device, compiled, props)
       ), 0)
    end
 
+   local valid_layout, layout_err = validate_graphics_spirv_layout(compiled)
+   if not valid_layout then
+      error(tostring(layout_err or "shader layout validation failed"), 0)
+   end
+
    local reflection = compiled.reflection
    if type(reflection) ~= "table" or type(reflection.resource_info) ~= "table" then
       error("compiled shader is missing reflection.resource_info", 0)
@@ -1060,7 +1138,7 @@ function M.create_gpu_shader(device, compiled, props)
    create_info[0].code_size = #compiled.bytecode
    create_info[0].code = code_buffer
    create_info[0].entrypoint = compiled.entrypoint or "main"
-   create_info[0].format = compiled.format or M.GPU_SHADERFORMAT_SPIRV
+   create_info[0].format = normalize_gpu_shader_format(compiled)
    create_info[0].stage = shader_stage
    create_info[0].num_samplers = reflection.resource_info.num_samplers or 0
    create_info[0].num_storage_textures =
@@ -2613,10 +2691,87 @@ local sdl3_gpu_mesh3d_service = {
    end,
 }
 
+local shader_stage_service_sdl3_gpu = {
+   create_stage = function(spec)
+      local artifact = spec
+      if artifact.artifact_kind == "source" then
+         artifact = shader.compile(artifact)
+      end
+      if artifact.artifact_kind ~= "spirv" then
+         error(
+            ("shader.stage provider 'sdl3_gpu' requires a SPIR-V artifact, got '%s'"):format(
+               tostring(artifact.artifact_kind)
+            ),
+            0
+         )
+      end
+
+      local device = M.get_gpu_device()
+      if device == nil then
+         error("shader.create_stage requires an active SDL GPU device", 0)
+      end
+
+      return M.create_gpu_shader(device, artifact, spec.props)
+   end,
+   destroy_stage = function(stage)
+      local device = M.get_gpu_device()
+      if device == nil then
+         error("shader.destroy_stage requires an active SDL GPU device", 0)
+      end
+      M.ReleaseGPUShader(device, stage)
+   end,
+}
+
+local shader_stage_service_sdl3_gl = {
+   create_stage = function(spec)
+      if spec.artifact_kind ~= "source" then
+         error(
+            ("shader.stage provider 'sdl3_gl' requires a source artifact, got '%s'"):format(
+               tostring(spec.artifact_kind)
+            ),
+            0
+         )
+      end
+      if spec.language ~= "glsl" then
+         error(
+            ("shader.stage provider 'sdl3_gl' currently supports only GLSL source, got '%s'"):format(
+               tostring(spec.language)
+            ),
+            0
+         )
+      end
+
+      local gl = require("gl")
+      local shader_type = nil
+      if spec.stage == "vertex" then
+         shader_type = gl.VERTEX_SHADER
+      elseif spec.stage == "fragment" then
+         shader_type = gl.FRAGMENT_SHADER
+      elseif spec.stage == "compute" then
+         shader_type = rawget(gl, "COMPUTE_SHADER")
+      end
+      if shader_type == nil then
+         error(
+            ("shader stage '%s' is not supported by the OpenGL runtime provider"):format(
+               tostring(spec.stage)
+            ),
+            0
+         )
+      end
+
+      return gl.create_shader(shader_type, spec.source)
+   end,
+   destroy_stage = function(stage)
+      require("gl").DeleteShader(stage)
+   end,
+}
+
 rig.register_service_impl("time", "sdl3", sdl3_time_service)
 rig.register_service_impl("font.renderer", "sdl3", sdl3_font_backend)
 rig.register_service_impl("font.renderer", "sdl3_gl", sdl3_gl_font_backend)
 rig.register_service_impl("mesh3d.vertex_input", "sdl3_gpu", sdl3_gpu_mesh3d_service)
+rig.register_service_impl("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
+rig.register_service_impl("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
 
 local function setup_scheduler(label)
    runtime_scheduler = sched.create(label)
@@ -2735,6 +2890,7 @@ rig.register_runtime_preset("sdl3_gpu", {
    providers = {
       time = "sdl3",
       ["mesh3d.vertex_input"] = "sdl3_gpu",
+      ["shader.stage"] = "sdl3_gpu",
    },
 })
 
@@ -2777,6 +2933,7 @@ rig.register_runtime_preset("sdl3_gl", {
    providers = {
       time = "sdl3",
       ["font.renderer"] = "sdl3_gl",
+      ["shader.stage"] = "sdl3_gl",
    },
 })
 

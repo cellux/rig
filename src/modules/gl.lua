@@ -157,23 +157,46 @@ function M.create_program(options)
 
    local vertex_shader = M.create_shader(M.VERTEX_SHADER, options.vertex_source)
    local fragment_shader = M.create_shader(M.FRAGMENT_SHADER, options.fragment_source)
+   local ok, program_or_err = pcall(function()
+      return M.link_program {
+         vertex_shader,
+         fragment_shader,
+      }
+   end)
+   M.DeleteShader(vertex_shader)
+   M.DeleteShader(fragment_shader)
+   if not ok then
+      error(program_or_err, 0)
+   end
+   return program_or_err
+end
+
+function M.link_program(shaders)
+   if type(shaders) ~= "table" then
+      error("gl.link_program expects a table of shader objects", 0)
+   end
+   if #shaders == 0 then
+      error("gl.link_program requires at least one shader object", 0)
+   end
 
    local program = M.CreateProgram()
    if program == 0 then
-      M.DeleteShader(vertex_shader)
-      M.DeleteShader(fragment_shader)
       error("glCreateProgram returned 0", 0)
    end
 
-   M.AttachShader(program, vertex_shader)
-   M.AttachShader(program, fragment_shader)
+   for i = 1, #shaders do
+      local shader = tonumber(shaders[i]) or 0
+      if shader == 0 then
+         M.DeleteProgram(program)
+         error(("gl.link_program expects shaders[%d] to be a valid shader object"):format(i), 0)
+      end
+      M.AttachShader(program, shader)
+   end
+
    M.LinkProgram(program)
 
    local linked = ffi.new("GLint[1]")
    M.GetProgramiv(program, M.LINK_STATUS, linked)
-   M.DeleteShader(vertex_shader)
-   M.DeleteShader(fragment_shader)
-
    if linked[0] == 0 then
       local log = program_log(program)
       M.DeleteProgram(program)
