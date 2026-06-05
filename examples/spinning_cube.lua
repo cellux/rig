@@ -164,11 +164,7 @@ local function on_render(command_buffer, swapchain_texture, width, height)
    sdl3.EndGPURenderPass(render_pass)
 end
 
-local function after_setup(options)
-   if options.mode ~= "sdl3_gpu" then
-      return
-   end
-
+local function after_setup()
    local device = sdl3.get_gpu_device()
    local window = sdl3.get_window()
    if device == nil or window == nil then
@@ -229,17 +225,19 @@ local function after_setup(options)
 end
 
 rig.run {
-   mode = "sdl3_gpu",
+   preset = "sdl3_gpu",
+   driver_config = {
+      sdl3_gpu = {
+         window_props = {
+            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
+            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+         },
+         render = on_render,
+         shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
+      },
+   },
    hooks = {
       after_setup = after_setup,
       before_shutdown = release_resources,
-   },
-   sdl3_gpu = {
-      window_props = {
-         [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
-         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-      },
-      on_render = on_render,
-      shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
    },
 }

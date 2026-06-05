@@ -479,9 +479,10 @@ function M.run_registered_cases(options)
    end
 
    rig.run {
-      mode = "uv",
-      uv = {
-         main = function()
+      preset = "uv",
+      module_config = {
+         uv = {
+            main = function()
             local concurrent_batch = {}
             for i = 1, #cases do
                local case = cases[i]
@@ -497,7 +498,8 @@ function M.run_registered_cases(options)
                end
             end
             run_concurrent_batch(concurrent_batch)
-         end,
+            end,
+         },
       },
    }
 

@@ -3,9 +3,9 @@
 These examples are small, controlled rendering baselines for comparing frame timing and presentation behavior across Rig backends.
 
 - [renderer_baseline.lua](/home/muci/Projektek/rig/examples/baseline/renderer_baseline.lua)
-  - Uses `mode = "sdl3"` and the SDL renderer path.
+  - Uses `preset = "sdl3"` and the SDL renderer path.
 - [gl_baseline.lua](/home/muci/Projektek/rig/examples/baseline/gl_baseline.lua)
-  - Uses `mode = "sdl3_gl"` and a minimal OpenGL path.
+  - Uses `preset = "sdl3_gl"` and a minimal OpenGL path.
 
 Both examples intentionally render the same simple scene and expose the same profiler overlay and key toggles, so they can be used for side-by-side backend comparisons.
 

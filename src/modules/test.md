@@ -35,7 +35,7 @@ Async test-runner helpers built on top of `uv` and `sched`.
 - `test.discover(options?)`
   - Discovers `*_test.lua` and `*_test.fnl` files.
   - `options.roots` may specify one or more root directories; default is `{ "." }`.
-  - Must be called from a scheduler-managed coroutine under `mode = "uv"` because discovery uses `uv.scandir(...)`.
+  - Must be called from a scheduler-managed coroutine under `preset = "uv"` because discovery uses `uv.scandir(...)`.
 - `test.run(options?)`
   - Discovers test files and runs them in child `rig` processes.
   - Returns a summary table containing:
@@ -55,7 +55,7 @@ Async test-runner helpers built on top of `uv` and `sched`.
 
 - The current first version runs one child process per test file.
 - Parallelism is bounded by `jobs`.
-- Within one test file, registered cases are currently executed under `mode = "uv"`, so they may use coroutine-based `uv` APIs such as `uv.spawn(...)` and `uv.scandir(...)`.
+- Within one test file, registered cases are currently executed under `preset = "uv"`, so they may use coroutine-based `uv` APIs such as `uv.spawn(...)` and `uv.scandir(...)`.
 - Use `test.serial(...)` for cases that rely on shared mutable state or ordering.
 - Each registered case records its own elapsed monotonic duration and prints it in the `PASS` / `FAIL` line.
 - Each file run recorded by `test.run(...)` also carries `duration` in seconds as a Lua number.

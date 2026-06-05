@@ -1266,27 +1266,41 @@ local function normalize_init_flags(flags_number)
    return ffi.cast("Uint32", flags_integer)
 end
 
-local function normalize_runtime_options(options)
+local function normalize_driver_config(options)
    if options == nil then
       return {}
    end
    if type(options) ~= "table" then
-      error("sdl3 options must be a table", 0)
+      error("sdl3 driver configuration must be a table", 0)
    end
    return options
 end
 
-local function get_mode_options(options)
-   if options.mode == "sdl3" then
-      return normalize_runtime_options(options.sdl3), "options.sdl3"
+local function get_driver_config(options, driver_id)
+   local driver_config = options.driver_config
+   if driver_config == nil then
+      return {}
    end
-   if options.mode == "sdl3_gpu" then
-      return normalize_runtime_options(options.sdl3_gpu), "options.sdl3_gpu"
+   if type(driver_config) ~= "table" then
+      error("rig.run expects options.driver_config to be a table if provided", 0)
    end
-   if options.mode == "sdl3_gl" then
-      return normalize_runtime_options(options.sdl3_gl), "options.sdl3_gl"
+
+   local config = driver_config[driver_id]
+   if config == nil then
+      return {}
    end
-   error("unsupported sdl3 runtime mode '" .. tostring(options.mode) .. "'", 0)
+   return normalize_driver_config(config)
+end
+
+local function get_event_handlers(options)
+   local event_handlers = options.event_handlers
+   if event_handlers == nil then
+      return {}
+   end
+   if type(event_handlers) ~= "table" then
+      error("rig.run expects options.event_handlers to be a table if provided", 0)
+   end
+   return event_handlers
 end
 
 local shutdown
@@ -1349,7 +1363,7 @@ local function initialize_windowed_sdl(options)
       shutdown()
    end
 
-   options = normalize_runtime_options(options)
+   options = normalize_driver_config(options)
 
    local required =
       normalize_init_flags(options.init_flags or (M.INIT_VIDEO + M.INIT_EVENTS))
@@ -1584,7 +1598,7 @@ local function setup_gl(options)
       error("sdl3_gl options must be a table if provided", 0)
    end
 
-   options = normalize_runtime_options(options)
+   options = normalize_driver_config(options)
    local window_props, props_err = merge_props(options.window_props, {
       [M.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
    })
@@ -2565,10 +2579,8 @@ local sdl3_time_service = {
 }
 
 rig.register_service_impl("time", "sdl3", sdl3_time_service)
-rig.register_service_impl("time", "sdl3_gl", sdl3_time_service)
-rig.register_service_impl("time", "sdl3_gpu", sdl3_time_service)
-rig.register_service_impl("font.backend", "sdl3", sdl3_font_backend)
-rig.register_service_impl("font.backend", "sdl3_gl", sdl3_gl_font_backend)
+rig.register_service_impl("font.renderer", "sdl3", sdl3_font_backend)
+rig.register_service_impl("font.renderer", "sdl3_gl", sdl3_gl_font_backend)
 
 local function setup_scheduler(label)
    runtime_scheduler = sched.create(label)
@@ -2588,32 +2600,33 @@ local function shutdown_scheduler()
    runtime_scheduler = nil
 end
 
-local function require_render_callback(options)
-   local mode_options, mode_key = get_mode_options(options)
-   local callback = mode_options.on_render
+local function require_render_callback(mode_options, mode_key)
+   local callback = mode_options.render
    if type(callback) ~= "function" then
       error(
-         "rig.run with mode '" .. tostring(options.mode) .. "' requires " .. mode_key .. ".on_render to be a function",
+         "rig.run requires " .. mode_key .. ".render to be a function",
          0
       )
    end
    return callback
 end
 
-rig.register_runtime_mode("sdl3", {
+rig.register_runtime_driver("sdl3", {
    setup = function(options)
-      local sdl3_options = normalize_runtime_options(options.sdl3)
-      require_render_callback(options)
+      local sdl3_options = get_driver_config(options, "sdl3")
+      local event_handlers = get_event_handlers(options)
+      require_render_callback(sdl3_options, "options.driver_config.sdl3")
       setup(sdl3_options)
       setup_scheduler("sdl3 scheduler")
-      dispatch_resize_if_changed(sdl3_options.on_resize, "initial", 0)
+      dispatch_resize_if_changed(event_handlers.resize, "initial", 0)
    end,
    loop = function(options, run_hooks)
-      local sdl3_options = normalize_runtime_options(options.sdl3)
-      local on_render = require_render_callback(options)
-      local on_key = sdl3_options.on_key
-      local on_mouse = sdl3_options.on_mouse
-      local on_resize = sdl3_options.on_resize
+      local sdl3_options = get_driver_config(options, "sdl3")
+      local event_handlers = get_event_handlers(options)
+      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3")
+      local on_key = event_handlers.key
+      local on_mouse = event_handlers.mouse
+      local on_resize = event_handlers.resize
       while true do
          run_hooks("before_poll", options)
          if pump_events(on_key, on_mouse, on_resize) == false then
@@ -2632,10 +2645,19 @@ rig.register_runtime_mode("sdl3", {
    end,
 })
 
-rig.register_runtime_mode("sdl3_gpu", {
+rig.register_runtime_preset("sdl3", {
+   driver = "sdl3",
+   providers = {
+      time = "sdl3",
+      ["font.renderer"] = "sdl3",
+   },
+})
+
+rig.register_runtime_driver("sdl3_gpu", {
    setup = function(options)
-      local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
-      require_render_callback(options)
+      local sdl3_options = get_driver_config(options, "sdl3_gpu")
+      local event_handlers = get_event_handlers(options)
+      require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu")
       setup_gpu {
          init_flags = sdl3_options.init_flags,
          window_props = sdl3_options.window_props,
@@ -2645,14 +2667,15 @@ rig.register_runtime_mode("sdl3_gpu", {
          backend_name = sdl3_options.backend_name,
       }
       setup_scheduler("sdl3_gpu scheduler")
-      dispatch_resize_if_changed(sdl3_options.on_resize, "initial", 0)
+      dispatch_resize_if_changed(event_handlers.resize, "initial", 0)
    end,
    loop = function(options, run_hooks)
-      local sdl3_options = normalize_runtime_options(options.sdl3_gpu)
-      local on_render = require_render_callback(options)
-      local on_key = sdl3_options.on_key
-      local on_mouse = sdl3_options.on_mouse
-      local on_resize = sdl3_options.on_resize
+      local sdl3_options = get_driver_config(options, "sdl3_gpu")
+      local event_handlers = get_event_handlers(options)
+      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu")
+      local on_key = event_handlers.key
+      local on_mouse = event_handlers.mouse
+      local on_resize = event_handlers.resize
       while true do
          run_hooks("before_poll", options)
          if pump_events(on_key, on_mouse, on_resize) == false then
@@ -2671,20 +2694,29 @@ rig.register_runtime_mode("sdl3_gpu", {
    end,
 })
 
-rig.register_runtime_mode("sdl3_gl", {
+rig.register_runtime_preset("sdl3_gpu", {
+   driver = "sdl3_gpu",
+   providers = {
+      time = "sdl3",
+   },
+})
+
+rig.register_runtime_driver("sdl3_gl", {
    setup = function(options)
-      local sdl3_options = normalize_runtime_options(options.sdl3_gl)
-      require_render_callback(options)
+      local sdl3_options = get_driver_config(options, "sdl3_gl")
+      local event_handlers = get_event_handlers(options)
+      require_render_callback(sdl3_options, "options.driver_config.sdl3_gl")
       setup_gl(sdl3_options)
       setup_scheduler("sdl3_gl scheduler")
-      dispatch_resize_if_changed(sdl3_options.on_resize, "initial", 0)
+      dispatch_resize_if_changed(event_handlers.resize, "initial", 0)
    end,
    loop = function(options, run_hooks)
-      local sdl3_options = normalize_runtime_options(options.sdl3_gl)
-      local on_render = require_render_callback(options)
-      local on_key = sdl3_options.on_key
-      local on_mouse = sdl3_options.on_mouse
-      local on_resize = sdl3_options.on_resize
+      local sdl3_options = get_driver_config(options, "sdl3_gl")
+      local event_handlers = get_event_handlers(options)
+      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gl")
+      local on_key = event_handlers.key
+      local on_mouse = event_handlers.mouse
+      local on_resize = event_handlers.resize
       while true do
          run_hooks("before_poll", options)
          if pump_events(on_key, on_mouse, on_resize) == false then
@@ -2701,6 +2733,14 @@ rig.register_runtime_mode("sdl3_gl", {
       shutdown_scheduler()
       shutdown()
    end,
+})
+
+rig.register_runtime_preset("sdl3_gl", {
+   driver = "sdl3_gl",
+   providers = {
+      time = "sdl3",
+      ["font.renderer"] = "sdl3_gl",
+   },
 })
 
 return M

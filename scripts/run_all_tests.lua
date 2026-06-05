@@ -41,9 +41,10 @@ local function print_failure(index, summary, result)
 end
 
 rig.run {
-   mode = "uv",
-   uv = {
-      main = function()
+   preset = "uv",
+   module_config = {
+      uv = {
+         main = function()
         local summary = test.run {
             roots = { "tests" },
             jobs = 4,
@@ -74,6 +75,7 @@ rig.run {
          if not summary.success then
             error("test run failed", 0)
          end
-      end,
+         end,
+      },
    },
 }

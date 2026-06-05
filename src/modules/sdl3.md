@@ -6,7 +6,7 @@ The SDL shared library is loaded only when the module is required.
 
 ## Runtime Integration
 
-When loaded, `sdl3` registers three `rig.run(...)` modes:
+When loaded, `sdl3` registers three `rig.run(...)` presets and drivers:
 - `"sdl3"`
   - Owns the SDL window/renderer lifecycle through `rig.run(...)`.
 - `"sdl3_gl"`
@@ -17,12 +17,15 @@ When loaded, `sdl3` registers three `rig.run(...)` modes:
 ## `rig.run` Options
 
 Use SDL-specific runtime configuration under:
-- `options.sdl3` for `mode = "sdl3"`
-- `options.sdl3_gl` for `mode = "sdl3_gl"`
-- `options.sdl3_gpu` for `mode = "sdl3_gpu"`
+- `options.driver_config.sdl3` for `preset = "sdl3"`
+- `options.driver_config.sdl3_gl` for `preset = "sdl3_gl"`
+- `options.driver_config.sdl3_gpu` for `preset = "sdl3_gpu"`
+- `options.event_handlers.key`
+- `options.event_handlers.mouse`
+- `options.event_handlers.resize`
 
-Shared fields accepted by the SDL runtime modes as applicable:
-- All SDL runtime modes create and own a scheduler.
+Shared fields accepted by the SDL runtime presets as applicable:
+- All SDL runtime presets create and own a scheduler.
 - The scheduler is drained once per frame after event polling and before rendering.
 - `sched.sleep(seconds)` is supported and resumes tasks on the first frame after the requested deadline has passed.
 
@@ -36,15 +39,15 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Overrides window creation.
   - Defaults to the builtin `SDL_CreateWindowWithProperties` path.
 - `create_renderer(window_ptr) -> renderer_ptr | nil, err`
-  - Overrides renderer creation for `mode = "sdl3"`.
+  - Overrides renderer creation for `preset = "sdl3"`.
   - Defaults to the builtin SDL renderer path.
-- `on_render`
-  - Mandatory for both modes.
-- `on_key(key_info)`
+- `render`
+  - Mandatory render callback for the selected SDL driver.
+- `event_handlers.key(key_info)`
   - Optional keyboard event callback.
-- `on_mouse(mouse_info)`
+- `event_handlers.mouse(mouse_info)`
   - Optional mouse event callback.
-- `on_resize(resize_info)`
+- `event_handlers.resize(resize_info)`
   - Optional window resize callback.
   - Called once during setup with `resize_info.initial == true`.
   - Called again when the window size or pixel size changes.
@@ -61,7 +64,7 @@ Shared fields accepted by the SDL runtime modes as applicable:
     - `timestamp_ns`
     - `timestamp_ms`
 
-Additional fields accepted by `options.sdl3_gl`:
+Additional fields accepted by `options.driver_config.sdl3_gl`:
 
 - `gl_attributes`
   - OpenGL context attributes to apply before window creation.
@@ -83,14 +86,14 @@ Additional fields accepted by `options.sdl3_gl`:
 - `swap_interval`
   - OpenGL swap interval passed after context creation.
 
-Additional fields accepted by `options.sdl3_gpu`:
+Additional fields accepted by `options.driver_config.sdl3_gpu`:
 
 - `shader_formats`
-  - Passed to the SDL GPU runtime mode during device creation.
+  - Passed to the SDL GPU runtime preset during device creation.
 - `debug_mode`
-  - Passed to the SDL GPU runtime mode during device creation.
+  - Passed to the SDL GPU runtime preset during device creation.
 - `backend_name`
-  - Passed to the SDL GPU runtime mode during device creation.
+  - Passed to the SDL GPU runtime preset during device creation.
 
 ## Window Properties
 
@@ -125,11 +128,11 @@ Additional fields accepted by `options.sdl3_gpu`:
 ## Renderer Helpers
 
 - `sdl3.get_renderer()`
-  - Returns the current `SDL_Renderer*` when `mode = "sdl3"` owns the runtime.
-- `mode = "sdl3"` also provides the `"font.backend"` service used by `font.create_text_renderer(...)`.
+  - Returns the current `SDL_Renderer*` when `preset = "sdl3"` owns the runtime.
+- `preset = "sdl3"` also provides the `"font.renderer"` service used by `font.create_text_renderer(...)`.
   - Atlas pages are uploaded lazily as SDL textures.
   - Updated atlas pages are re-uploaded automatically when their page revision changes.
-- `mode = "sdl3_gl"` also provides the `"font.backend"` service used by `font.create_text_renderer(...)`.
+- `preset = "sdl3_gl"` also provides the `"font.renderer"` service used by `font.create_text_renderer(...)`.
   - Atlas pages are uploaded lazily as OpenGL textures.
   - Updated atlas pages are re-uploaded automatically when their page revision changes.
   - Text is drawn through a small OpenGL shader pipeline owned by the runtime.
@@ -220,5 +223,5 @@ Additional fields accepted by `options.sdl3_gpu`:
 
 ## Notes
 
-- The SDL runtime modes report backend diagnostics before GPU device creation when SDL rejects the requested shader format/backend combination.
+- The SDL runtime presets report backend diagnostics before GPU device creation when SDL rejects the requested shader format/backend combination.
 - On Linux, SDL GPU currently means Vulkan. Old Intel Haswell systems often expose only partial Vulkan support and may still be rejected.

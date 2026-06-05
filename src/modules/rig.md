@@ -12,11 +12,15 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Does not append a trailing newline.
 - `rig.println(...)`
   - Same as `rig.print(...)`, but appends `\n`.
-- `rig.register_runtime_mode(name, mode)`
-  - Registers a named runtime mode that can be selected explicitly by `rig.run(...)`.
+- `rig.register_runtime_driver(name, driver)`
+  - Registers a named runtime driver for `rig.run(...)`.
+- `rig.register_runtime_preset(name, preset)`
+  - Registers a named preset that selects one driver plus default service providers.
+  - `preset.driver` selects the runtime driver.
+  - `preset.providers[service_id] = provider_id` sets default service providers for that preset.
 - `rig.register_runtime_hook(phase, hook)`
   - Registers a hook function for a named runtime phase.
-  - Current built-in phases used by the `sdl3` modes are:
+  - Current built-in phases used by the `sdl3` drivers are:
     - `before_setup`
     - `after_setup`
     - `before_poll`
@@ -26,11 +30,16 @@ Core runtime helpers that are always loaded at interpreter startup.
     - `before_shutdown`
     - `after_shutdown`
 - `rig.run(options?)`
-  - Starts the explicitly selected runtime mode.
-  - `options.mode` is mandatory.
-  - All built-in runtime modes create and own a scheduler.
-  - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
-  - Mode-specific configuration should live under a namespaced key such as `options.sdl3`, `options.sdl3_gl`, or `options.sdl3_gpu`.
+  - Starts the selected runtime preset or driver.
+  - `options.preset` selects a named runtime preset.
+  - `options.driver` may be used directly without a preset.
+  - `options.providers[service_id] = provider_id` overrides service-provider selection for one run.
+  - Provider mappings are validated before driver setup begins.
+  - `options.event_handlers` may provide generic runtime callbacks such as `key`, `mouse`, and `resize`.
+  - `options.driver_config[driver_id]` stores driver-owned configuration such as render callbacks, window creation options, and presentation settings.
+  - `options.module_config[module_id]` stores module-owned runtime configuration such as `uv.main`.
+  - All built-in runtime presets create and own a scheduler.
+  - The current first version ships with `sdl3`-owned presets such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
   - Optional per-run hooks may be passed under `options.hooks`.
   - `options.hooks.<phase>` may be either a function or an array of functions.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
@@ -40,12 +49,13 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `method_names` is an array of required method names.
   - Raises if the service already exists.
 - `rig.register_service_impl(service_id, mode, impl)`
-  - Registers a service implementation for one runtime mode.
+  - Registers a service implementation for one provider id.
   - Completeness is checked at registration time.
-  - Raises if the service is unknown or if that mode already has an implementation.
+  - Raises if the service is unknown or if that provider already has an implementation.
 - `rig.require_service(service_id)`
-  - Returns the implementation for the currently active runtime mode.
-  - Raises if no runtime mode is active or if the active mode has no implementation.
+  - Returns the implementation selected for the currently active runtime.
+  - Service selection uses the current preset/provider configuration.
+  - Raises if no runtime is active or if the active runtime has no implementation.
 - `rig.resource_scope(context, label?)`
   - Creates a generic ownership scope.
   - `scope:adopt(resource, release_fn)` tracks a resource with a custom release function.
@@ -69,5 +79,5 @@ Core runtime helpers that are always loaded at interpreter startup.
 ## Notes
 
 - Custom script languages can be added by appending loader functions to `rig.script_loaders`.
-- Services are resolved by active runtime mode, not by loaded-module presence.
+- Services are resolved by the active runtime configuration, not by loaded-module presence.
 - One module should own each service definition. Backend modules should require that owner before calling `rig.register_service_impl(...)`.

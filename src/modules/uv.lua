@@ -66,14 +66,30 @@ local function uv_error_string(err)
    return ffi.string(ptr)
 end
 
-local function normalize_runtime_options(options)
+local function normalize_module_config(options)
    if options == nil then
       return {}
    end
    if type(options) ~= "table" then
-      error("uv runtime options must be a table if provided", 0)
+      error("uv module configuration must be a table if provided", 0)
    end
    return options
+end
+
+local function get_uv_module_config(options)
+   local module_config = options.module_config
+   if module_config == nil then
+      return {}
+   end
+   if type(module_config) ~= "table" then
+      error("rig.run expects options.module_config to be a table if provided", 0)
+   end
+
+   local uv_config = module_config.uv
+   if uv_config == nil then
+      return {}
+   end
+   return normalize_module_config(uv_config)
 end
 
 local function read_clock(clock_id, label)
@@ -320,7 +336,7 @@ rig.register_service_impl("time", "uv", {
 })
 
 local function setup(options)
-   options = normalize_runtime_options(options)
+   options = normalize_module_config(options)
 
    if M._loop ~= nil then
       local rc = ffi.C.rig_uv_loop_delete(M._loop)
@@ -355,7 +371,7 @@ local function setup(options)
 end
 
 local function run_scheduler_loop(runtime_options, outer_options)
-   local options = normalize_runtime_options(runtime_options)
+   local options = normalize_module_config(runtime_options)
    local main = options.main
    if main ~= nil and type(main) ~= "function" then
       error("uv.main must be a function if provided", 0)
@@ -459,16 +475,23 @@ sched.register_handler("uv.scandir", function(scheduler, task, path)
    end
 end)
 
-rig.register_runtime_mode("uv", {
+rig.register_runtime_driver("uv", {
    setup = function(options)
-      setup(options.uv)
+      setup(get_uv_module_config(options))
    end,
    loop = function(options)
-      run_scheduler_loop(options.uv, options)
+      run_scheduler_loop(get_uv_module_config(options), options)
    end,
    shutdown = function()
       shutdown()
    end,
+})
+
+rig.register_runtime_preset("uv", {
+   driver = "uv",
+   providers = {
+      time = "uv",
+   },
 })
 
 return M

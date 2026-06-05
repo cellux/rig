@@ -939,15 +939,19 @@ local function on_resize(info)
 end
 
 rig.run {
-   mode = "sdl3",
-   sdl3 = {
-      window_props = {
-         [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
-         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+   preset = "sdl3",
+   event_handlers = {
+      key = on_key,
+      resize = on_resize,
+   },
+   driver_config = {
+      sdl3 = {
+         window_props = {
+            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
+            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+         },
+         render = render_frame,
       },
-      on_key = on_key,
-      on_resize = on_resize,
-      on_render = render_frame,
    },
    hooks = {
       after_setup = initialize_scene,

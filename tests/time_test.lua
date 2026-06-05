@@ -6,7 +6,7 @@ local outside_runtime_ok, outside_runtime_err = pcall(time.now)
 
 test.case("time requires an active runtime service", function()
    test.falsey(outside_runtime_ok)
-   test.match(tostring(outside_runtime_err), "requires an active runtime mode")
+   test.match(tostring(outside_runtime_err), "requires an active runtime")
 end)
 
 test.case("time can use the uv service inside uv mode", function()
@@ -14,13 +14,15 @@ test.case("time can use the uv service inside uv mode", function()
    local observed_monotonic
 
    rig.run {
-      mode = "uv",
-      uv = {
-         main = function()
+      preset = "uv",
+      module_config = {
+         uv = {
+            main = function()
             observed_now = time.now()
             observed_monotonic = time.monotonic()
             uv.stop()
-         end,
+            end,
+         },
       },
    }
 

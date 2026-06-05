@@ -174,10 +174,11 @@ function M.resource_scope(context, label)
    }, resource_scope_mt)
 end
 
-M._runtime_modes = M._runtime_modes or {}
+M._runtime_drivers = M._runtime_drivers or {}
+M._runtime_presets = M._runtime_presets or {}
 M._runtime_hooks = M._runtime_hooks or {}
 M._services = M._services or {}
-M._active_runtime_mode = M._active_runtime_mode or nil
+M._active_runtime = M._active_runtime or nil
 
 local function normalize_method_names(method_names)
    if type(method_names) ~= "table" then
@@ -236,7 +237,7 @@ function M.register_service_impl(service_id, mode, impl)
       error("rig.register_service_impl expects service_id to be a non-empty string", 0)
    end
    if type(mode) ~= "string" or mode == "" then
-      error("rig.register_service_impl expects mode to be a non-empty string", 0)
+      error("rig.register_service_impl expects provider_id to be a non-empty string", 0)
    end
    if type(impl) ~= "table" then
       error("rig.register_service_impl expects impl to be a table", 0)
@@ -251,7 +252,7 @@ function M.register_service_impl(service_id, mode, impl)
    end
    if service.impls[mode] ~= nil then
       error(
-         ("rig.register_service_impl already has an implementation for service '%s' in mode '%s'"):format(
+         ("rig.register_service_impl already has an implementation for service '%s' in provider '%s'"):format(
             service_id,
             mode
          ),
@@ -263,7 +264,7 @@ function M.register_service_impl(service_id, mode, impl)
       local method_name = service.methods[i]
       if type(impl[method_name]) ~= "function" then
          error(
-            ("rig.register_service_impl requires service '%s' for mode '%s' to implement method '%s'"):format(
+            ("rig.register_service_impl requires service '%s' for provider '%s' to implement method '%s'"):format(
                service_id,
                mode,
                method_name
@@ -275,6 +276,54 @@ function M.register_service_impl(service_id, mode, impl)
 
    service.impls[mode] = impl
    return impl
+end
+
+local function copy_service_provider_map(map, label)
+   if map == nil then
+      return {}
+   end
+   if type(map) ~= "table" then
+      error(label, 0)
+   end
+
+   local copied = {}
+   for service_id, provider_id in pairs(map) do
+      if type(service_id) ~= "string" or service_id == "" then
+         error(label .. " (service ids must be non-empty strings)", 0)
+      end
+      if type(provider_id) ~= "string" or provider_id == "" then
+         error(label .. " (provider ids must be non-empty strings)", 0)
+      end
+      copied[service_id] = provider_id
+   end
+
+   return copied
+end
+
+local function validate_runtime_providers(runtime_id, providers)
+   for service_id, provider_id in pairs(providers) do
+      local service = M._services[service_id]
+      if service == nil then
+         error(
+            ("rig.run runtime '%s' references unknown service '%s'"):format(
+               runtime_id,
+               service_id
+            ),
+            0
+         )
+      end
+
+      if service.impls[provider_id] == nil then
+         error(
+            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such implementation is registered"):format(
+               runtime_id,
+               provider_id,
+               service_id
+            ),
+            0
+         )
+      end
+   end
 end
 
 function M.require_service(service_id)
@@ -290,22 +339,34 @@ function M.require_service(service_id)
       )
    end
 
-   local active_mode = M._active_runtime_mode
-   if type(active_mode) ~= "string" or active_mode == "" then
+   local active_runtime = M._active_runtime
+   if type(active_runtime) ~= "table" then
       error(
-         ("rig.require_service('%s') requires an active runtime mode"):format(
+         ("rig.require_service('%s') requires an active runtime"):format(
             service_id
          ),
          0
       )
    end
 
-   local impl = service.impls[active_mode]
+   local provider_id = active_runtime.providers[service_id]
+   if provider_id == nil then
+      error(
+         ("rig.require_service('%s') has no implementation for active runtime '%s'"):format(
+            service_id,
+            active_runtime.runtime_id
+         ),
+         0
+      )
+   end
+
+   local impl = service.impls[provider_id]
    if impl == nil then
       error(
-         ("rig.require_service('%s') has no implementation for runtime mode '%s'"):format(
+         ("rig.require_service('%s') has no implementation for provider '%s' in active runtime '%s'"):format(
             service_id,
-            active_mode
+            provider_id,
+            active_runtime.runtime_id
          ),
          0
       )
@@ -314,15 +375,44 @@ function M.require_service(service_id)
    return impl
 end
 
-function M.register_runtime_mode(name, mode)
+function M.register_runtime_driver(name, driver)
    if type(name) ~= "string" or name == "" then
-      error("rig.register_runtime_mode expects name to be a non-empty string", 0)
+      error("rig.register_runtime_driver expects name to be a non-empty string", 0)
    end
-   if type(mode) ~= "table" then
-      error("rig.register_runtime_mode expects mode to be a table", 0)
+   if type(driver) ~= "table" then
+      error("rig.register_runtime_driver expects driver to be a table", 0)
    end
 
-   M._runtime_modes[name] = mode
+   M._runtime_drivers[name] = driver
+   return driver
+end
+
+function M.register_runtime_preset(name, preset)
+   if type(name) ~= "string" or name == "" then
+      error("rig.register_runtime_preset expects name to be a non-empty string", 0)
+   end
+   if type(preset) ~= "table" then
+      error("rig.register_runtime_preset expects preset to be a table", 0)
+   end
+
+   local driver_id = preset.driver
+   if driver_id == nil then
+      driver_id = name
+   end
+   if type(driver_id) ~= "string" or driver_id == "" then
+      error("rig.register_runtime_preset expects preset.driver to be a non-empty string", 0)
+   end
+
+   local normalized = {
+      driver = driver_id,
+      providers = copy_service_provider_map(
+         preset.providers,
+         "rig.register_runtime_preset expects preset.providers to be a table if provided"
+      ),
+   }
+
+   M._runtime_presets[name] = normalized
+   return normalized
 end
 
 function M.register_runtime_hook(phase, hook)
@@ -400,50 +490,102 @@ local function run_all_hooks(options, phase, ...)
    run_option_hooks(options, phase, ...)
 end
 
+local function resolve_runtime(options)
+   local preset_id = options.preset
+   if preset_id ~= nil and (type(preset_id) ~= "string" or preset_id == "") then
+      error("rig.run expects options.preset to be a non-empty string if provided", 0)
+   end
+
+   local preset = nil
+   if preset_id ~= nil then
+      preset = M._runtime_presets[preset_id]
+      if preset == nil then
+         error(
+            ("rig.run does not know runtime preset '%s'"):format(preset_id),
+            0
+         )
+      end
+   end
+
+   local driver_id = options.driver
+   if driver_id ~= nil and (type(driver_id) ~= "string" or driver_id == "") then
+      error("rig.run expects options.driver to be a non-empty string if provided", 0)
+   end
+   if driver_id == nil and preset ~= nil then
+      driver_id = preset.driver
+   end
+   if type(driver_id) ~= "string" or driver_id == "" then
+      error("rig.run requires options.driver or options.preset to be a non-empty string", 0)
+   end
+
+   local driver = M._runtime_drivers[driver_id]
+   if driver == nil then
+      error(
+         ("rig.run does not know runtime driver '%s'"):format(driver_id),
+         0
+      )
+   end
+   if type(driver.loop) ~= "function" then
+      error(
+         ("runtime driver '%s' is missing loop()"):format(driver_id),
+         0
+      )
+   end
+
+   local providers = {}
+   if preset ~= nil then
+      for service_id, provider_id in pairs(preset.providers) do
+         providers[service_id] = provider_id
+      end
+   end
+
+   local override_providers = copy_service_provider_map(
+      options.providers,
+      "rig.run expects options.providers to be a table if provided"
+   )
+   for service_id, provider_id in pairs(override_providers) do
+      providers[service_id] = provider_id
+   end
+
+   local runtime_id = preset_id or driver_id
+   validate_runtime_providers(runtime_id, providers)
+
+   return driver, {
+      driver_id = driver_id,
+      preset_id = preset_id,
+      runtime_id = runtime_id,
+      providers = providers,
+   }
+end
+
 function M.run(options)
    if type(options) ~= "table" then
       error("rig.run expects a table", 0)
    end
-   if type(options.mode) ~= "string" or options.mode == "" then
-      error("rig.run requires options.mode to be a non-empty string", 0)
-   end
+   local driver, active_runtime = resolve_runtime(options)
 
-   local mode = M._runtime_modes[options.mode]
-   if mode == nil then
-      error(
-         ("rig.run does not know runtime mode '%s'"):format(options.mode),
-         0
-      )
-   end
-   if type(mode.loop) ~= "function" then
-      error(
-         ("runtime mode '%s' is missing loop()"):format(options.mode),
-         0
-      )
-   end
-
-   local previous_mode = M._active_runtime_mode
-   M._active_runtime_mode = options.mode
+   local previous_runtime = M._active_runtime
+   M._active_runtime = active_runtime
 
    local ok, err = pcall(function()
       run_all_hooks(options, "before_setup", options)
-      if type(mode.setup) == "function" then
-         mode.setup(options)
+      if type(driver.setup) == "function" then
+         driver.setup(options)
       end
       run_all_hooks(options, "after_setup", options)
 
-      mode.loop(options, function(phase, ...)
+      driver.loop(options, function(phase, ...)
          run_all_hooks(options, phase, ...)
       end)
 
       run_all_hooks(options, "before_shutdown", options)
-      if type(mode.shutdown) == "function" then
-         mode.shutdown(options)
+      if type(driver.shutdown) == "function" then
+         driver.shutdown(options)
       end
       run_all_hooks(options, "after_shutdown", options)
    end)
 
-   M._active_runtime_mode = previous_mode
+   M._active_runtime = previous_runtime
 
    if not ok then
       error(err, 0)

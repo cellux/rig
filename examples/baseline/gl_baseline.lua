@@ -302,22 +302,26 @@ local function before_shutdown()
 end
 
 rig.run {
-   mode = "sdl3_gl",
-   sdl3_gl = {
-      window_props = {
-         [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Baseline",
-         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+   preset = "sdl3_gl",
+   event_handlers = {
+      key = on_key,
+      resize = on_resize,
+   },
+   driver_config = {
+      sdl3_gl = {
+         window_props = {
+            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Baseline",
+            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+         },
+         gl_attributes = {
+            context_major_version = 4,
+            context_minor_version = 5,
+            context_profile = "core",
+            doublebuffer = true,
+         },
+         swap_interval = 1,
+         render = render_frame,
       },
-      gl_attributes = {
-         context_major_version = 4,
-         context_minor_version = 5,
-         context_profile = "core",
-         doublebuffer = true,
-      },
-      swap_interval = 1,
-      on_key = on_key,
-      on_resize = on_resize,
-      on_render = render_frame,
    },
    hooks = {
       after_setup = after_setup,

@@ -109,11 +109,7 @@ local function on_render()
    gl.DrawArrays(gl.TRIANGLES, 0, cube_mesh.vertex_count)
 end
 
-local function after_setup(options)
-   if options.mode ~= "sdl3_gl" then
-      return
-   end
-
+local function after_setup()
    program = gl.create_program {
       vertex_source = vertex_shader_source,
       fragment_source = fragment_shader_source,
@@ -160,25 +156,29 @@ local function after_setup(options)
 end
 
 rig.run {
-   mode = "sdl3_gl",
+   preset = "sdl3_gl",
+   event_handlers = {
+      resize = on_resize,
+   },
+   driver_config = {
+      sdl3_gl = {
+         window_props = {
+            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Spinning Cube",
+            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+         },
+         gl_attributes = {
+            context_major_version = 4,
+            context_minor_version = 5,
+            context_profile = "core",
+            doublebuffer = true,
+            depth_size = 24,
+         },
+         swap_interval = 1,
+         render = on_render,
+      },
+   },
    hooks = {
       after_setup = after_setup,
       before_shutdown = release_resources,
-   },
-   sdl3_gl = {
-      window_props = {
-         [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Spinning Cube",
-         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-      },
-      gl_attributes = {
-         context_major_version = 4,
-         context_minor_version = 5,
-         context_profile = "core",
-         doublebuffer = true,
-         depth_size = 24,
-      },
-      swap_interval = 1,
-      on_resize = on_resize,
-      on_render = on_render,
    },
 }

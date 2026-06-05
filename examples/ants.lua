@@ -775,7 +775,20 @@ local function handle_resize(info)
 end
 
 rig.run {
-   mode = "sdl3",
+   preset = "sdl3",
+   event_handlers = {
+      mouse = handle_mouse,
+      resize = handle_resize,
+   },
+   driver_config = {
+      sdl3 = {
+         window_props = {
+            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
+            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+         },
+         render = on_render,
+      },
+   },
    hooks = {
       after_setup = initialize_ants,
       before_frame = function()
@@ -784,14 +797,5 @@ rig.run {
       after_frame = function()
          frame_profiler:end_frame()
       end,
-   },
-   sdl3 = {
-      window_props = {
-         [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
-         [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-      },
-      on_render = on_render,
-      on_mouse = handle_mouse,
-      on_resize = handle_resize,
    },
 }
