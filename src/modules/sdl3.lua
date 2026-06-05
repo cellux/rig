@@ -538,12 +538,12 @@ export_sdl_function("EndGPURenderPass", "SDL_EndGPURenderPass")
 export_sdl_function("SubmitGPUCommandBuffer", "SDL_SubmitGPUCommandBuffer")
 export_sdl_function("WaitForGPUIdle", "SDL_WaitForGPUIdle")
 
-M._window = nil
-M._renderer = nil
-M._gpu_device = nil
-M._gl_context = nil
-M._owned_init_flags = nil
-M._scheduler = nil
+local runtime_window = nil
+local runtime_renderer = nil
+local runtime_gpu_device = nil
+local runtime_gl_context = nil
+local runtime_owned_init_flags = nil
+local runtime_scheduler = nil
 
 local DEFAULT_WINDOW_WIDTH = 640
 local DEFAULT_WINDOW_HEIGHT = 360
@@ -1303,19 +1303,19 @@ local gl_font_backend_state = nil
 local resize_state = nil
 
 function M.get_window()
-   return M._window
+   return runtime_window
 end
 
 function M.get_renderer()
-   return M._renderer
+   return runtime_renderer
 end
 
 function M.get_gpu_device()
-   return M._gpu_device
+   return runtime_gpu_device
 end
 
 function M.get_gl_context()
-   return M._gl_context
+   return runtime_gl_context
 end
 
 function M.get_gl_proc_address(name)
@@ -1332,11 +1332,11 @@ function M.get_gl_proc_address(name)
 end
 
 local function get_window_size()
-   if M._window == nil then
+   if runtime_window == nil then
       error("an SDL window must exist before querying window size", 0)
    end
 
-   if not M.GetWindowSize(M._window, window_size_width, window_size_height) then
+   if not M.GetWindowSize(runtime_window, window_size_width, window_size_height) then
       error("failed to query window size: " .. get_error_string(), 0)
    end
 
@@ -1345,7 +1345,7 @@ local function get_window_size()
 end
 
 local function initialize_windowed_sdl(options)
-   if M._renderer ~= nil or M._window ~= nil or M._gpu_device ~= nil or M._gl_context ~= nil then
+   if runtime_renderer ~= nil or runtime_window ~= nil or runtime_gpu_device ~= nil or runtime_gl_context ~= nil then
       shutdown()
    end
 
@@ -1428,9 +1428,9 @@ local function setup(options)
       error("sdl3 create_renderer must return SDL_Renderer* cdata", 0)
    end
 
-   M._window = window_ptr
-   M._renderer = renderer_ptr
-   M._owned_init_flags = owned_init_flags
+   runtime_window = window_ptr
+   runtime_renderer = renderer_ptr
+   runtime_owned_init_flags = owned_init_flags
    resize_state = nil
 end
 
@@ -1483,9 +1483,9 @@ local function setup_gpu(options)
       error("failed to claim SDL window for GPU device: " .. get_error_string())
    end
 
-   M._window = window_ptr
-   M._gpu_device = gpu_device
-   M._owned_init_flags = owned_init_flags
+   runtime_window = window_ptr
+   runtime_gpu_device = gpu_device
+   runtime_owned_init_flags = owned_init_flags
    resize_state = nil
 end
 
@@ -1632,55 +1632,55 @@ local function setup_gl(options)
       error("failed to set OpenGL swap interval: " .. get_error_string(), 0)
    end
 
-   M._window = window_ptr
-   M._gl_context = gl_context
-   M._owned_init_flags = owned_init_flags
+   runtime_window = window_ptr
+   runtime_gl_context = gl_context
+   runtime_owned_init_flags = owned_init_flags
    resize_state = nil
 end
 
 shutdown = function()
    destroy_gl_font_backend_state()
-   if M._gl_context ~= nil then
-      M.GL_DestroyContext(M._gl_context)
-      M._gl_context = nil
+   if runtime_gl_context ~= nil then
+      M.GL_DestroyContext(runtime_gl_context)
+      runtime_gl_context = nil
    end
-   if M._gpu_device ~= nil then
-      M.WaitForGPUIdle(M._gpu_device)
-      if M._window ~= nil then
-         M.ReleaseWindowFromGPUDevice(M._gpu_device, M._window)
+   if runtime_gpu_device ~= nil then
+      M.WaitForGPUIdle(runtime_gpu_device)
+      if runtime_window ~= nil then
+         M.ReleaseWindowFromGPUDevice(runtime_gpu_device, runtime_window)
       end
-      M.DestroyGPUDevice(M._gpu_device)
-      M._gpu_device = nil
+      M.DestroyGPUDevice(runtime_gpu_device)
+      runtime_gpu_device = nil
    end
-   if M._renderer ~= nil then
-      M.DestroyRenderer(M._renderer)
-      M._renderer = nil
+   if runtime_renderer ~= nil then
+      M.DestroyRenderer(runtime_renderer)
+      runtime_renderer = nil
    end
-   if M._window ~= nil then
-      M.DestroyWindow(M._window)
-      M._window = nil
+   if runtime_window ~= nil then
+      M.DestroyWindow(runtime_window)
+      runtime_window = nil
    end
    resize_state = nil
-   if M._owned_init_flags ~= nil then
-      M.QuitSubSystem(M._owned_init_flags)
-      M._owned_init_flags = nil
+   if runtime_owned_init_flags ~= nil then
+      M.QuitSubSystem(runtime_owned_init_flags)
+      runtime_owned_init_flags = nil
    end
 end
 
 local function present()
-   if M._renderer == nil then
+   if runtime_renderer == nil then
       error("SDL renderer is not initialized")
    end
-   if not M.RenderPresent(M._renderer) then
+   if not M.RenderPresent(runtime_renderer) then
       error("failed to present renderer: " .. ffi.string(M.GetError()))
    end
 end
 
 local function present_gl()
-   if M._window == nil or M._gl_context == nil then
+   if runtime_window == nil or runtime_gl_context == nil then
       error("an OpenGL window and context must be initialized before presenting", 0)
    end
-   if not M.GL_SwapWindow(M._window) then
+   if not M.GL_SwapWindow(runtime_window) then
       error("failed to swap OpenGL window: " .. get_error_string(), 0)
    end
 end
@@ -1820,11 +1820,11 @@ local function ensure_gl_font_backend_state()
 end
 
 local function get_window_size_in_pixels()
-   if M._window == nil then
+   if runtime_window == nil then
       error("an SDL window must exist before querying pixel size", 0)
    end
 
-   if not M.GetWindowSizeInPixels(M._window, gl_font_window_width, gl_font_window_height) then
+   if not M.GetWindowSizeInPixels(runtime_window, gl_font_window_width, gl_font_window_height) then
       error("failed to query window size in pixels: " .. get_error_string(), 0)
    end
 
@@ -1988,7 +1988,7 @@ local function upload_font_page_texture(page, texture)
    local page_texture = texture
    if page_texture == nil or page_texture == ffi.NULL then
       page_texture = M.CreateTexture(
-         M._renderer,
+         runtime_renderer,
          M.PIXELFORMAT_RGBA32,
          M.TEXTUREACCESS_STATIC,
          page.width,
@@ -2082,7 +2082,7 @@ function sdl3_font_backend.draw_packed_glyph(text_renderer, packed, x, y, scale,
    font_dst_rect[0].w = packed.width * scale
    font_dst_rect[0].h = packed.height * scale
 
-   if not M.RenderTexture(M._renderer, texture, font_src_rect, font_dst_rect) then
+   if not M.RenderTexture(runtime_renderer, texture, font_src_rect, font_dst_rect) then
       error("failed to render SDL texture: " .. ffi.string(M.GetError()), 0)
    end
 end
@@ -2338,7 +2338,7 @@ local function color_component(value, default_value)
 end
 
 function M.clear(r, g, b, a)
-   local renderer_ptr = M._renderer
+   local renderer_ptr = runtime_renderer
 
    if renderer_ptr == nil then
       error("sdl3.clear requires an active SDL renderer")
@@ -2430,7 +2430,7 @@ local function dispatch_mouse_button_event(event, handler)
 end
 
 local function pump_events(on_key, on_mouse, on_resize)
-   if M._window == nil then
+   if runtime_window == nil then
       error("an SDL window must be initialized before sdl3.pump_events")
    end
 
@@ -2471,7 +2471,7 @@ local function render_frame(render_fn)
    if type(render_fn) ~= "function" then
       error("sdl3.render_frame requires a render function", 0)
    end
-   if M._renderer == nil then
+   if runtime_renderer == nil then
       error("an SDL renderer must be initialized before sdl3.render_frame", 0)
    end
 
@@ -2483,14 +2483,14 @@ local function render_gpu_frame(render_fn)
    if type(render_fn) ~= "function" then
       error("sdl3.render_gpu_frame requires a render function", 0)
    end
-   if M._gpu_device == nil then
+   if runtime_gpu_device == nil then
       error("an SDL GPU device must be initialized before sdl3.render_gpu_frame", 0)
    end
-   if M._window == nil then
+   if runtime_window == nil then
       error("an SDL window must be initialized before sdl3.render_gpu_frame", 0)
    end
 
-   local command_buffer = M.AcquireGPUCommandBuffer(M._gpu_device)
+   local command_buffer = M.AcquireGPUCommandBuffer(runtime_gpu_device)
    if command_buffer == nil then
       error("failed to acquire GPU command buffer: " .. get_error_string(), 0)
    end
@@ -2500,7 +2500,7 @@ local function render_gpu_frame(render_fn)
    local height_out = ffi.new("Uint32[1]")
    if not M.WaitAndAcquireGPUSwapchainTexture(
       command_buffer,
-      M._window,
+      runtime_window,
       swapchain_texture_out,
       width_out,
       height_out
@@ -2529,7 +2529,7 @@ local function render_gl_frame(render_fn)
    if type(render_fn) ~= "function" then
       error("sdl3_gl render requires a render function", 0)
    end
-   if M._window == nil or M._gl_context == nil then
+   if runtime_window == nil or runtime_gl_context == nil then
       error("an SDL OpenGL context must be initialized before rendering", 0)
    end
 
@@ -2571,21 +2571,21 @@ rig.register_service_impl("font.backend", "sdl3", sdl3_font_backend)
 rig.register_service_impl("font.backend", "sdl3_gl", sdl3_gl_font_backend)
 
 local function setup_scheduler(label)
-   M._scheduler = sched.create(label)
-   M._scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
+   runtime_scheduler = sched.create(label)
+   runtime_scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
       scheduler:sleep_until(task, current_monotonic_seconds() + seconds)
    end)
-   M._scheduler:activate()
+   runtime_scheduler:activate()
 end
 
 local function drain_scheduler()
-   M._scheduler:wake_due_sleepers(current_monotonic_seconds())
-   M._scheduler:drain()
+   runtime_scheduler:wake_due_sleepers(current_monotonic_seconds())
+   runtime_scheduler:drain()
 end
 
 local function shutdown_scheduler()
-   M._scheduler:deactivate()
-   M._scheduler = nil
+   runtime_scheduler:deactivate()
+   runtime_scheduler = nil
 end
 
 local function require_render_callback(options)
