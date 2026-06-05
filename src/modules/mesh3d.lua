@@ -1,6 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
-local sdl3 = require("sdl3")
+local rig = require("rig")
 
 local DEFAULT_FACE_COLORS = {
    { 1, 0, 0 },
@@ -94,6 +94,10 @@ local function append_vertex(values, corner, scale, color)
    values[#values + 1] = color[3]
 end
 
+rig.create_service("mesh3d.vertex_input", {
+   "build_vertex_input",
+})
+
 function M.make_cube(options)
    options = options or {}
    if type(options) ~= "table" then
@@ -141,36 +145,12 @@ function M.make_cube(options)
    }
 end
 
-function sdl3.build_vertex_input_state_from_mesh(mesh)
+function M.build_vertex_input(mesh)
    if type(mesh) ~= "table" then
-      error("sdl3.build_vertex_input_state_from_mesh expects a mesh table")
+      error("mesh3d.build_vertex_input expects a mesh table")
    end
 
-   if mesh.layout == "position_color_f32" then
-      return sdl3.build_vertex_input_state {
-         buffers = {
-            {
-               slot = 0,
-               pitch = mesh.vertex_stride,
-               input_rate = "vertex",
-               attributes = {
-                  {
-                     location = 0,
-                     format = "float3",
-                     offset = mesh.attribute_offsets.position,
-                  },
-                  {
-                     location = 1,
-                     format = "float3",
-                     offset = mesh.attribute_offsets.color,
-                  },
-               },
-            },
-         },
-      }
-   end
-
-   error("unsupported mesh layout '" .. tostring(mesh.layout) .. "'", 0)
+   return rig.require_service("mesh3d.vertex_input").build_vertex_input(mesh)
 end
 
 return M

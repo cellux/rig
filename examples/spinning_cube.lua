@@ -81,7 +81,7 @@ local cube_mesh = mesh3d.make_cube {
 }
 
 local vertex_uniform_data = math3d.mat4()
-local vertex_input = sdl3.build_vertex_input_state_from_mesh(cube_mesh)
+local vertex_input = nil
 
 local resource_scope = nil
 local vertex_buffer = nil
@@ -174,6 +174,7 @@ local function after_setup()
    local scope = sdl3.resource_scope(device)
    resource_scope = scope
 
+   vertex_input = mesh3d.build_vertex_input(cube_mesh)
    local vertex_shader = scope:create_gpu_shader(vertex_compiled)
    local fragment_shader = scope:create_gpu_shader(fragment_compiled)
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)

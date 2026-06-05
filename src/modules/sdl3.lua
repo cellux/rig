@@ -3,6 +3,7 @@ local ffi = require("ffi")
 local bit = bit
 local sched = require("sched")
 require("font")
+require("mesh3d")
 require("time")
 
 ffi.cdef[[
@@ -2578,9 +2579,44 @@ local sdl3_time_service = {
    end,
 }
 
+local sdl3_gpu_mesh3d_service = {
+   build_vertex_input = function(mesh)
+      if type(mesh) ~= "table" then
+         error("mesh3d.vertex_input provider expects a mesh table", 0)
+      end
+
+      if mesh.layout == "position_color_f32" then
+         return M.build_vertex_input_state {
+            buffers = {
+               {
+                  slot = 0,
+                  pitch = mesh.vertex_stride,
+                  input_rate = "vertex",
+                  attributes = {
+                     {
+                        location = 0,
+                        format = "float3",
+                        offset = mesh.attribute_offsets.position,
+                     },
+                     {
+                        location = 1,
+                        format = "float3",
+                        offset = mesh.attribute_offsets.color,
+                     },
+                  },
+               },
+            },
+         }
+      end
+
+      error("unsupported mesh layout '" .. tostring(mesh.layout) .. "'", 0)
+   end,
+}
+
 rig.register_service_impl("time", "sdl3", sdl3_time_service)
 rig.register_service_impl("font.renderer", "sdl3", sdl3_font_backend)
 rig.register_service_impl("font.renderer", "sdl3_gl", sdl3_gl_font_backend)
+rig.register_service_impl("mesh3d.vertex_input", "sdl3_gpu", sdl3_gpu_mesh3d_service)
 
 local function setup_scheduler(label)
    runtime_scheduler = sched.create(label)
@@ -2698,6 +2734,7 @@ rig.register_runtime_preset("sdl3_gpu", {
    driver = "sdl3_gpu",
    providers = {
       time = "sdl3",
+      ["mesh3d.vertex_input"] = "sdl3_gpu",
    },
 })
 
