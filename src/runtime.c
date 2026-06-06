@@ -57,11 +57,6 @@ int rig_invoke_module_function(lua_State *L, const char *module_name,
   return 0;
 }
 
-void rig_remove_global(lua_State *L, const char *name) {
-  lua_pushnil(L);
-  lua_setglobal(L, name);
-}
-
 static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,
                                     const unsigned char *bytecode,
                                     const size_t *bytecode_len,
