@@ -113,16 +113,8 @@ static int rig_find_module(const char *module_name,
 }
 
 static int rig_load_module(lua_State *L, const rig_module_desc *module) {
-  int top_before = lua_gettop(L);
-
   rig_push_module(L, module->name);
-
   int top_with_context = lua_gettop(L);
-  if (top_with_context != top_before + 1) {
-    return luaL_error(
-        L, "internal error: failed to prepare module context for '%s'",
-        module->name);
-  }
 
   if (module->register_fn != NULL) {
     module->register_fn(L);
@@ -152,39 +144,17 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
 
   lua_getglobal(L, "package");
   if (!lua_istable(L, -1)) {
-    return luaL_error(L,
-                      "internal error: global 'package' library is not available");
+    return luaL_error(
+        L, "internal error: global 'package' library is not available");
   }
   lua_getfield(L, -1, "loaded");
   lua_remove(L, -2);
   if (!lua_istable(L, -1)) {
-    return luaL_error(L,
-                      "internal error: package.loaded is not available");
+    return luaL_error(L, "internal error: package.loaded is not available");
   }
   lua_pushvalue(L, -2);
   lua_setfield(L, -2, module->name);
   lua_pop(L, 1);
-
-  if (lua_gettop(L) != top_before + 1) {
-    return luaL_error(L,
-                      "internal error: module loader stack leak for '%s' "
-                      "(expected %d, got %d)",
-                      module->name, top_before + 1, lua_gettop(L));
-  }
-
-  if (!lua_istable(L, -1)) {
-    return luaL_error(L, "internal error: loaded module '%s' is not a table",
-                      module->name);
-  }
-
-  if (top_before != 0) {
-    lua_insert(L, top_before + 1);
-  }
-
-  if (lua_gettop(L) != top_before + 1) {
-    return luaL_error(L, "internal error: module loader stack leak for '%s'",
-                      module->name);
-  }
 
   return 0;
 }
