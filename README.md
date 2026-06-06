@@ -83,5 +83,5 @@ Available modules:
 - `spirvcross`: [`src/modules/spirvcross.md`](src/modules/spirvcross.md)
 - `shader`: [`src/modules/shader.md`](src/modules/shader.md)
 - `time`: [`src/modules/time.md`](src/modules/time.md)
-- `math3d`: [`src/modules/math3d.md`](src/modules/math3d.md)
+- `mathx`: [`src/modules/mathx.md`](src/modules/mathx.md)
 - `mesh3d`: [`src/modules/mesh3d.md`](src/modules/mesh3d.md)

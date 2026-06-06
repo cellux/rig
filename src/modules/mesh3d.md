@@ -29,8 +29,8 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
 ## Notes
 
 - The current cube is emitted as 36 non-indexed vertices so each face can carry its own color cleanly.
-- This module is meant to complement `math3d`:
-  - `math3d` handles transforms
+- This module is meant to complement `mathx`:
+  - `mathx` handles transforms
   - `mesh3d` handles geometry generation
 - `mesh3d` owns the `mesh3d.vertex_input` service namespace.
   - The `sdl3_gpu` runtime preset installs one provider that returns SDL GPU vertex-input state objects.

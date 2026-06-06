@@ -2,8 +2,8 @@ local M = ... or {}
 local ffi = require("ffi")
 
 ffi.cdef[[
-typedef float rig_math3d_mat4[16];
-typedef float rig_math3d_vec3[3];
+typedef float rig_mathx_mat4[16];
+typedef float rig_mathx_vec3[3];
 ]]
 
 local function write_identity(out)
@@ -51,11 +51,11 @@ local function normalize_components(x, y, z, label)
 end
 
 function M.mat4()
-   return ffi.new("rig_math3d_mat4")
+   return ffi.new("rig_mathx_mat4")
 end
 
 function M.vec3(x, y, z)
-   local out = ffi.new("rig_math3d_vec3")
+   local out = ffi.new("rig_mathx_vec3")
    out[0] = x or 0.0
    out[1] = y or 0.0
    out[2] = z or 0.0
@@ -71,7 +71,7 @@ end
 function M.mat4_copy(out, src)
    require_mat4(out, "out")
    require_mat4(src, "src")
-   ffi.copy(out, src, ffi.sizeof("rig_math3d_mat4"))
+   ffi.copy(out, src, ffi.sizeof("rig_mathx_mat4"))
    return out
 end
 
