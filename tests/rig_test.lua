@@ -7,6 +7,26 @@ test.case("rig globals are available", function()
    test.match(rig.executable_path, "rig$")
 end)
 
+test.case("luajit standard libraries are available and ffi stays require-only", function()
+   test.equal(type(assert), "function")
+   test.equal(type(bit), "table")
+   test.equal(type(coroutine), "table")
+   test.equal(type(debug), "table")
+   test.equal(type(io), "table")
+   test.equal(type(jit), "table")
+   test.equal(type(math), "table")
+   test.equal(type(os), "table")
+   test.equal(type(package), "table")
+   test.equal(type(string), "table")
+   test.equal(type(table), "table")
+
+   test.equal(ffi, nil)
+
+   local ffi_module = require("ffi")
+   test.equal(type(ffi_module), "table")
+   test.equal(type(ffi_module.new), "function")
+end)
+
 test.case("resource scope releases in the expected order", function()
    local scope = rig.resource_scope({}, "test scope")
    local released = {}

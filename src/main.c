@@ -44,28 +44,6 @@ static int set_rig_string_field(lua_State *L, const char *field_name,
   return 0;
 }
 
-static int open_lua_lib(lua_State *L, lua_CFunction open_fn,
-                        const char *lib_name, const char *label) {
-  const char *msg;
-  int nargs = 0;
-
-  lua_pushcfunction(L, open_fn);
-  if (lib_name != NULL) {
-    lua_pushstring(L, lib_name);
-    nargs = 1;
-  }
-
-  if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
-    msg = lua_tostring(L, -1);
-    fprintf(stderr, "Failed to initialize %s runtime: %s\n", label,
-            msg ? msg : "unknown error");
-    lua_pop(L, 1);
-    return -1;
-  }
-
-  return 0;
-}
-
 static lua_State *init_lua_runtime(void) {
   lua_State *L = luaL_newstate();
   if (L == NULL) {
@@ -73,18 +51,7 @@ static lua_State *init_lua_runtime(void) {
     return NULL;
   }
 
-  if (open_lua_lib(L, luaopen_base, NULL, "base") != 0 ||
-      open_lua_lib(L, luaopen_string, NULL, LUA_STRLIBNAME) != 0 ||
-      open_lua_lib(L, luaopen_table, NULL, LUA_TABLIBNAME) != 0 ||
-      open_lua_lib(L, luaopen_math, NULL, LUA_MATHLIBNAME) != 0 ||
-      open_lua_lib(L, luaopen_bit, LUA_BITLIBNAME, LUA_BITLIBNAME) != 0 ||
-      open_lua_lib(L, luaopen_io, NULL, LUA_IOLIBNAME) != 0 ||
-      open_lua_lib(L, luaopen_package, LUA_LOADLIBNAME, LUA_LOADLIBNAME) != 0) {
-    lua_close(L);
-    return NULL;
-  }
-  luaopen_ffi(L);
-  lua_setglobal(L, "ffi");
+  luaL_openlibs(L);
 
   if (rig_register_preloaded_modules(L) != 0) {
     const char *msg = lua_tostring(L, -1);
