@@ -1,7 +1,6 @@
 #include "runtime.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #include <lauxlib.h>
 
@@ -57,6 +56,27 @@ int rig_invoke_module_function(lua_State *L, const char *module_name,
   return 0;
 }
 
+static int rig_publish_module(lua_State *L, const char *module_name) {
+  lua_pushvalue(L, -1);
+  lua_setglobal(L, module_name);
+
+  lua_getglobal(L, "package");
+  if (!lua_istable(L, -1)) {
+    return luaL_error(
+        L, "internal error: global 'package' library is not available");
+  }
+  lua_getfield(L, -1, "loaded");
+  lua_remove(L, -2);
+  if (!lua_istable(L, -1)) {
+    return luaL_error(L, "internal error: package.loaded is not available");
+  }
+  lua_pushvalue(L, -2);
+  lua_setfield(L, -2, module_name);
+  lua_pop(L, 1);
+
+  return 0;
+}
+
 static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,
                                     const unsigned char *bytecode,
                                     const size_t *bytecode_len,
@@ -83,8 +103,6 @@ static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,
                       module->name, source_label);
   }
 
-  lua_pushvalue(L, -1);
-  lua_setglobal(L, module->name);
   lua_replace(L, -2);
 
   if (lua_gettop(L) != top_with_context) {
@@ -98,21 +116,9 @@ static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,
   return 0;
 }
 
-static int rig_find_module(const char *module_name,
-                           const rig_module_desc **out_module) {
-  size_t i;
-
-  for (i = 0; i < rig_module_count; ++i) {
-    if (strcmp(rig_modules[i].name, module_name) == 0) {
-      *out_module = &rig_modules[i];
-      return 0;
-    }
-  }
-
-  return -1;
-}
-
 static int rig_load_module(lua_State *L, const rig_module_desc *module) {
+  int published = 0;
+
   rig_push_module(L, module->name);
   int top_with_context = lua_gettop(L);
 
@@ -132,6 +138,10 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
                                  top_with_context) != 0) {
       return -1;
     }
+    if (rig_publish_module(L, module->name) != 0) {
+      return -1;
+    }
+    published = 1;
   }
 
   if (module->fennel_bytecode != NULL && module->fennel_bytecode_len != NULL) {
@@ -140,21 +150,15 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
                                  top_with_context) != 0) {
       return -1;
     }
+    if (rig_publish_module(L, module->name) != 0) {
+      return -1;
+    }
+    published = 1;
   }
 
-  lua_getglobal(L, "package");
-  if (!lua_istable(L, -1)) {
-    return luaL_error(
-        L, "internal error: global 'package' library is not available");
+  if (!published && rig_publish_module(L, module->name) != 0) {
+    return -1;
   }
-  lua_getfield(L, -1, "loaded");
-  lua_remove(L, -2);
-  if (!lua_istable(L, -1)) {
-    return luaL_error(L, "internal error: package.loaded is not available");
-  }
-  lua_pushvalue(L, -2);
-  lua_setfield(L, -2, module->name);
-  lua_pop(L, 1);
 
   return 0;
 }
@@ -175,7 +179,6 @@ static int rig_preload_module(lua_State *L) {
 }
 
 int rig_register_preloaded_modules(lua_State *L) {
-  int top_before = lua_gettop(L);
   size_t i;
 
   lua_getglobal(L, "package");
@@ -200,23 +203,10 @@ int rig_register_preloaded_modules(lua_State *L) {
   }
 
   lua_pop(L, 1);
-  if (lua_gettop(L) != top_before) {
-    lua_pushliteral(L,
-                    "internal error: preload registration changed stack depth");
-    return -1;
-  }
-
   return 0;
 }
 
 int rig_require_module(lua_State *L, const char *module_name) {
-  const rig_module_desc *module = NULL;
-
-  if (rig_find_module(module_name, &module) != 0) {
-    lua_pushfstring(L, "unknown rig module '%s'", module_name);
-    return -1;
-  }
-
   lua_getglobal(L, "require");
   if (!lua_isfunction(L, -1)) {
     lua_pop(L, 1);
@@ -224,7 +214,7 @@ int rig_require_module(lua_State *L, const char *module_name) {
     return -1;
   }
 
-  lua_pushstring(L, module->name);
+  lua_pushstring(L, module_name);
   if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
     return -1;
   }
