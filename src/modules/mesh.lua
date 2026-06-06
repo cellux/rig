@@ -68,17 +68,17 @@ local function resolve_face_colors(options)
    end
 
    if type(options.colors) ~= "table" then
-      error("mesh3d.make_cube colors must be 'face' or a table", 0)
+      error("mesh.make_cube colors must be 'face' or a table", 0)
    end
    if #options.colors ~= 6 then
-      error("mesh3d.make_cube colors table must contain 6 face colors", 0)
+      error("mesh.make_cube colors table must contain 6 face colors", 0)
    end
 
    local colors = {}
    for i = 1, 6 do
       local color = options.colors[i]
       if type(color) ~= "table" then
-         error("mesh3d.make_cube face colors must be tables", 0)
+         error("mesh.make_cube face colors must be tables", 0)
       end
       colors[i] = clone_color(color)
    end
@@ -94,19 +94,19 @@ local function append_vertex(values, corner, scale, color)
    values[#values + 1] = color[3]
 end
 
-rig.create_service("mesh3d.vertex_input", {
+rig.create_service("mesh.vertex_input", {
    "build_vertex_input",
 })
 
 function M.make_cube(options)
    options = options or {}
    if type(options) ~= "table" then
-      error("mesh3d.make_cube expects a table if options are provided")
+      error("mesh.make_cube expects a table if options are provided")
    end
 
    local size = tonumber(options.size) or 2.0
    if size <= 0.0 then
-      error("mesh3d.make_cube size must be positive", 0)
+      error("mesh.make_cube size must be positive", 0)
    end
 
    local half_extent = size * 0.5
@@ -147,10 +147,10 @@ end
 
 function M.build_vertex_input(mesh)
    if type(mesh) ~= "table" then
-      error("mesh3d.build_vertex_input expects a mesh table")
+      error("mesh.build_vertex_input expects a mesh table")
    end
 
-   return rig.require_service("mesh3d.vertex_input").build_vertex_input(mesh)
+   return rig.require_service("mesh.vertex_input").build_vertex_input(mesh)
 end
 
 return M

@@ -84,4 +84,4 @@ Available modules:
 - `shader`: [`src/modules/shader.md`](src/modules/shader.md)
 - `time`: [`src/modules/time.md`](src/modules/time.md)
 - `mathx`: [`src/modules/mathx.md`](src/modules/mathx.md)
-- `mesh3d`: [`src/modules/mesh3d.md`](src/modules/mesh3d.md)
+- `mesh`: [`src/modules/mesh.md`](src/modules/mesh.md)

@@ -225,6 +225,6 @@ Additional fields accepted by `options.driver_config.sdl3_gpu`:
 
 - The SDL runtime presets report backend diagnostics before GPU device creation when SDL rejects the requested shader format/backend combination.
 - On Linux, SDL GPU currently means Vulkan. Old Intel Haswell systems often expose only partial Vulkan support and may still be rejected.
-- The `sdl3_gpu` preset also provides the `mesh3d.vertex_input` service, so `mesh3d.build_vertex_input(mesh)` returns an SDL GPU vertex-input descriptor under that runtime.
+- The `sdl3_gpu` preset also provides the `mesh.vertex_input` service, so `mesh.build_vertex_input(mesh)` returns an SDL GPU vertex-input descriptor under that runtime.
 - The `sdl3_gpu` preset also provides the `shader.stage` service.
   - `shader.create_stage(shader.compile{ ... })` returns `SDL_GPUShader*` objects under that runtime.

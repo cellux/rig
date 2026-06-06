@@ -1,4 +1,4 @@
-# `mesh3d`
+# `mesh`
 
 Procedural 3D mesh generators.
 
@@ -6,7 +6,7 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
 
 ## API
 
-- `mesh3d.make_cube(options?)`
+- `mesh.make_cube(options?)`
   - Generates a cube mesh in the `position_color_f32` layout.
   - Returns a table containing:
     - `layout`
@@ -14,8 +14,8 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
     - `vertex_count`
     - `attribute_offsets`
     - `vertex_blob`
-- `mesh3d.build_vertex_input(mesh)`
-  - Resolves the active `mesh3d.vertex_input` service provider and translates a backend-neutral mesh layout into a backend-specific vertex-input descriptor.
+- `mesh.build_vertex_input(mesh)`
+  - Resolves the active `mesh.vertex_input` service provider and translates a backend-neutral mesh layout into a backend-specific vertex-input descriptor.
   - Requires an active runtime.
 
 ## `make_cube` Options
@@ -31,6 +31,6 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
 - The current cube is emitted as 36 non-indexed vertices so each face can carry its own color cleanly.
 - This module is meant to complement `mathx`:
   - `mathx` handles transforms
-  - `mesh3d` handles geometry generation
-- `mesh3d` owns the `mesh3d.vertex_input` service namespace.
+- `mesh` handles geometry generation
+- `mesh` owns the `mesh.vertex_input` service namespace.
   - The `sdl3_gpu` runtime preset installs one provider that returns SDL GPU vertex-input state objects.

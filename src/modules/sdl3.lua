@@ -3,7 +3,7 @@ local ffi = require("ffi")
 local bit = bit
 local sched = require("sched")
 require("font")
-require("mesh3d")
+require("mesh")
 local shader = require("shader")
 require("time")
 
@@ -2657,10 +2657,10 @@ local sdl3_time_service = {
    end,
 }
 
-local sdl3_gpu_mesh3d_service = {
+local sdl3_gpu_mesh_service = {
    build_vertex_input = function(mesh)
       if type(mesh) ~= "table" then
-         error("mesh3d.vertex_input provider expects a mesh table", 0)
+         error("mesh.vertex_input provider expects a mesh table", 0)
       end
 
       if mesh.layout == "position_color_f32" then
@@ -2769,7 +2769,7 @@ local shader_stage_service_sdl3_gl = {
 rig.register_service_impl("time", "sdl3", sdl3_time_service)
 rig.register_service_impl("font.renderer", "sdl3", sdl3_font_backend)
 rig.register_service_impl("font.renderer", "sdl3_gl", sdl3_gl_font_backend)
-rig.register_service_impl("mesh3d.vertex_input", "sdl3_gpu", sdl3_gpu_mesh3d_service)
+rig.register_service_impl("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_service)
 rig.register_service_impl("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
 rig.register_service_impl("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
 
@@ -2889,7 +2889,7 @@ rig.register_runtime_preset("sdl3_gpu", {
    driver = "sdl3_gpu",
    providers = {
       time = "sdl3",
-      ["mesh3d.vertex_input"] = "sdl3_gpu",
+      ["mesh.vertex_input"] = "sdl3_gpu",
       ["shader.stage"] = "sdl3_gpu",
    },
 })

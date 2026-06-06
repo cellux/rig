@@ -2,7 +2,7 @@ local ffi = require("ffi")
 
 local gl = require("gl")
 local mathx = require("mathx")
-local mesh3d = require("mesh3d")
+local mesh = require("mesh")
 local shader = require("shader")
 local sdl3 = require("sdl3")
 local time = require("time")
@@ -60,7 +60,7 @@ local function build_mvp(out, aspect, time_seconds)
    return mathx.mat4_multiply(out, model, projection)
 end
 
-local cube_mesh = mesh3d.make_cube {
+local cube_mesh = mesh.make_cube {
    size = 2.0,
    colors = "face",
 }

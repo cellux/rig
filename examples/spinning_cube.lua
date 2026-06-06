@@ -1,7 +1,7 @@
 local ffi = require("ffi")
 
 local mathx = require("mathx")
-local mesh3d = require("mesh3d")
+local mesh = require("mesh")
 local sdl3 = require("sdl3")
 local shader = require("shader")
 local time = require("time")
@@ -75,7 +75,7 @@ local fragment_compiled = shader.compile {
    source = fragment_shader_source,
 }
 
-local cube_mesh = mesh3d.make_cube {
+local cube_mesh = mesh.make_cube {
    size = 2.0,
    colors = "face",
 }
@@ -174,7 +174,7 @@ local function after_setup()
    local scope = sdl3.resource_scope(device)
    resource_scope = scope
 
-   vertex_input = mesh3d.build_vertex_input(cube_mesh)
+   vertex_input = mesh.build_vertex_input(cube_mesh)
    local vertex_shader = scope:adopt(
       shader.create_stage(vertex_compiled),
       function(_, resource)
