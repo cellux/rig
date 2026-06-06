@@ -4,8 +4,9 @@
 (test.case "rig globals are available"
   (fn []
     (test.equal (type rig) :table)
-    (test.equal (type rig.executable_path) :string)
-    (test.truthy (> (# rig.executable_path) 0))))
+    (test.equal (type rig.argv) :table)
+    (test.equal (type (. rig.argv 0)) :string)
+    (test.truthy (> (# (. rig.argv 0)) 0))))
 
 (test.case "scheduler can run a spawned task"
   (fn []

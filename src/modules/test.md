@@ -49,7 +49,6 @@ Async test-runner helpers built on top of `uv` and `sched`.
     - `roots`
     - `files`
     - `jobs`
-    - `executable_path`
 
 ## Notes
 

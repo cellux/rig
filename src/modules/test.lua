@@ -332,9 +332,9 @@ function M.run(options)
       error("test.run expects a table if provided", 0)
    end
 
-   local executable = opts.executable_path or rig.executable_path
+   local executable = rig.argv[0]
    if type(executable) ~= "string" or executable == "" then
-      error("test.run requires rig.executable_path or options.executable_path", 0)
+      error("test.run requires rig.argv[0]", 0)
    end
 
    local roots = normalize_roots(opts.roots)

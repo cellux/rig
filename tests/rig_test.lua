@@ -1,10 +1,13 @@
 local test = require("test")
+local uv = require("uv")
 
 test.case("rig globals are available", function()
    test.equal(type(rig), "table")
-   test.equal(type(rig.executable_path), "string")
-   test.truthy(rig.executable_path ~= "")
-   test.match(rig.executable_path, "rig$")
+   test.equal(type(rig.argv), "table")
+   test.equal(type(rig.argv[0]), "string")
+   test.truthy(rig.argv[0] ~= "")
+   test.match(rig.argv[0], "rig$")
+   test.match(rig.argv[1], "tests/rig_test%.lua$")
 end)
 
 test.case("luajit standard libraries are available and ffi stays require-only", function()
@@ -25,6 +28,53 @@ test.case("luajit standard libraries are available and ffi stays require-only", 
    local ffi_module = require("ffi")
    test.equal(type(ffi_module), "table")
    test.equal(type(ffi_module.new), "function")
+end)
+
+test.case("arg matches luajit startup layout", function()
+   test.equal(type(arg), "table")
+   test.equal(arg[-1], rig.argv[0])
+   test.match(arg[0], "tests/rig_test%.lua$")
+   test.equal(arg[1], nil)
+   test.equal(type(rig.argv), "table")
+   test.equal(type(rig.argv[0]), "string")
+   test.match(rig.argv[1], "tests/rig_test%.lua$")
+   test.equal(rig.argv[2], nil)
+
+   local script_path = os.tmpname()
+   local script_file = assert(io.open(script_path, "w"))
+   script_file:write([[
+print("arg[-1]=" .. tostring(arg[-1]))
+print("arg[0]=" .. tostring(arg[0]))
+print("arg[1]=" .. tostring(arg[1]))
+print("arg[2]=" .. tostring(arg[2]))
+print("rig.argv[0]=" .. tostring(rig.argv[0]))
+print("rig.argv[1]=" .. tostring(rig.argv[1]))
+print("rig.argv[2]=" .. tostring(rig.argv[2]))
+print("rig.argv[3]=" .. tostring(rig.argv[3]))
+]])
+   script_file:close()
+
+   local result = uv.spawn {
+      file = rig.argv[0],
+      args = {
+         rig.argv[0],
+         script_path,
+         "alpha",
+         "beta",
+      },
+   }
+
+   os.remove(script_path)
+
+   test.truthy(result.success, result.stderr)
+   test.contains_line(result.stdout, "arg[-1]=" .. rig.argv[0])
+   test.contains_line(result.stdout, "arg[0]=" .. script_path)
+   test.contains_line(result.stdout, "arg[1]=alpha")
+   test.contains_line(result.stdout, "arg[2]=beta")
+   test.contains_line(result.stdout, "rig.argv[0]=" .. rig.argv[0])
+   test.contains_line(result.stdout, "rig.argv[1]=" .. script_path)
+   test.contains_line(result.stdout, "rig.argv[2]=alpha")
+   test.contains_line(result.stdout, "rig.argv[3]=beta")
 end)
 
 test.case("resource scope releases in the expected order", function()
