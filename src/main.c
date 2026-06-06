@@ -11,18 +11,6 @@ typedef struct rig_startup_args {
   const char *script_path;
 } rig_startup_args;
 
-static int run_user_script(lua_State *L, const char *script_path) {
-  if (rig_push_module_function(L, "rig", "run_script_file") != 0) {
-    return -1;
-  }
-  lua_pushstring(L, script_path);
-  if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-    return -1;
-  }
-
-  return 0;
-}
-
 static int set_rig_argv_field(lua_State *L, int argc, char **argv) {
   int i;
 
@@ -135,7 +123,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  if (run_user_script(L, startup_args.script_path) != 0) {
+  lua_pushstring(L, startup_args.script_path);
+  if (rig_invoke_module_function(L, "rig", "run_script_file") != 0) {
     msg = lua_tostring(L, -1);
     fprintf(stderr, "Error running script: %s\n", msg ? msg : "unknown error");
     lua_pop(L, 1);
