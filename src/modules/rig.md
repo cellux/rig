@@ -69,7 +69,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - All built-in runtime modes create and own a scheduler.
   - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
   - Optional per-run hooks may be passed under `options.hooks`.
-  - `options.hooks.<phase>` may be either a function or an array of functions.
+  - `options.hooks.<phase>` must be a function.
   - `options.hooks` is validated against the core phases plus any phases declared by the selected driver.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
 - `rig.create_service(service_id, method_names)`

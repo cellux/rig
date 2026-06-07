@@ -346,26 +346,20 @@ test.case("rig.run validates and executes declared hook phases", function()
          before_tick = function()
             table.insert(observed, "before_tick")
          end,
-         after_tick = {
-            function()
-               table.insert(observed, "after_tick_1")
-            end,
-            function()
-               table.insert(observed, "after_tick_2")
-            end,
-         },
+         after_tick = function()
+            table.insert(observed, "after_tick")
+         end,
          after_shutdown = function()
             table.insert(observed, "after_shutdown")
          end,
       },
    }
 
-   test.equal(#observed, 5)
+   test.equal(#observed, 4)
    test.equal(observed[1], "before_setup")
    test.equal(observed[2], "before_tick")
-   test.equal(observed[3], "after_tick_1")
-   test.equal(observed[4], "after_tick_2")
-   test.equal(observed[5], "after_shutdown")
+   test.equal(observed[3], "after_tick")
+   test.equal(observed[4], "after_shutdown")
 
    local unknown_phase_ok, unknown_phase_err = pcall(function()
       rig.run {
