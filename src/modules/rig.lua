@@ -193,13 +193,9 @@ function M.ResourceScope:release()
    self._released = true
 end
 
-M._runtime_drivers = {}
-M._runtime_presets = {}
-M._runtime_hooks = {}
-M._services = {}
-M._active_runtime = nil
-
-M.ActiveRuntime = M.class()
+local _runtime_drivers = {}
+local _runtime_presets = {}
+local _runtime_hooks = {}
 
 local core_runtime_phase_names = {
    "before_setup",
@@ -305,13 +301,23 @@ local function normalize_driver_phase_names(phase_names, label)
    return copied
 end
 
-function M.create_service(service_id, method_names)
+M.ServiceRegistry = M.class()
+
+function M.ServiceRegistry:init()
+   self._by_id = {}
+end
+
+function M.ServiceRegistry:get(service_id)
+   return self._by_id[service_id]
+end
+
+function M.ServiceRegistry:create_service(service_id, method_names)
    if type(service_id) ~= "string" or service_id == "" then
       error("rig.create_service expects service_id to be a non-empty string", 0)
    end
 
    local methods = normalize_service_method_names(method_names)
-   local existing = M._services[service_id]
+   local existing = self:get(service_id)
    if existing ~= nil then
       error(
          ("rig.create_service already has a service '%s'"):format(service_id),
@@ -324,11 +330,11 @@ function M.create_service(service_id, method_names)
       methods = methods,
       providers = {},
    }
-   M._services[service_id] = service
+   self._by_id[service_id] = service
    return service
 end
 
-function M.register_service_provider(service_id, provider_id, provider)
+function M.ServiceRegistry:register_service_provider(service_id, provider_id, provider)
    if type(service_id) ~= "string" or service_id == "" then
       error("rig.register_service_provider expects service_id to be a non-empty string", 0)
    end
@@ -339,7 +345,7 @@ function M.register_service_provider(service_id, provider_id, provider)
       error("rig.register_service_provider expects provider to be a table", 0)
    end
 
-   local service = M._services[service_id]
+   local service = self:get(service_id)
    if service == nil then
       error(
          ("rig.register_service_provider does not know service '%s'"):format(service_id),
@@ -374,58 +380,14 @@ function M.register_service_provider(service_id, provider_id, provider)
    return provider
 end
 
-function M.register_runtime_hook(phase, hook)
-   if type(phase) ~= "string" or phase == "" then
-      error("rig.register_runtime_hook expects phase to be a non-empty string", 0)
-   end
-   if type(hook) ~= "function" then
-      error("rig.register_runtime_hook expects hook to be a function", 0)
-   end
-
-   local hooks = M._runtime_hooks[phase]
-   if hooks == nil then
-      hooks = {}
-      M._runtime_hooks[phase] = hooks
-   end
-   table.insert(hooks, hook)
-end
-
-local function run_runtime_hooks(phase, ...)
-   local hooks = M._runtime_hooks[phase]
-   if hooks == nil then
-      return
-   end
-
-   for i = 1, #hooks do
-      hooks[i](...)
-   end
-end
-
-function M.ActiveRuntime:init(spec)
-   if type(spec) ~= "table" then
-      error("rig.ActiveRuntime expects a table", 0)
-   end
-
-   self.driver = spec.driver
-   self.driver_id = spec.driver_id
-   self.mode_id = spec.mode_id
-   self.runtime_id = spec.runtime_id
-   self.providers = spec.providers or {}
-   self.option_hooks = self:normalize_option_hooks(spec.option_hooks)
-   self.service_providers = self:resolve_service_providers()
-end
-
-function M.ActiveRuntime:resolve_service_providers()
+function M.ServiceRegistry:resolve_service_providers(providers)
    local service_providers = {}
 
-   for service_id, provider_id in pairs(self.providers) do
-      local service = M._services[service_id]
+   for service_id, provider_id in pairs(providers) do
+      local service = self:get(service_id)
       if service == nil then
          error(
-            ("rig.run runtime '%s' references unknown service '%s'"):format(
-               self.runtime_id,
-               service_id
-            ),
+            ("references unknown service '%s'"):format(service_id),
             0
          )
       end
@@ -433,8 +395,7 @@ function M.ActiveRuntime:resolve_service_providers()
       local provider = service.providers[provider_id]
       if provider == nil then
          error(
-            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such provider is registered"):format(
-               self.runtime_id,
+            ("selects provider '%s' for service '%s', but no such provider is registered"):format(
                provider_id,
                service_id
             ),
@@ -448,15 +409,65 @@ function M.ActiveRuntime:resolve_service_providers()
    return service_providers
 end
 
-function M.ActiveRuntime:require_service(service_id)
-   local service = M._services[service_id]
-   if service == nil then
-      error(
-         ("rig.require_service does not know service '%s'"):format(service_id),
-         0
-      )
+local _service_registry = M.ServiceRegistry()
+
+function M.register_runtime_hook(phase, hook)
+   if type(phase) ~= "string" or phase == "" then
+      error("rig.register_runtime_hook expects phase to be a non-empty string", 0)
+   end
+   if type(hook) ~= "function" then
+      error("rig.register_runtime_hook expects hook to be a function", 0)
    end
 
+   local hooks = _runtime_hooks[phase]
+   if hooks == nil then
+      hooks = {}
+      _runtime_hooks[phase] = hooks
+   end
+   table.insert(hooks, hook)
+end
+
+local function run_runtime_hooks(phase, ...)
+   local hooks = _runtime_hooks[phase]
+   if hooks == nil then
+      return
+   end
+
+   for i = 1, #hooks do
+      hooks[i](...)
+   end
+end
+
+M.ActiveRuntime = M.class()
+
+function M.ActiveRuntime:init(spec)
+   if type(spec) ~= "table" then
+      error("rig.ActiveRuntime expects a table", 0)
+   end
+
+   self.service_registry = spec.service_registry
+   self.driver = spec.driver
+   self.driver_id = spec.driver_id
+   self.mode_id = spec.mode_id
+   self.runtime_id = spec.runtime_id
+   self.providers = spec.providers or {}
+   self.option_hooks = self:normalize_option_hooks(spec.option_hooks)
+
+   local ok, service_providers_or_err = pcall(function()
+      return self.service_registry:resolve_service_providers(self.providers)
+   end)
+   if ok then
+      self.service_providers = service_providers_or_err
+      return
+   end
+
+   error(("rig.run runtime '%s' %s"):format(
+      self.runtime_id,
+      tostring(service_providers_or_err)
+   ), 0)
+end
+
+function M.ActiveRuntime:require_service(service_id)
    local provider = self.service_providers[service_id]
    if provider == nil then
       error(
@@ -533,13 +544,22 @@ function M.ActiveRuntime:run_hooks(phase, ...)
    end
 end
 
+local _active_runtime = nil
+
+function M.create_service(service_id, method_names)
+   return _service_registry:create_service(service_id, method_names)
+end
+
+function M.register_service_provider(service_id, provider_id, provider)
+   return _service_registry:register_service_provider(service_id, provider_id, provider)
+end
+
 function M.require_service(service_id)
    if type(service_id) ~= "string" or service_id == "" then
       error("rig.require_service expects service_id to be a non-empty string", 0)
    end
 
-   local active_runtime = M._active_runtime
-   if getmetatable(active_runtime) ~= M.ActiveRuntime then
+   if getmetatable(_active_runtime) ~= M.ActiveRuntime then
       error(
          ("rig.require_service('%s') requires an active runtime"):format(
             service_id
@@ -548,7 +568,7 @@ function M.require_service(service_id)
       )
    end
 
-   return active_runtime:require_service(service_id)
+   return _active_runtime:require_service(service_id)
 end
 
 function M.register_runtime_driver(name, driver)
@@ -564,7 +584,7 @@ function M.register_runtime_driver(name, driver)
       "rig.register_runtime_driver expects driver.phases to be a table of non-empty strings if provided"
    )
 
-   M._runtime_drivers[name] = driver
+   _runtime_drivers[name] = driver
    return driver
 end
 
@@ -592,7 +612,7 @@ function M.register_runtime_preset(name, preset)
       ),
    }
 
-   M._runtime_presets[name] = normalized
+   _runtime_presets[name] = normalized
    return normalized
 end
 
@@ -604,7 +624,7 @@ local function resolve_runtime(options)
 
    local preset = nil
    if mode_id ~= nil then
-      preset = M._runtime_presets[mode_id]
+      preset = _runtime_presets[mode_id]
       if preset == nil then
          error(
             ("rig.run does not know runtime mode '%s'"):format(mode_id),
@@ -624,7 +644,7 @@ local function resolve_runtime(options)
       error("rig.run requires options.driver or options.mode to be a non-empty string", 0)
    end
 
-   local driver = M._runtime_drivers[driver_id]
+   local driver = _runtime_drivers[driver_id]
    if driver == nil then
       error(
          ("rig.run does not know runtime driver '%s'"):format(driver_id),
@@ -655,6 +675,7 @@ local function resolve_runtime(options)
 
    local runtime_id = mode_id or driver_id
    return driver, M.ActiveRuntime {
+      service_registry = _service_registry,
       driver = driver,
       driver_id = driver_id,
       mode_id = mode_id,
@@ -668,30 +689,30 @@ function M.run(options)
    if type(options) ~= "table" then
       error("rig.run expects a table", 0)
    end
-   local driver, active_runtime = resolve_runtime(options)
+   local driver, resolved_runtime = resolve_runtime(options)
 
-   local previous_runtime = M._active_runtime
-   M._active_runtime = active_runtime
+   local previous_runtime = _active_runtime
+   _active_runtime = resolved_runtime
 
    local ok, err = pcall(function()
-      active_runtime:run_hooks("before_setup", options)
+      resolved_runtime:run_hooks("before_setup", options)
       if type(driver.setup) == "function" then
          driver.setup(options)
       end
-      active_runtime:run_hooks("after_setup", options)
+      resolved_runtime:run_hooks("after_setup", options)
 
       driver.loop(options, function(phase, ...)
-         active_runtime:run_hooks(phase, ...)
+         resolved_runtime:run_hooks(phase, ...)
       end)
 
-      active_runtime:run_hooks("before_shutdown", options)
+      resolved_runtime:run_hooks("before_shutdown", options)
       if type(driver.shutdown) == "function" then
          driver.shutdown(options)
       end
-      active_runtime:run_hooks("after_shutdown", options)
+      resolved_runtime:run_hooks("after_shutdown", options)
    end)
 
-   M._active_runtime = previous_runtime
+   _active_runtime = previous_runtime
 
    if not ok then
       error(err, 0)
