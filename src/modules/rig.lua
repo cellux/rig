@@ -1,7 +1,9 @@
 local M = ... or {}
+local oop = require("oop")
 local repr = require("repr")
 
 M.repr = repr.repr
+M.class = oop.class
 
 function M.tostring(value)
    if type(value) == "table" then
@@ -80,29 +82,7 @@ function M.fprintln(stream, ...)
    print_values(stream, true, ...)
 end
 
-function M.class(parent)
-   if parent ~= nil and type(parent) ~= "table" then
-      error("rig.class expects parent to be a table if provided", 0)
-   end
-
-   local c = {}
-   c.__index = c
-
-   setmetatable(c, {
-      __index = parent,
-      __call = function(class_table, ...)
-         local instance = setmetatable({}, class_table)
-         if type(instance.init) == "function" then
-            instance:init(...)
-         end
-         return instance
-      end,
-   })
-
-   return c
-end
-
-M.ResourceScope = M.class()
+M.ResourceScope = oop.class()
 
 local function add_scope_entry(scope, resource, release_fn)
    local entry = {
@@ -301,7 +281,7 @@ local function normalize_driver_phase_names(phase_names, label)
    return copied
 end
 
-M.ServiceRegistry = M.class()
+M.ServiceRegistry = oop.class()
 
 function M.ServiceRegistry:init()
    self._by_id = {}
@@ -438,7 +418,7 @@ local function run_runtime_hooks(phase, ...)
    end
 end
 
-M.ActiveRuntime = M.class()
+M.ActiveRuntime = oop.class()
 
 function M.ActiveRuntime:init(spec)
    if type(spec) ~= "table" then

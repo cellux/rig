@@ -8,10 +8,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Alias for `repr.repr(value[, options])`.
   - Returns a best-effort Lua-readable representation for any value.
 - `rig.class(parent?)`
-  - Creates a callable class table.
-  - Calling the class constructs one instance whose metatable is the class table.
-  - If the instance resolves an `init(...)` method, it is called during construction.
-  - If `parent` is provided, method lookup on the class falls back to that parent table.
+  - Alias for `oop.class(parent?)`.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.

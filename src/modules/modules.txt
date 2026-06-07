@@ -1,7 +1,9 @@
 # One module name per line; order defines load order.
 fennel
 repr
+oop
 rig
+schema
 dl
 freetype
 harfbuzz
