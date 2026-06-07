@@ -168,6 +168,16 @@ test.case("rig.tostring keeps non-table values unquoted", function()
    }), "{a = 1}")
 end)
 
+test.case("rig.tostring respects __tostring on tables", function()
+   local value = setmetatable({}, {
+      __tostring = function()
+         return "custom table"
+      end,
+   })
+
+   test.equal(rig.tostring(value), "custom table")
+end)
+
 test.case("resource scope releases in the expected order", function()
    local scope = rig.resource_scope({}, "test scope")
    local released = {}

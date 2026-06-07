@@ -8,7 +8,8 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Alias for `repr.repr(value[, options])`.
   - Returns a best-effort Lua-readable representation for any value.
 - `rig.tostring(value)`
-  - Returns `rig.repr(value)` for tables.
+  - Returns `tostring(value)` for values with a `__tostring` metamethod.
+  - Returns `rig.repr(value)` for other tables.
   - Falls back to the builtin global `tostring(value)` for non-table values.
 - `rig.print(...)`
   - Writes arguments to `stdout` separated by spaces.

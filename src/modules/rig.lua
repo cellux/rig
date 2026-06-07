@@ -5,6 +5,10 @@ M.repr = repr.repr
 
 function M.tostring(value)
    if type(value) == "table" then
+      local mt = getmetatable(value)
+      if type(mt) == "table" and type(rawget(mt, "__tostring")) == "function" then
+         return tostring(value)
+      end
       return M.repr(value)
    end
    return tostring(value)
