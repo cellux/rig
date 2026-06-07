@@ -236,7 +236,7 @@ local function after_setup()
 end
 
 rig.run {
-   preset = "sdl3_gpu",
+   mode = "sdl3_gpu",
    driver_config = {
       sdl3_gpu = {
          window_props = {

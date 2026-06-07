@@ -775,7 +775,7 @@ local function handle_resize(info)
 end
 
 rig.run {
-   preset = "sdl3",
+   mode = "sdl3",
    event_handlers = {
       mouse = handle_mouse,
       resize = handle_resize,

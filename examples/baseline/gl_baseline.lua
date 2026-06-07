@@ -302,7 +302,7 @@ local function before_shutdown()
 end
 
 rig.run {
-   preset = "sdl3_gl",
+   mode = "sdl3_gl",
    event_handlers = {
       key = on_key,
       resize = on_resize,

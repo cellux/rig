@@ -939,7 +939,7 @@ local function on_resize(info)
 end
 
 rig.run {
-   preset = "sdl3",
+   mode = "sdl3",
    event_handlers = {
       key = on_key,
       resize = on_resize,

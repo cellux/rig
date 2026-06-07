@@ -179,7 +179,7 @@ local function after_setup()
 end
 
 rig.run {
-   preset = "sdl3_gl",
+   mode = "sdl3_gl",
    event_handlers = {
       resize = on_resize,
    },

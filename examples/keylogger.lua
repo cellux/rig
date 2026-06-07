@@ -1,7 +1,7 @@
 local sdl3 = require("sdl3")
 
 rig.run {
-  preset = "sdl3",
+  mode = "sdl3",
   event_handlers = {
     key = function(key_info)
       rig.println(key_info)
