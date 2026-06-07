@@ -2,7 +2,7 @@ local test = require("test")
 local mesh = require("mesh")
 require("sdl3")
 
-test.case("mesh.make_cube returns a backend-neutral mesh layout", function()
+test.case("mesh.make_cube returns a provider-neutral mesh layout", function()
    local cube = mesh.make_cube()
 
    test.equal(cube.layout, "position_color_f32")

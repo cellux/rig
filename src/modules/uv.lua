@@ -326,7 +326,7 @@ function M.monotonic()
    return seconds + nanoseconds / 1000000000.0
 end
 
-rig.register_service_impl("time", "uv", {
+rig.register_service_provider("time", "uv", {
    now = function()
       return M.now()
    end,

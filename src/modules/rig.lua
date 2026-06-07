@@ -226,35 +226,35 @@ function M.create_service(service_id, method_names)
    local service = {
       id = service_id,
       methods = methods,
-      impls = {},
+      providers = {},
    }
    M._services[service_id] = service
    return service
 end
 
-function M.register_service_impl(service_id, mode, impl)
+function M.register_service_provider(service_id, provider_id, provider)
    if type(service_id) ~= "string" or service_id == "" then
-      error("rig.register_service_impl expects service_id to be a non-empty string", 0)
+      error("rig.register_service_provider expects service_id to be a non-empty string", 0)
    end
-   if type(mode) ~= "string" or mode == "" then
-      error("rig.register_service_impl expects provider_id to be a non-empty string", 0)
+   if type(provider_id) ~= "string" or provider_id == "" then
+      error("rig.register_service_provider expects provider_id to be a non-empty string", 0)
    end
-   if type(impl) ~= "table" then
-      error("rig.register_service_impl expects impl to be a table", 0)
+   if type(provider) ~= "table" then
+      error("rig.register_service_provider expects provider to be a table", 0)
    end
 
    local service = M._services[service_id]
    if service == nil then
       error(
-         ("rig.register_service_impl does not know service '%s'"):format(service_id),
+         ("rig.register_service_provider does not know service '%s'"):format(service_id),
          0
       )
    end
-   if service.impls[mode] ~= nil then
+   if service.providers[provider_id] ~= nil then
       error(
-         ("rig.register_service_impl already has an implementation for service '%s' in provider '%s'"):format(
+         ("rig.register_service_provider already has a provider for service '%s' with id '%s'"):format(
             service_id,
-            mode
+            provider_id
          ),
          0
       )
@@ -262,11 +262,11 @@ function M.register_service_impl(service_id, mode, impl)
 
    for i = 1, #service.methods do
       local method_name = service.methods[i]
-      if type(impl[method_name]) ~= "function" then
+      if type(provider[method_name]) ~= "function" then
          error(
-            ("rig.register_service_impl requires service '%s' for provider '%s' to implement method '%s'"):format(
+            ("rig.register_service_provider requires provider '%s' for service '%s' to implement method '%s'"):format(
+               provider_id,
                service_id,
-               mode,
                method_name
             ),
             0
@@ -274,8 +274,8 @@ function M.register_service_impl(service_id, mode, impl)
       end
    end
 
-   service.impls[mode] = impl
-   return impl
+   service.providers[provider_id] = provider
+   return provider
 end
 
 local function copy_service_provider_map(map, label)
@@ -313,9 +313,9 @@ local function validate_runtime_providers(runtime_id, providers)
          )
       end
 
-      if service.impls[provider_id] == nil then
+      if service.providers[provider_id] == nil then
          error(
-            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such implementation is registered"):format(
+            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such provider is registered"):format(
                runtime_id,
                provider_id,
                service_id
@@ -326,8 +326,8 @@ local function validate_runtime_providers(runtime_id, providers)
    end
 end
 
-local function resolve_runtime_service_impls(runtime_id, providers)
-   local service_impls = {}
+local function resolve_runtime_service_providers(runtime_id, providers)
+   local service_providers = {}
 
    for service_id, provider_id in pairs(providers) do
       local service = M._services[service_id]
@@ -341,10 +341,10 @@ local function resolve_runtime_service_impls(runtime_id, providers)
          )
       end
 
-      local impl = service.impls[provider_id]
-      if impl == nil then
+      local provider = service.providers[provider_id]
+      if provider == nil then
          error(
-            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such implementation is registered"):format(
+            ("rig.run runtime '%s' selects provider '%s' for service '%s', but no such provider is registered"):format(
                runtime_id,
                provider_id,
                service_id
@@ -353,10 +353,10 @@ local function resolve_runtime_service_impls(runtime_id, providers)
          )
       end
 
-      service_impls[service_id] = impl
+      service_providers[service_id] = provider
    end
 
-   return service_impls
+   return service_providers
 end
 
 function M.require_service(service_id)
@@ -382,10 +382,10 @@ function M.require_service(service_id)
       )
    end
 
-   local impl = active_runtime.service_impls[service_id]
-   if impl == nil then
+   local provider = active_runtime.service_providers[service_id]
+   if provider == nil then
       error(
-         ("rig.require_service('%s') has no implementation for active runtime '%s'"):format(
+         ("rig.require_service('%s') has no provider for active runtime '%s'"):format(
             service_id,
             active_runtime.runtime_id
          ),
@@ -393,7 +393,7 @@ function M.require_service(service_id)
       )
    end
 
-   return impl
+   return provider
 end
 
 function M.register_runtime_driver(name, driver)
@@ -570,14 +570,14 @@ local function resolve_runtime(options)
 
    local runtime_id = preset_id or driver_id
    validate_runtime_providers(runtime_id, providers)
-   local service_impls = resolve_runtime_service_impls(runtime_id, providers)
+   local service_providers = resolve_runtime_service_providers(runtime_id, providers)
 
    return driver, {
       driver_id = driver_id,
       preset_id = preset_id,
       runtime_id = runtime_id,
       providers = providers,
-      service_impls = service_impls,
+      service_providers = service_providers,
    }
 end
 

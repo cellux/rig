@@ -23,7 +23,7 @@ The module lazily resolves OpenGL entry points through `SDL_GL_GetProcAddress()`
 
 - This first version is intentionally small and targets a modern shader-based OpenGL path.
 - Raw OpenGL entry points are also exposed lazily on demand.
-  - This includes texture, blending, buffer, vertex-array, draw, and uniform calls used by the `sdl3_gl` font backend.
+  - This includes texture, blending, buffer, vertex-array, draw, and uniform calls used by the `sdl3_gl` font provider.
 - The `sdl3_gl` runtime preset provides the `shader.stage` service.
   - `shader.create_stage{ language="glsl", ... }` returns OpenGL shader objects that can be linked through `gl.link_program(...)` or the raw OpenGL entry points.
 - Context creation and buffer swapping remain owned by the `sdl3_gl` runtime preset.

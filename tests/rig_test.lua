@@ -100,7 +100,7 @@ test.case("resource scope releases in the expected order", function()
    test.equal(released[3], "alpha")
 end)
 
-test.case("service registry validates implementations and resolves by active providers", function()
+test.case("service registry validates providers and resolves by active providers", function()
    rig.create_service("rig_test_service", {
       "ping",
       "pong",
@@ -116,7 +116,7 @@ test.case("service registry validates implementations and resolves by active pro
    test.match(tostring(duplicate_err), "already has a service")
 
    local incomplete_ok, incomplete_err = pcall(function()
-      rig.register_service_impl("rig_test_service", "rig_test_provider_incomplete", {
+      rig.register_service_provider("rig_test_service", "rig_test_provider_incomplete", {
          ping = function()
             return "ping"
          end,
@@ -135,7 +135,7 @@ test.case("service registry validates implementations and resolves by active pro
       end,
    })
 
-   rig.register_service_impl("rig_test_service", "rig_test_provider_alpha", {
+   rig.register_service_provider("rig_test_service", "rig_test_provider_alpha", {
       ping = function()
          return "ping ok"
       end,
@@ -144,7 +144,7 @@ test.case("service registry validates implementations and resolves by active pro
       end,
    })
 
-   rig.register_service_impl("rig_test_service", "rig_test_provider_beta", {
+   rig.register_service_provider("rig_test_service", "rig_test_provider_beta", {
       ping = function()
          return "ping beta"
       end,

@@ -5,7 +5,7 @@ test.case("shader.create_stage normalizes source specs before service dispatch",
    local seen_spec = nil
    local destroyed_stage = nil
 
-   rig.register_service_impl("shader.stage", "shader_test_provider", {
+   rig.register_service_provider("shader.stage", "shader_test_provider", {
       create_stage = function(spec)
          seen_spec = spec
          return {

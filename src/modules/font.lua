@@ -825,20 +825,20 @@ rig.create_service("font.renderer", {
 function M.create_text_renderer(atlas)
    ensure_atlas(atlas)
 
-   local backend = rig.require_service("font.renderer")
+   local provider = rig.require_service("font.renderer")
    local text_renderer = setmetatable({
       atlas = atlas,
-      _backend = backend,
+      _provider = provider,
       _released = false,
    }, text_renderer_mt)
 
-   text_renderer._state = backend.create_text_renderer(text_renderer)
+   text_renderer._state = provider.create_text_renderer(text_renderer)
    return text_renderer
 end
 
 function M.release_text_renderer(text_renderer)
    ensure_text_renderer(text_renderer)
-   text_renderer._backend.release_text_renderer(text_renderer)
+   text_renderer._provider.release_text_renderer(text_renderer)
    text_renderer._state = nil
    text_renderer._released = true
 end
@@ -899,7 +899,7 @@ function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
       draw_a = 255
    end
 
-   text_renderer._backend.draw_packed_glyph(
+   text_renderer._provider.draw_packed_glyph(
       text_renderer,
       packed,
       x,
@@ -927,7 +927,7 @@ function M.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
       error("font.draw_text_run expects color_fn to be a function if provided", 0)
    end
 
-   text_renderer._backend.draw_text_run(
+   text_renderer._provider.draw_text_run(
       text_renderer,
       run,
       base_x,

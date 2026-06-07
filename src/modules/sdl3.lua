@@ -2126,17 +2126,17 @@ local function ensure_font_page_texture(text_renderer, page_index)
    return texture
 end
 
-local sdl3_font_backend = {}
-local sdl3_gl_font_backend = {}
+local sdl3_font_provider = {}
+local sdl3_gl_font_provider = {}
 
-function sdl3_font_backend.create_text_renderer(text_renderer)
+function sdl3_font_provider.create_text_renderer(text_renderer)
    return {
       textures = {},
       revisions = {},
    }
 end
 
-function sdl3_font_backend.release_text_renderer(text_renderer)
+function sdl3_font_provider.release_text_renderer(text_renderer)
    local state = text_renderer._state
    if state == nil then
       return
@@ -2152,7 +2152,7 @@ function sdl3_font_backend.release_text_renderer(text_renderer)
    end
 end
 
-function sdl3_font_backend.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
    if packed.width <= 0 or packed.height <= 0 then
       return
    end
@@ -2180,7 +2180,7 @@ function sdl3_font_backend.draw_packed_glyph(text_renderer, packed, x, y, scale,
    end
 end
 
-function sdl3_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+function sdl3_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
    for i = 1, #run.entries do
       local entry = run.entries[i]
       local r = 255
@@ -2195,7 +2195,7 @@ function sdl3_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y,
          a = 255
       end
 
-      sdl3_font_backend.draw_packed_glyph(
+      sdl3_font_provider.draw_packed_glyph(
          text_renderer,
          entry.packed,
          base_x + entry.layout_x,
@@ -2209,14 +2209,14 @@ function sdl3_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y,
    end
 end
 
-function sdl3_gl_font_backend.create_text_renderer(text_renderer)
+function sdl3_gl_font_provider.create_text_renderer(text_renderer)
    return {
       textures = {},
       revisions = {},
    }
 end
 
-function sdl3_gl_font_backend.release_text_renderer(text_renderer)
+function sdl3_gl_font_provider.release_text_renderer(text_renderer)
    local state = text_renderer._state
    if state == nil then
       return
@@ -2239,7 +2239,7 @@ function sdl3_gl_font_backend.release_text_renderer(text_renderer)
    end
 end
 
-function sdl3_gl_font_backend.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
    if packed.width <= 0 or packed.height <= 0 then
       return
    end
@@ -2278,7 +2278,7 @@ function sdl3_gl_font_backend.draw_packed_glyph(text_renderer, packed, x, y, sca
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
 end
 
-function sdl3_gl_font_backend.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+function sdl3_gl_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
    for i = 1, #run.entries do
       local entry = run.entries[i]
       local r = 255
@@ -2293,7 +2293,7 @@ function sdl3_gl_font_backend.draw_text_run(text_renderer, run, base_x, baseline
          a = 255
       end
 
-      sdl3_gl_font_backend.draw_packed_glyph(
+      sdl3_gl_font_provider.draw_packed_glyph(
          text_renderer,
          entry.packed,
          base_x + entry.layout_x,
@@ -2766,12 +2766,12 @@ local shader_stage_service_sdl3_gl = {
    end,
 }
 
-rig.register_service_impl("time", "sdl3", sdl3_time_service)
-rig.register_service_impl("font.renderer", "sdl3", sdl3_font_backend)
-rig.register_service_impl("font.renderer", "sdl3_gl", sdl3_gl_font_backend)
-rig.register_service_impl("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_service)
-rig.register_service_impl("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
-rig.register_service_impl("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
+rig.register_service_provider("time", "sdl3", sdl3_time_service)
+rig.register_service_provider("font.renderer", "sdl3", sdl3_font_provider)
+rig.register_service_provider("font.renderer", "sdl3_gl", sdl3_gl_font_provider)
+rig.register_service_provider("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_service)
+rig.register_service_provider("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
+rig.register_service_provider("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
 
 local function setup_scheduler(label)
    runtime_scheduler = sched.create(label)

@@ -1,6 +1,6 @@
 # `font`
 
-Backend-neutral font shaping and rasterization built on top of `freetype` and `harfbuzz`.
+Provider-neutral font shaping and rasterization built on top of `freetype` and `harfbuzz`.
 
 The `font` module owns:
 - shaping
@@ -101,9 +101,9 @@ Backend-specific atlas upload and drawing are provided through the `"font.render
   - Requires an active runtime that implements the `"font.renderer"` service.
   - Returns a text-renderer object tied to that atlas.
 - `font.draw_packed_glyph(text_renderer, packed, x, y[, scale, r, g, b, a])`
-  - Draws one packed glyph through the active backend.
+  - Draws one packed glyph through the active provider.
 - `font.draw_text_run(text_renderer, run, base_x, baseline_y[, color_fn])`
-  - Draws a text run through the active backend.
+  - Draws a text run through the active provider.
   - `color_fn(index, entry, run)` may return `r, g, b, a`.
 
 ## Face Object

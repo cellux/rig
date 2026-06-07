@@ -15,7 +15,7 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
     - `attribute_offsets`
     - `vertex_blob`
 - `mesh.build_vertex_input(mesh)`
-  - Resolves the active `mesh.vertex_input` service provider and translates a backend-neutral mesh layout into a backend-specific vertex-input descriptor.
+  - Resolves the active `mesh.vertex_input` service provider and translates a provider-neutral mesh layout into a provider-specific vertex-input descriptor.
   - Requires an active runtime.
 
 ## `make_cube` Options

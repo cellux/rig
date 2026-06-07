@@ -48,14 +48,14 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `service_id` is a string.
   - `method_names` is an array of required method names.
   - Raises if the service already exists.
-- `rig.register_service_impl(service_id, mode, impl)`
-  - Registers a service implementation for one provider id.
+- `rig.register_service_provider(service_id, provider_id, provider)`
+  - Registers one provider table for a service id.
   - Completeness is checked at registration time.
-  - Raises if the service is unknown or if that provider already has an implementation.
+  - Raises if the service is unknown or if that provider id is already registered.
 - `rig.require_service(service_id)`
-  - Returns the implementation selected for the currently active runtime.
+  - Returns the provider selected for the currently active runtime.
   - Service selection uses the current preset/provider configuration.
-  - Raises if no runtime is active or if the active runtime has no implementation.
+  - Raises if no runtime is active or if the active runtime has no provider.
 - `rig.resource_scope(context, label?)`
   - Creates a generic ownership scope.
   - `scope:adopt(resource, release_fn)` tracks a resource with a custom release function.
@@ -81,4 +81,4 @@ Core runtime helpers that are always loaded at interpreter startup.
 
 - Custom script languages can be added by appending loader functions to `rig.script_loaders`.
 - Services are resolved by the active runtime configuration, not by loaded-module presence.
-- One module should own each service definition. Backend modules should require that owner before calling `rig.register_service_impl(...)`.
+- One module should own each service definition. Provider modules should require that owner before calling `rig.register_service_provider(...)`.
