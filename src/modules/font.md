@@ -194,9 +194,9 @@ Atlas objects also expose:
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
 - `font.create_text_renderer(...)` resolves through `rig.require_service("font.renderer")`.
 - `font.create_style(...)` currently creates a text renderer immediately, so it also requires an active runtime that provides `"font.renderer"`.
-- `preset = "sdl3"` currently provides the `"font.renderer"` service through SDL renderer textures.
-- `preset = "sdl3_gl"` currently provides the `"font.renderer"` service through OpenGL textures and textured quads.
-- `preset = "sdl3_gpu"` does not provide it yet.
+- `mode = "sdl3"` currently provides the `"font.renderer"` service through SDL renderer textures.
+- `mode = "sdl3_gl"` currently provides the `"font.renderer"` service through OpenGL textures and textured quads.
+- `mode = "sdl3_gpu"` does not provide it yet.
 
 ## Example
 

@@ -472,7 +472,7 @@ function M.run_registered_cases(options)
    end
 
    rig.run {
-      preset = "uv",
+      mode = "uv",
       module_config = {
          uv = {
             main = function()

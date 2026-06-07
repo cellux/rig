@@ -14,7 +14,7 @@ test.case("time can use the uv service inside uv mode", function()
    local observed_monotonic
 
    rig.run {
-      preset = "uv",
+      mode = "uv",
       module_config = {
          uv = {
             main = function()

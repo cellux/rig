@@ -65,7 +65,7 @@ The frame profiler exposes these fields directly:
 
 ## Notes
 
-- The profiler uses `time.monotonic()`, so it works in runtime presets that provide the `"time"` service.
+- The profiler uses `time.monotonic()`, so it works in runtime modes that provide the `"time"` service.
 - `fps` is averaged over `fps_window_seconds` and held until the next sample window completes, while `fps_instant` is derived from the most recent `interval_ms`.
 - The frame profiler measures only what the caller brackets with `begin_cpu()` / `end_cpu()` as CPU work.
 - `present_ms` is computed as `total_ms - cpu_ms`, so the caller should end the CPU section before presentation occurs.

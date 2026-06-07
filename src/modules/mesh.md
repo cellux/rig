@@ -33,4 +33,4 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
   - `mathx` handles transforms
 - `mesh` handles geometry generation
 - `mesh` owns the `mesh.vertex_input` service namespace.
-  - The `sdl3_gpu` runtime preset installs one provider that returns SDL GPU vertex-input state objects.
+  - The `sdl3_gpu` runtime mode installs one provider that returns SDL GPU vertex-input state objects.

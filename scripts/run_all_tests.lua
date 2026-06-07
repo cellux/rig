@@ -41,7 +41,7 @@ local function print_failure(index, summary, result)
 end
 
 rig.run {
-   preset = "uv",
+   mode = "uv",
    module_config = {
       uv = {
          main = function()

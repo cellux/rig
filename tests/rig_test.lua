@@ -270,14 +270,14 @@ test.case("service registry validates providers and resolves by active providers
    })
 
    rig.run {
-      preset = "rig_test_service_preset",
+      mode = "rig_test_service_preset",
    }
 
    test.equal(rig_test_service_result.ping, "ping ok")
    test.equal(rig_test_service_result.pong, "pong ok")
 
    rig.run {
-      preset = "rig_test_service_preset",
+      mode = "rig_test_service_preset",
       providers = {
          rig_test_service = "rig_test_provider_beta",
       },

@@ -55,16 +55,16 @@ Core runtime helpers that are always loaded at interpreter startup.
     - `before_shutdown`
     - `after_shutdown`
 - `rig.run(options?)`
-  - Starts the selected runtime preset or driver.
-  - `options.preset` selects a named runtime preset.
-  - `options.driver` may be used directly without a preset.
+  - Starts the selected runtime mode or driver.
+  - `options.mode` selects a named runtime mode.
+  - `options.driver` may be used directly without a mode.
   - `options.providers[service_id] = provider_id` overrides service-provider selection for one run.
   - Provider mappings are validated before driver setup begins.
   - `options.event_handlers` may provide generic runtime callbacks such as `key`, `mouse`, and `resize`.
   - `options.driver_config[driver_id]` stores driver-owned configuration such as render callbacks, window creation options, and presentation settings.
   - `options.module_config[module_id]` stores module-owned runtime configuration such as `uv.main`.
-  - All built-in runtime presets create and own a scheduler.
-  - The current first version ships with `sdl3`-owned presets such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
+  - All built-in runtime modes create and own a scheduler.
+  - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
   - Optional per-run hooks may be passed under `options.hooks`.
   - `options.hooks.<phase>` may be either a function or an array of functions.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
@@ -79,7 +79,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Raises if the service is unknown or if that provider id is already registered.
 - `rig.require_service(service_id)`
   - Returns the provider selected for the currently active runtime.
-  - Service selection uses the current preset/provider configuration.
+  - Service selection uses the current mode/provider configuration.
   - Raises if no runtime is active or if the active runtime has no provider.
 - `rig.argv`
   - Table mirroring the raw C `argv` array for the current Rig process.

@@ -5,10 +5,10 @@ Minimal libuv integration for Rig.
 ## API
 
 - `uv.get_loop()`
-  - Returns the current active libuv loop handle for `preset = "uv"`, or `nil` if no uv runtime is active.
+  - Returns the current active libuv loop handle for `mode = "uv"`, or `nil` if no uv runtime is active.
 - `uv.stop()`
   - Requests the current uv loop to stop.
-  - Requires an active `preset = "uv"` runtime.
+  - Requires an active `mode = "uv"` runtime.
 - `uv.spawn(spec)`
   - Suspends the current scheduler-managed coroutine, spawns a child process on the current uv loop, and resumes the coroutine later with the captured result.
   - `spec.file` is required.
@@ -46,7 +46,7 @@ Minimal libuv integration for Rig.
 
 ## Runtime Preset
 
-`uv` registers the runtime preset `"uv"` and the runtime driver `"uv"`.
+`uv` registers the built-in runtime mode `"uv"` through the runtime preset `"uv"` and the runtime driver `"uv"`.
 
 Use it through:
 
@@ -54,7 +54,7 @@ Use it through:
 local uv = require("uv")
 
 rig.run {
-   preset = "uv",
+   mode = "uv",
    module_config = {
       uv = {
          main = function()
@@ -71,7 +71,7 @@ rig.run {
 
 `module_config.uv.main` is optional. If provided, it runs as a scheduler-managed coroutine after setup and before the libuv loop starts blocking.
 
-`preset = "uv"` always creates and owns a scheduler.
+`mode = "uv"` always creates and owns a scheduler.
 
 ## Notes
 

@@ -5,6 +5,7 @@
 - Run the full Rig test suite via `make test`.
 - If you only change a Lua or Fennel script such as an example or test file, you do not need to rebuild `rig`.
   - Rebuild only when changing C code, build files, or embedded builtin module sources that are compiled into the executable.
+- This project is used only by its sole author, so backward compatibility is not a concern.
 
 ## API Naming
 

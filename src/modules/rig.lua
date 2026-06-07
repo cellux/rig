@@ -531,17 +531,17 @@ local function run_all_hooks(options, phase, ...)
 end
 
 local function resolve_runtime(options)
-   local preset_id = options.preset
-   if preset_id ~= nil and (type(preset_id) ~= "string" or preset_id == "") then
-      error("rig.run expects options.preset to be a non-empty string if provided", 0)
+   local mode_id = options.mode
+   if mode_id ~= nil and (type(mode_id) ~= "string" or mode_id == "") then
+      error("rig.run expects options.mode to be a non-empty string if provided", 0)
    end
 
    local preset = nil
-   if preset_id ~= nil then
-      preset = M._runtime_presets[preset_id]
+   if mode_id ~= nil then
+      preset = M._runtime_presets[mode_id]
       if preset == nil then
          error(
-            ("rig.run does not know runtime preset '%s'"):format(preset_id),
+            ("rig.run does not know runtime mode '%s'"):format(mode_id),
             0
          )
       end
@@ -555,7 +555,7 @@ local function resolve_runtime(options)
       driver_id = preset.driver
    end
    if type(driver_id) ~= "string" or driver_id == "" then
-      error("rig.run requires options.driver or options.preset to be a non-empty string", 0)
+      error("rig.run requires options.driver or options.mode to be a non-empty string", 0)
    end
 
    local driver = M._runtime_drivers[driver_id]
@@ -587,13 +587,13 @@ local function resolve_runtime(options)
       providers[service_id] = provider_id
    end
 
-   local runtime_id = preset_id or driver_id
+   local runtime_id = mode_id or driver_id
    validate_runtime_providers(runtime_id, providers)
    local service_providers = resolve_runtime_service_providers(runtime_id, providers)
 
    return driver, {
       driver_id = driver_id,
-      preset_id = preset_id,
+      mode_id = mode_id,
       runtime_id = runtime_id,
       providers = providers,
       service_providers = service_providers,
