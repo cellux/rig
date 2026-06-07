@@ -101,6 +101,59 @@ rig.println(" done")
    test.contains_line(result.stdout, "alpha=42 done")
 end)
 
+test.case("rig.fprint variants target the requested stream", function()
+   local script_path = os.tmpname()
+   local script_file = assert(io.open(script_path, "w"))
+   script_file:write([[
+rig.fprint(io.stdout, "out:")
+rig.fprintf(io.stdout, "%02d", 7)
+rig.fprintln(io.stdout, " done")
+rig.fprint(io.stderr, "err:")
+rig.fprintf(io.stderr, "%02d", 9)
+rig.fprintln(io.stderr, " done")
+]])
+   script_file:close()
+
+   local result = uv.spawn {
+      file = rig.argv[0],
+      args = {
+         rig.argv[0],
+         script_path,
+      },
+   }
+
+   os.remove(script_path)
+
+   test.truthy(result.success, result.stderr)
+   test.contains_line(result.stdout, "out:07 done")
+   test.contains_line(result.stderr, "err:09 done")
+end)
+
+test.case("rig.eprint variants target stderr", function()
+   local script_path = os.tmpname()
+   local script_file = assert(io.open(script_path, "w"))
+   script_file:write([[
+rig.eprint("err:")
+rig.eprintf("%02d", 11)
+rig.eprintln(" done")
+]])
+   script_file:close()
+
+   local result = uv.spawn {
+      file = rig.argv[0],
+      args = {
+         rig.argv[0],
+         script_path,
+      },
+   }
+
+   os.remove(script_path)
+
+   test.truthy(result.success, result.stderr)
+   test.equal(result.stdout, "")
+   test.contains_line(result.stderr, "err:11 done")
+end)
+
 test.case("repr module entrypoints agree", function()
    test.equal(repr({
       a = 1,

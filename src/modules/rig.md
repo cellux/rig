@@ -17,6 +17,15 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.printf(format_string, ...)`
   - Formats the arguments through `string.format(...)`.
   - Writes the result through `rig.print(...)`.
+- `rig.fprint(stream, ...)`
+  - Writes arguments to the given stream separated by spaces.
+  - Formats each argument through `rig.tostring(...)`.
+  - Does not append a trailing newline.
+- `rig.fprintf(stream, format_string, ...)`
+  - Formats the arguments through `string.format(...)`.
+  - Writes the result through `rig.fprint(stream, ...)`.
+- `rig.fprintln(stream, ...)`
+  - Same as `rig.fprint(stream, ...)`, but appends `\n`.
 - `rig.println(...)`
   - Same as `rig.print(...)`, but appends `\n`.
 - `rig.register_runtime_driver(name, driver)`

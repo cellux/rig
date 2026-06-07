@@ -10,7 +10,7 @@ function M.tostring(value)
    return tostring(value)
 end
 
-local function print_values(with_newline, ...)
+local function print_values(stream, with_newline, ...)
    local parts = {}
    local stringify = M.tostring
 
@@ -27,16 +27,21 @@ local function print_values(with_newline, ...)
       output = output .. "\n"
    end
 
-   local ok, err = io.stdout:write(output)
+   local ok, err = stream:write(output)
    if not ok then
-      error(tostring(err or "failed to write to stdout"), 0)
+      error(tostring(err or "failed to write output"), 0)
    end
 
-   io.stdout:flush()
+   if type(stream.flush) == "function" then
+      ok, err = stream:flush()
+      if not ok then
+         error(tostring(err or "failed to flush output"), 0)
+      end
+   end
 end
 
 function M.print(...)
-   print_values(false, ...)
+   print_values(io.stdout, false, ...)
 end
 
 function M.printf(format_string, ...)
@@ -44,7 +49,31 @@ function M.printf(format_string, ...)
 end
 
 function M.println(...)
-   print_values(true, ...)
+   print_values(io.stdout, true, ...)
+end
+
+function M.eprint(...)
+   print_values(io.stderr, false, ...)
+end
+
+function M.eprintf(format_string, ...)
+   M.eprint(string.format(format_string, ...))
+end
+
+function M.eprintln(...)
+   print_values(io.stderr, true, ...)
+end
+
+function M.fprint(stream, ...)
+   print_values(stream, false, ...)
+end
+
+function M.fprintf(stream, format_string, ...)
+   M.fprint(stream, string.format(format_string, ...))
+end
+
+function M.fprintln(stream, ...)
+   print_values(stream, true, ...)
 end
 
 local resource_scope_mt = {}
