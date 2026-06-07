@@ -80,8 +80,29 @@ function M.fprintln(stream, ...)
    print_values(stream, true, ...)
 end
 
-local resource_scope_mt = {}
-resource_scope_mt.__index = resource_scope_mt
+function M.class(parent)
+   if parent ~= nil and type(parent) ~= "table" then
+      error("rig.class expects parent to be a table if provided", 0)
+   end
+
+   local c = {}
+   c.__index = c
+
+   setmetatable(c, {
+      __index = parent,
+      __call = function(class_table, ...)
+         local instance = setmetatable({}, class_table)
+         if type(instance.init) == "function" then
+            instance:init(...)
+         end
+         return instance
+      end,
+   })
+
+   return c
+end
+
+M.ResourceScope = M.class()
 
 local function add_scope_entry(scope, resource, release_fn)
    local entry = {
@@ -93,33 +114,48 @@ local function add_scope_entry(scope, resource, release_fn)
    return entry
 end
 
-function resource_scope_mt:adopt(resource, release_fn)
+function M.ResourceScope:init(context, label)
+   if context == nil then
+      error("rig.ResourceScope requires a context value", 0)
+   end
+   if label ~= nil and (type(label) ~= "string" or label == "") then
+      error("rig.ResourceScope expects label to be a non-empty string if provided", 0)
+   end
+
+   self.context = context
+   self._entries = {}
+   self._named_entries = {}
+   self._released = false
+   self._scope_label = label or "resource scope"
+end
+
+function M.ResourceScope:adopt(resource, release_fn)
    if self._released then
       error("cannot adopt a resource into a released " .. self._scope_label, 0)
    end
    if resource == nil then
-      error("rig.resource_scope:adopt requires a resource", 0)
+      error("rig.ResourceScope:adopt requires a resource", 0)
    end
    if type(release_fn) ~= "function" then
-      error("rig.resource_scope:adopt requires a release function", 0)
+      error("rig.ResourceScope:adopt requires a release function", 0)
    end
 
    add_scope_entry(self, resource, release_fn)
    return resource
 end
 
-function resource_scope_mt:replace(key, resource, release_fn)
+function M.ResourceScope:replace(key, resource, release_fn)
    if self._released then
       error("cannot replace a resource in a released " .. self._scope_label, 0)
    end
    if type(key) ~= "string" or key == "" then
-      error("rig.resource_scope:replace requires a non-empty string key", 0)
+      error("rig.ResourceScope:replace requires a non-empty string key", 0)
    end
    if resource == nil then
-      error("rig.resource_scope:replace requires a resource", 0)
+      error("rig.ResourceScope:replace requires a resource", 0)
    end
    if type(release_fn) ~= "function" then
-      error("rig.resource_scope:replace requires a release function", 0)
+      error("rig.ResourceScope:replace requires a release function", 0)
    end
 
    local existing = self._named_entries[key]
@@ -138,7 +174,7 @@ function resource_scope_mt:replace(key, resource, release_fn)
    return resource
 end
 
-function resource_scope_mt:release()
+function M.ResourceScope:release()
    if self._released then
       return
    end
@@ -155,23 +191,6 @@ function resource_scope_mt:release()
    end
 
    self._released = true
-end
-
-function M.resource_scope(context, label)
-   if context == nil then
-      error("rig.resource_scope requires a context value", 0)
-   end
-   if label ~= nil and (type(label) ~= "string" or label == "") then
-      error("rig.resource_scope expects label to be a non-empty string if provided", 0)
-   end
-
-   return setmetatable({
-      context = context,
-      _entries = {},
-      _named_entries = {},
-      _released = false,
-      _scope_label = label or "resource scope",
-   }, resource_scope_mt)
 end
 
 M._runtime_drivers = M._runtime_drivers or {}

@@ -179,8 +179,10 @@ test.case("rig.tostring respects __tostring on tables", function()
 end)
 
 test.case("resource scope releases in the expected order", function()
-   local scope = rig.resource_scope({}, "test scope")
+   local scope = rig.ResourceScope({}, "test scope")
    local released = {}
+
+   test.equal(getmetatable(scope), rig.ResourceScope)
 
    scope:adopt("alpha", function(context, resource)
       assert(context ~= nil)
@@ -199,6 +201,12 @@ test.case("resource scope releases in the expected order", function()
    test.equal(released[1], "first")
    test.equal(released[2], "second")
    test.equal(released[3], "alpha")
+end)
+
+test.case("rig.ResourceScope constructs scope instances", function()
+   local direct = rig.ResourceScope({}, "direct scope")
+   test.equal(getmetatable(direct), rig.ResourceScope)
+   test.equal(direct._scope_label, "direct scope")
 end)
 
 test.case("service registry validates providers and resolves by active providers", function()

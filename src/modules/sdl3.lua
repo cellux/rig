@@ -1217,7 +1217,7 @@ function M.resource_scope(device)
       error("sdl3.resource_scope requires an SDL_GPUDevice*", 0)
    end
 
-   local scope = rig.resource_scope(device, "sdl3 resource scope")
+   local scope = rig.ResourceScope(device, "sdl3 resource scope")
    for name, method in pairs(sdl3_resource_scope_methods) do
       scope[name] = method
    end

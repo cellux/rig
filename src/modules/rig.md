@@ -7,6 +7,14 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.repr(value[, options])`
   - Alias for `repr.repr(value[, options])`.
   - Returns a best-effort Lua-readable representation for any value.
+- `rig.class(parent?)`
+  - Creates a callable class table.
+  - Calling the class constructs one instance whose metatable is the class table.
+  - If the instance resolves an `init(...)` method, it is called during construction.
+  - If `parent` is provided, method lookup on the class falls back to that parent table.
+- `rig.ResourceScope(context, label?)`
+  - Callable class constructor for generic ownership scopes.
+  - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.
 - `rig.tostring(value)`
   - Returns `tostring(value)` for values with a `__tostring` metamethod.
   - Returns `rig.repr(value)` for other tables.
@@ -73,12 +81,6 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Returns the provider selected for the currently active runtime.
   - Service selection uses the current preset/provider configuration.
   - Raises if no runtime is active or if the active runtime has no provider.
-- `rig.resource_scope(context, label?)`
-  - Creates a generic ownership scope.
-  - `scope:adopt(resource, release_fn)` tracks a resource with a custom release function.
-  - `scope:replace(key, resource, release_fn)` replaces a named resource, releasing the old one immediately.
-  - `scope:release()` releases tracked resources in reverse order.
-  - `release_fn` receives `(context, resource)`.
 - `rig.argv`
   - Table mirroring the raw C `argv` array for the current Rig process.
   - `rig.argv[0]` is the interpreter path from `argv[0]`.

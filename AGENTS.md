@@ -16,8 +16,6 @@
   - Example:
     - C: `SDL_GetTicks`
     - Lua: `sdl3.GetTicks`
-- Any additional Lua-only abstractions layered on top of a C API must use `snake_case`.
-- Single-word lowercase names count as `snake_case`.
 - If a Rig C module loads symbols dynamically via `dlsym`, each bound symbol should use a `rig_X__NAME` identifier in `X.c`.
   - Use a double underscore for dynamically bound symbols from the underlying C library.
 - If a Rig C module implements its own Lua-facing abstraction in `X.c`, its identifier should use `rig_X_NAME`.
