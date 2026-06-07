@@ -758,6 +758,115 @@ local function normalize_vertex_attribute_format(value)
    return value
 end
 
+local GPUVertexBufferDescription = ffi.metatype("SDL_GPUVertexBufferDescription", {
+   __new = function(ct, spec)
+      if type(spec) ~= "table" then
+         error("vertex buffer descriptions must be tables", 0)
+      end
+
+      local description = ffi.new(ct)
+      description.slot = tonumber(spec.slot or 0) or 0
+      description.pitch =
+         assert(tonumber(spec.pitch), "vertex buffer pitch must be a number")
+      description.input_rate = normalize_vertex_input_rate(
+         spec.input_rate or "vertex"
+      )
+      description.instance_step_rate =
+         tonumber(spec.instance_step_rate or 0) or 0
+      return description
+   end,
+})
+
+local GPUVertexAttribute = ffi.metatype("SDL_GPUVertexAttribute", {
+   __new = function(ct, spec)
+      if type(spec) ~= "table" then
+         error("vertex attributes must be tables", 0)
+      end
+
+      local attribute = ffi.new(ct)
+      attribute.location =
+         assert(tonumber(spec.location), "vertex attribute location must be a number")
+      attribute.buffer_slot =
+         tonumber(spec.buffer_slot or spec.slot or 0) or 0
+      attribute.format = normalize_vertex_attribute_format(spec.format)
+      attribute.offset =
+         assert(tonumber(spec.offset), "vertex attribute offset must be a number")
+      return attribute
+   end,
+})
+
+local GPUBufferCreateInfo = ffi.metatype("SDL_GPUBufferCreateInfo", {
+   __new = function(ct, spec)
+      if type(spec) ~= "table" then
+         error("sdl3.build_gpu_buffer_create_info expects a table", 0)
+      end
+
+      local create_info = ffi.new(ct)
+      create_info.usage =
+         assert(tonumber(spec.usage), "GPU buffer usage must be a number")
+      create_info.size =
+         assert(tonumber(spec.size), "GPU buffer size must be a number")
+      create_info.props = tonumber(spec.props or 0) or 0
+      return create_info
+   end,
+})
+
+local function apply_color_target_blend_state(state, blend_state)
+   if type(blend_state) ~= "table" then
+      return
+   end
+
+   if blend_state.src_color_blendfactor ~= nil then
+      state.src_color_blendfactor =
+         tonumber(blend_state.src_color_blendfactor) or 0
+   end
+   if blend_state.dst_color_blendfactor ~= nil then
+      state.dst_color_blendfactor =
+         tonumber(blend_state.dst_color_blendfactor) or 0
+   end
+   if blend_state.color_blend_op ~= nil then
+      state.color_blend_op = tonumber(blend_state.color_blend_op) or 0
+   end
+   if blend_state.src_alpha_blendfactor ~= nil then
+      state.src_alpha_blendfactor =
+         tonumber(blend_state.src_alpha_blendfactor) or 0
+   end
+   if blend_state.dst_alpha_blendfactor ~= nil then
+      state.dst_alpha_blendfactor =
+         tonumber(blend_state.dst_alpha_blendfactor) or 0
+   end
+   if blend_state.alpha_blend_op ~= nil then
+      state.alpha_blend_op = tonumber(blend_state.alpha_blend_op) or 0
+   end
+   if blend_state.color_write_mask ~= nil then
+      state.color_write_mask = tonumber(blend_state.color_write_mask) or 0
+   end
+   if blend_state.enable_blend ~= nil then
+      state.enable_blend = not not blend_state.enable_blend
+   end
+   if blend_state.enable_color_write_mask ~= nil then
+      state.enable_color_write_mask =
+         not not blend_state.enable_color_write_mask
+   end
+end
+
+local GPUColorTargetDescription = ffi.metatype("SDL_GPUColorTargetDescription", {
+   __new = function(ct, spec)
+      if type(spec) ~= "table" then
+         error("color target descriptions must be tables", 0)
+      end
+
+      local description = ffi.new(ct)
+      description.format =
+         assert(tonumber(spec.format), "color target format must be a number")
+      apply_color_target_blend_state(
+         description.blend_state,
+         spec.blend_state
+      )
+      return description
+   end,
+})
+
 local STAGE_TO_SDL = {
    vertex = M.GPU_SHADERSTAGE_VERTEX,
    fragment = M.GPU_SHADERSTAGE_FRAGMENT,
@@ -789,16 +898,14 @@ function M.build_vertex_buffer_descriptions(buffers)
 
    local descriptions = ffi.new("SDL_GPUVertexBufferDescription[?]", #buffers)
    for i, buffer in ipairs(buffers) do
-      if type(buffer) ~= "table" then
-         error("vertex buffer descriptions must be tables", 0)
+      local spec = {}
+      for key, value in pairs(buffer) do
+         spec[key] = value
       end
-      descriptions[i - 1].slot = tonumber(buffer.slot or (i - 1)) or 0
-      descriptions[i - 1].pitch = assert(tonumber(buffer.pitch), "vertex buffer pitch must be a number")
-      descriptions[i - 1].input_rate = normalize_vertex_input_rate(
-         buffer.input_rate or "vertex"
-      )
-      descriptions[i - 1].instance_step_rate =
-         tonumber(buffer.instance_step_rate or 0) or 0
+      if spec.slot == nil then
+         spec.slot = i - 1
+      end
+      descriptions[i - 1] = GPUVertexBufferDescription(spec)
    end
 
    return descriptions
@@ -811,18 +918,7 @@ function M.build_vertex_attributes(attributes)
 
    local ffi_attributes = ffi.new("SDL_GPUVertexAttribute[?]", #attributes)
    for i, attribute in ipairs(attributes) do
-      if type(attribute) ~= "table" then
-         error("vertex attributes must be tables", 0)
-      end
-      ffi_attributes[i - 1].location =
-         assert(tonumber(attribute.location), "vertex attribute location must be a number")
-      ffi_attributes[i - 1].buffer_slot =
-         tonumber(attribute.buffer_slot or attribute.slot or 0) or 0
-      ffi_attributes[i - 1].format = normalize_vertex_attribute_format(
-         attribute.format
-      )
-      ffi_attributes[i - 1].offset =
-         assert(tonumber(attribute.offset), "vertex attribute offset must be a number")
+      ffi_attributes[i - 1] = GPUVertexAttribute(attribute)
    end
 
    return ffi_attributes
@@ -872,16 +968,8 @@ function M.build_vertex_input_state(layout)
 end
 
 function M.build_gpu_buffer_create_info(spec)
-   if type(spec) ~= "table" then
-      error("sdl3.build_gpu_buffer_create_info expects a table", 0)
-   end
-
    local create_info = ffi.new("SDL_GPUBufferCreateInfo[1]")
-   create_info[0].usage =
-      assert(tonumber(spec.usage), "GPU buffer usage must be a number")
-   create_info[0].size =
-      assert(tonumber(spec.size), "GPU buffer size must be a number")
-   create_info[0].props = tonumber(spec.props or 0) or 0
+   create_info[0] = GPUBufferCreateInfo(spec)
    return create_info
 end
 
@@ -892,52 +980,7 @@ function M.build_color_target_descriptions(specs)
 
    local descriptions = ffi.new("SDL_GPUColorTargetDescription[?]", #specs)
    for i, spec in ipairs(specs) do
-      if type(spec) ~= "table" then
-         error("color target descriptions must be tables", 0)
-      end
-
-      local description = descriptions[i - 1]
-      description.format =
-         assert(tonumber(spec.format), "color target format must be a number")
-
-      local blend_state = spec.blend_state
-      if type(blend_state) == "table" then
-         if blend_state.src_color_blendfactor ~= nil then
-            description.blend_state.src_color_blendfactor =
-               tonumber(blend_state.src_color_blendfactor) or 0
-         end
-         if blend_state.dst_color_blendfactor ~= nil then
-            description.blend_state.dst_color_blendfactor =
-               tonumber(blend_state.dst_color_blendfactor) or 0
-         end
-         if blend_state.color_blend_op ~= nil then
-            description.blend_state.color_blend_op =
-               tonumber(blend_state.color_blend_op) or 0
-         end
-         if blend_state.src_alpha_blendfactor ~= nil then
-            description.blend_state.src_alpha_blendfactor =
-               tonumber(blend_state.src_alpha_blendfactor) or 0
-         end
-         if blend_state.dst_alpha_blendfactor ~= nil then
-            description.blend_state.dst_alpha_blendfactor =
-               tonumber(blend_state.dst_alpha_blendfactor) or 0
-         end
-         if blend_state.alpha_blend_op ~= nil then
-            description.blend_state.alpha_blend_op =
-               tonumber(blend_state.alpha_blend_op) or 0
-         end
-         if blend_state.color_write_mask ~= nil then
-            description.blend_state.color_write_mask =
-               tonumber(blend_state.color_write_mask) or 0
-         end
-         if blend_state.enable_blend ~= nil then
-            description.blend_state.enable_blend = not not blend_state.enable_blend
-         end
-         if blend_state.enable_color_write_mask ~= nil then
-            description.blend_state.enable_color_write_mask =
-               not not blend_state.enable_color_write_mask
-         end
-      end
+      descriptions[i - 1] = GPUColorTargetDescription(spec)
    end
 
    return descriptions

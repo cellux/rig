@@ -84,3 +84,43 @@ test.case("sdl3 exposes mouse event constants", function()
    test.equal(type(sdl3.GetWindowSize), "function")
    test.equal(type(sdl3.GetWindowSizeInPixels), "function")
 end)
+
+test.case("sdl3 GPU descriptor builders populate FFI structs", function()
+   local vertex_buffers = sdl3.build_vertex_buffer_descriptions({
+      {
+         pitch = 24,
+      },
+   })
+   test.equal(tonumber(vertex_buffers[0].slot), 0)
+   test.equal(tonumber(vertex_buffers[0].pitch), 24)
+
+   local attributes = sdl3.build_vertex_attributes({
+      {
+         location = 3,
+         format = "float3",
+         offset = 12,
+      },
+   })
+   test.equal(tonumber(attributes[0].location), 3)
+   test.equal(tonumber(attributes[0].offset), 12)
+
+   local buffer_info = sdl3.build_gpu_buffer_create_info({
+      usage = 5,
+      size = 64,
+      props = 7,
+   })
+   test.equal(tonumber(buffer_info[0].usage), 5)
+   test.equal(tonumber(buffer_info[0].size), 64)
+   test.equal(tonumber(buffer_info[0].props), 7)
+
+   local color_targets = sdl3.build_color_target_descriptions({
+      {
+         format = 9,
+         blend_state = {
+            enable_blend = true,
+         },
+      },
+   })
+   test.equal(tonumber(color_targets[0].format), 9)
+   test.truthy(color_targets[0].blend_state.enable_blend)
+end)
