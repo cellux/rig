@@ -39,21 +39,24 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Same as `rig.print(...)`, but appends `\n`.
 - `rig.register_runtime_driver(name, driver)`
   - Registers a named runtime driver for `rig.run(...)`.
+  - `driver.phases` may declare additional hook phases beyond the core runtime phases.
 - `rig.register_runtime_preset(name, preset)`
   - Registers a named preset that selects one driver plus default service providers.
   - `preset.driver` selects the runtime driver.
   - `preset.providers[service_id] = provider_id` sets default service providers for that preset.
 - `rig.register_runtime_hook(phase, hook)`
   - Registers a hook function for a named runtime phase.
-  - Current built-in phases used by the `sdl3` drivers are:
+  - Core phases emitted by `rig.run(...)` are:
     - `before_setup`
     - `after_setup`
+    - `before_shutdown`
+    - `after_shutdown`
+  - Drivers may declare additional phases through `driver.phases`.
+  - The built-in `sdl3` drivers declare:
     - `before_poll`
     - `after_poll`
     - `before_frame`
     - `after_frame`
-    - `before_shutdown`
-    - `after_shutdown`
 - `rig.run(options?)`
   - Starts the selected runtime mode or driver.
   - `options.mode` selects a named runtime mode.
@@ -67,6 +70,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
   - Optional per-run hooks may be passed under `options.hooks`.
   - `options.hooks.<phase>` may be either a function or an array of functions.
+  - `options.hooks` is validated against the core phases plus any phases declared by the selected driver.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the per-run hooks for the same phase.
 - `rig.create_service(service_id, method_names)`
   - Creates a named runtime service definition.

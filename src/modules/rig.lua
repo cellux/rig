@@ -193,11 +193,23 @@ function M.ResourceScope:release()
    self._released = true
 end
 
-M._runtime_drivers = M._runtime_drivers or {}
-M._runtime_presets = M._runtime_presets or {}
-M._runtime_hooks = M._runtime_hooks or {}
-M._services = M._services or {}
-M._active_runtime = M._active_runtime or nil
+M._runtime_drivers = {}
+M._runtime_presets = {}
+M._runtime_hooks = {}
+M._services = {}
+M._active_runtime = nil
+
+local core_runtime_phase_names = {
+   "before_setup",
+   "after_setup",
+   "before_shutdown",
+   "after_shutdown",
+}
+
+local core_runtime_phases = {}
+for i = 1, #core_runtime_phase_names do
+   core_runtime_phases[core_runtime_phase_names[i]] = true
+end
 
 local function normalize_method_names(method_names)
    if type(method_names) ~= "table" then
@@ -223,6 +235,47 @@ local function normalize_method_names(method_names)
       end
       copied[i] = method_name
       seen[method_name] = true
+   end
+
+   return copied
+end
+
+local function normalize_runtime_phase_names(phase_names, label)
+   if phase_names == nil then
+      return {}
+   end
+   if type(phase_names) ~= "table" then
+      error(label, 0)
+   end
+
+   local copied = {}
+   local seen = {}
+
+   for i = 1, #phase_names do
+      local phase_name = phase_names[i]
+      if type(phase_name) ~= "string" or phase_name == "" then
+         error(
+            ("%s (%d must be a non-empty string)"):format(label, i),
+            0
+         )
+      end
+      if core_runtime_phases[phase_name] then
+         error(
+            ("%s ('%s' is a core runtime phase and must not be redeclared)"):format(
+               label,
+               phase_name
+            ),
+            0
+         )
+      end
+      if seen[phase_name] then
+         error(
+            ("%s (duplicate phase '%s')"):format(label, phase_name),
+            0
+         )
+      end
+      copied[i] = phase_name
+      seen[phase_name] = true
    end
 
    return copied
@@ -297,7 +350,7 @@ function M.register_service_provider(service_id, provider_id, provider)
    return provider
 end
 
-local function copy_service_provider_map(map, label)
+local function normalize_service_provider_map(map, label)
    if map == nil then
       return {}
    end
@@ -423,6 +476,11 @@ function M.register_runtime_driver(name, driver)
       error("rig.register_runtime_driver expects driver to be a table", 0)
    end
 
+   driver.phases = normalize_runtime_phase_names(
+      driver.phases,
+      "rig.register_runtime_driver expects driver.phases to be a table of non-empty strings if provided"
+   )
+
    M._runtime_drivers[name] = driver
    return driver
 end
@@ -445,7 +503,7 @@ function M.register_runtime_preset(name, preset)
 
    local normalized = {
       driver = driver_id,
-      providers = copy_service_provider_map(
+      providers = normalize_service_provider_map(
          preset.providers,
          "rig.register_runtime_preset expects preset.providers to be a table if provided"
       ),
@@ -482,13 +540,10 @@ local function run_runtime_hooks(phase, ...)
    end
 end
 
-local function run_option_hooks(options, phase, ...)
-   local hooks = options.hooks
+local function run_option_hooks(option_hooks, phase, ...)
+   local hooks = option_hooks
    if hooks == nil then
       return
-   end
-   if type(hooks) ~= "table" then
-      error("rig.run expects options.hooks to be a table", 0)
    end
 
    local phase_hooks = hooks[phase]
@@ -496,38 +551,83 @@ local function run_option_hooks(options, phase, ...)
       return
    end
 
-   if type(phase_hooks) == "function" then
-      phase_hooks(...)
-      return
-   end
-
-   if type(phase_hooks) ~= "table" then
-      error(
-         ("rig.run expects options.hooks.%s to be a function or a table of functions"):format(
-            phase
-         ),
-         0
-      )
-   end
-
    for i = 1, #phase_hooks do
-      local hook = phase_hooks[i]
-      if type(hook) ~= "function" then
+      phase_hooks[i](...)
+   end
+end
+
+local function run_all_hooks(option_hooks, phase, ...)
+   run_runtime_hooks(phase, ...)
+   run_option_hooks(option_hooks, phase, ...)
+end
+
+local function build_runtime_phase_set(driver)
+   local phases = {}
+
+   for i = 1, #core_runtime_phase_names do
+      phases[core_runtime_phase_names[i]] = true
+   end
+   for i = 1, #driver.phases do
+      phases[driver.phases[i]] = true
+   end
+
+   return phases
+end
+
+local function normalize_option_hooks(hooks, runtime_id, driver)
+   if hooks == nil then
+      return nil
+   end
+   if type(hooks) ~= "table" then
+      error("rig.run expects options.hooks to be a table", 0)
+   end
+
+   local allowed_phases = build_runtime_phase_set(driver)
+   local normalized = {}
+
+   for phase, phase_hooks in pairs(hooks) do
+      if type(phase) ~= "string" or phase == "" then
+         error("rig.run expects options.hooks keys to be non-empty strings", 0)
+      end
+      if not allowed_phases[phase] then
          error(
-            ("rig.run expects options.hooks.%s[%d] to be a function"):format(
-               phase,
-               i
+            ("rig.run runtime '%s' does not know hook phase '%s'"):format(
+               runtime_id,
+               phase
             ),
             0
          )
       end
-      hook(...)
-   end
-end
 
-local function run_all_hooks(options, phase, ...)
-   run_runtime_hooks(phase, ...)
-   run_option_hooks(options, phase, ...)
+      if type(phase_hooks) == "function" then
+         normalized[phase] = { phase_hooks }
+      elseif type(phase_hooks) == "table" then
+         local copied = {}
+         for i = 1, #phase_hooks do
+            local hook = phase_hooks[i]
+            if type(hook) ~= "function" then
+               error(
+                  ("rig.run expects options.hooks.%s[%d] to be a function"):format(
+                     phase,
+                     i
+                  ),
+                  0
+               )
+            end
+            copied[i] = hook
+         end
+         normalized[phase] = copied
+      else
+         error(
+            ("rig.run expects options.hooks.%s to be a function or a table of functions"):format(
+               phase
+            ),
+            0
+         )
+      end
+   end
+
+   return normalized
 end
 
 local function resolve_runtime(options)
@@ -579,7 +679,7 @@ local function resolve_runtime(options)
       end
    end
 
-   local override_providers = copy_service_provider_map(
+   local override_providers = normalize_service_provider_map(
       options.providers,
       "rig.run expects options.providers to be a table if provided"
    )
@@ -590,6 +690,7 @@ local function resolve_runtime(options)
    local runtime_id = mode_id or driver_id
    validate_runtime_providers(runtime_id, providers)
    local service_providers = resolve_runtime_service_providers(runtime_id, providers)
+   local option_hooks = normalize_option_hooks(options.hooks, runtime_id, driver)
 
    return driver, {
       driver_id = driver_id,
@@ -597,6 +698,7 @@ local function resolve_runtime(options)
       runtime_id = runtime_id,
       providers = providers,
       service_providers = service_providers,
+      option_hooks = option_hooks,
    }
 end
 
@@ -610,21 +712,21 @@ function M.run(options)
    M._active_runtime = active_runtime
 
    local ok, err = pcall(function()
-      run_all_hooks(options, "before_setup", options)
+      run_all_hooks(active_runtime.option_hooks, "before_setup", options)
       if type(driver.setup) == "function" then
          driver.setup(options)
       end
-      run_all_hooks(options, "after_setup", options)
+      run_all_hooks(active_runtime.option_hooks, "after_setup", options)
 
       driver.loop(options, function(phase, ...)
-         run_all_hooks(options, phase, ...)
+         run_all_hooks(active_runtime.option_hooks, phase, ...)
       end)
 
-      run_all_hooks(options, "before_shutdown", options)
+      run_all_hooks(active_runtime.option_hooks, "before_shutdown", options)
       if type(driver.shutdown) == "function" then
          driver.shutdown(options)
       end
-      run_all_hooks(options, "after_shutdown", options)
+      run_all_hooks(active_runtime.option_hooks, "after_shutdown", options)
    end)
 
    M._active_runtime = previous_runtime

@@ -2803,6 +2803,12 @@ local function require_render_callback(mode_options, mode_key)
 end
 
 rig.register_runtime_driver("sdl3", {
+   phases = {
+      "before_poll",
+      "after_poll",
+      "before_frame",
+      "after_frame",
+   },
    setup = function(options)
       local sdl3_options = get_driver_config(options, "sdl3")
       local event_handlers = get_event_handlers(options)
@@ -2845,6 +2851,12 @@ rig.register_runtime_preset("sdl3", {
 })
 
 rig.register_runtime_driver("sdl3_gpu", {
+   phases = {
+      "before_poll",
+      "after_poll",
+      "before_frame",
+      "after_frame",
+   },
    setup = function(options)
       local sdl3_options = get_driver_config(options, "sdl3_gpu")
       local event_handlers = get_event_handlers(options)
@@ -2895,6 +2907,12 @@ rig.register_runtime_preset("sdl3_gpu", {
 })
 
 rig.register_runtime_driver("sdl3_gl", {
+   phases = {
+      "before_poll",
+      "after_poll",
+      "before_frame",
+      "after_frame",
+   },
    setup = function(options)
       local sdl3_options = get_driver_config(options, "sdl3_gl")
       local event_handlers = get_event_handlers(options)
