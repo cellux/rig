@@ -1,6 +1,6 @@
 # `mesh`
 
-Procedural 3D mesh generators.
+Procedural mesh generators.
 
 This first version is intentionally narrow: it generates CPU-side mesh data in explicit built-in vertex layouts. It does not create SDL GPU objects directly.
 
