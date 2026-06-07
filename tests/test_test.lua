@@ -38,6 +38,34 @@ test.case("test.run discovers the repo test files", function()
    )
 end)
 
+test.case("test.run validates roots jobs and files through schema", function()
+   local bad_roots_ok, bad_roots_err = pcall(function()
+      test.run {
+         roots = { "" },
+         files = {},
+      }
+   end)
+   test.falsey(bad_roots_ok)
+   test.match(tostring(bad_roots_err), "test.run roots%[1%] expects a non%-empty string")
+
+   local bad_jobs_ok, bad_jobs_err = pcall(function()
+      test.run {
+         files = {},
+         jobs = 0,
+      }
+   end)
+   test.falsey(bad_jobs_ok)
+   test.match(tostring(bad_jobs_err), "test.run jobs expects a number >= 1")
+
+   local bad_files_ok, bad_files_err = pcall(function()
+      test.run {
+         files = { "" },
+      }
+   end)
+   test.falsey(bad_files_ok)
+   test.match(tostring(bad_files_err), "test.run files%[1%] expects a non%-empty string")
+end)
+
 test.case("contains_line matches complete lines", function()
    local text = "alpha\nbeta\ngamma\n"
    test.contains_line(text, "beta")

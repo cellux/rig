@@ -2,6 +2,7 @@ local M = ... or {}
 local ffi = require("ffi")
 local bit = bit
 local sched = require("sched")
+local schema = require("schema")
 require("font")
 require("mesh")
 local shader = require("shader")
@@ -546,6 +547,17 @@ local runtime_gpu_device = nil
 local runtime_gl_context = nil
 local runtime_owned_init_flags = nil
 local runtime_scheduler = nil
+
+local driver_config_entry_schema = schema.table()
+local driver_config_schema = schema.map(
+   schema.non_empty_string(),
+   driver_config_entry_schema
+)
+local event_handlers_schema = schema.record({
+   key = schema.func():optional(),
+   mouse = schema.func():optional(),
+   resize = schema.func():optional(),
+})
 
 local DEFAULT_WINDOW_WIDTH = 640
 local DEFAULT_WINDOW_HEIGHT = 360
@@ -1349,10 +1361,11 @@ local function normalize_driver_config(options)
    if options == nil then
       return {}
    end
-   if type(options) ~= "table" then
-      error("sdl3 driver configuration must be a table", 0)
-   end
-   return options
+   return schema.assert(
+      driver_config_entry_schema,
+      options,
+      "sdl3 driver configuration"
+   )
 end
 
 local function get_driver_config(options, driver_id)
@@ -1360,9 +1373,11 @@ local function get_driver_config(options, driver_id)
    if driver_config == nil then
       return {}
    end
-   if type(driver_config) ~= "table" then
-      error("rig.run expects options.driver_config to be a table if provided", 0)
-   end
+   driver_config = schema.assert(
+      driver_config_schema,
+      driver_config,
+      "rig.run options.driver_config"
+   )
 
    local config = driver_config[driver_id]
    if config == nil then
@@ -1376,10 +1391,11 @@ local function get_event_handlers(options)
    if event_handlers == nil then
       return {}
    end
-   if type(event_handlers) ~= "table" then
-      error("rig.run expects options.event_handlers to be a table if provided", 0)
-   end
-   return event_handlers
+   return schema.assert(
+      event_handlers_schema,
+      event_handlers,
+      "rig.run options.event_handlers"
+   )
 end
 
 local shutdown

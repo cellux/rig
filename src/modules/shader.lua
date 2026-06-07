@@ -1,9 +1,36 @@
 local M = ... or {}
 
 local rig = require("rig")
+local schema = require("schema")
 local dxc = require("dxc")
 local shaderc = require("shaderc")
 local spirvcross = require("spirvcross")
+
+local non_empty_string_schema = schema.non_empty_string()
+local source_artifact_options_schema = schema.record({
+   language = schema.enum({ "hlsl", "glsl" }):optional("hlsl"),
+   stage = schema.enum({ "vertex", "fragment", "compute" }),
+   source = schema.string():optional(),
+   path = non_empty_string_schema:optional(),
+   source_name = schema.string():optional(),
+   entrypoint = schema.string():optional(),
+   extra_args = schema.array(schema.string()):optional(),
+   preserve_bindings = schema.boolean():optional(),
+   preserve_interface = schema.boolean():optional(),
+   glsl_version = schema.integer {
+      min = 0,
+   }:optional(),
+   optimization = schema.string():optional(),
+   debug_info = schema.boolean():optional(),
+   macro_definitions = schema.map(non_empty_string_schema, schema.any()):optional(),
+   props = schema.any():optional(),
+})
+
+local stage_artifact_spec_schema = schema.record({
+   artifact_kind = non_empty_string_schema:optional(),
+}, {
+   allow_extra = true,
+})
 
 local function read_file(path)
    local file, open_err = io.open(path, "rb")
@@ -26,21 +53,6 @@ local function read_file(path)
    return contents
 end
 
-local function normalize_language(language)
-   local normalized = language or "hlsl"
-   if normalized ~= "hlsl" and normalized ~= "glsl" then
-      error("shader operation currently supports only language='hlsl' or language='glsl'", 0)
-   end
-   return normalized
-end
-
-local function normalize_stage(stage)
-   if stage ~= "vertex" and stage ~= "fragment" and stage ~= "compute" then
-      error("shader operation requires stage to be 'vertex', 'fragment', or 'compute'", 0)
-   end
-   return stage
-end
-
 local function load_source(options)
    if type(options.source) == "string" then
       return options.source, options.path == nil and options.source_name or options.path
@@ -56,20 +68,20 @@ local function load_source(options)
 end
 
 local function normalize_source_artifact(options)
-   if type(options) ~= "table" then
-      error("shader operation expects a table", 0)
-   end
+   local normalized = schema.assert(
+      source_artifact_options_schema,
+      options,
+      "shader operation"
+   )
 
-   local language = normalize_language(options.language)
-   local stage = normalize_stage(options.stage)
-   local source, source_name_or_err = load_source(options)
+   local source, source_name_or_err = load_source(normalized)
    if source == nil then
       error(source_name_or_err, 0)
    end
 
-   local source_name = options.source_name or source_name_or_err
+   local source_name = normalized.source_name or source_name_or_err
    if type(source_name) ~= "string" or source_name == "" then
-      if language == "hlsl" then
+      if normalized.language == "hlsl" then
          source_name = "shader.hlsl"
       else
          source_name = "shader.glsl"
@@ -78,32 +90,34 @@ local function normalize_source_artifact(options)
 
    return {
       artifact_kind = "source",
-      language = language,
-      stage = stage,
+      language = normalized.language,
+      stage = normalized.stage,
       source = source,
       source_name = source_name,
-      entrypoint = options.entrypoint,
-      extra_args = options.extra_args,
-      preserve_bindings = options.preserve_bindings,
-      preserve_interface = options.preserve_interface,
-      glsl_version = options.glsl_version,
-      optimization = options.optimization,
-      debug_info = options.debug_info,
-      macro_definitions = options.macro_definitions,
-      props = options.props,
+      entrypoint = normalized.entrypoint,
+      extra_args = normalized.extra_args,
+      preserve_bindings = normalized.preserve_bindings,
+      preserve_interface = normalized.preserve_interface,
+      glsl_version = normalized.glsl_version,
+      optimization = normalized.optimization,
+      debug_info = normalized.debug_info,
+      macro_definitions = normalized.macro_definitions,
+      props = normalized.props,
    }
 end
 
 local function normalize_stage_artifact(spec)
-   if type(spec) ~= "table" then
-      error("shader stage specification expects a table", 0)
+   local normalized = schema.assert(
+      stage_artifact_spec_schema,
+      spec,
+      "shader stage specification"
+   )
+
+   if normalized.artifact_kind ~= nil then
+      return normalized
    end
 
-   if type(spec.artifact_kind) == "string" and spec.artifact_kind ~= "" then
-      return spec
-   end
-
-   return normalize_source_artifact(spec)
+   return normalize_source_artifact(normalized)
 end
 
 function M.compile(options)

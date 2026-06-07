@@ -1,8 +1,19 @@
 local M = ... or {}
+local oop = require("oop")
+local schema = require("schema")
 local time = require("time")
 
-local frame_profiler_mt = {}
-frame_profiler_mt.__index = frame_profiler_mt
+local positive_number_schema = schema.positive_number {
+   coerce = true,
+}
+
+local frame_profiler_options_schema = schema.record({
+   budget_ms = positive_number_schema:optional(16.67),
+   history_window_seconds = positive_number_schema:optional(1.0),
+   fps_window_seconds = positive_number_schema:optional(0.25),
+})
+
+M.FrameProfiler = oop.class()
 
 local function update_metric_history(history, now_seconds, value, window_seconds)
    history[#history + 1] = {
@@ -24,13 +35,20 @@ local function update_metric_history(history, now_seconds, value, window_seconds
    return max_window
 end
 
-local function ensure_frame_profiler(frame_profiler)
-   if getmetatable(frame_profiler) ~= frame_profiler_mt then
-      error("profiler operation expects a frame profiler created by profiler.create_frame_profiler", 0)
-   end
+function M.FrameProfiler:init(options)
+   local settings = schema.assert(
+      frame_profiler_options_schema,
+      options or {},
+      "profiler.FrameProfiler options"
+   )
+
+   self.budget_ms = settings.budget_ms
+   self.history_window_seconds = settings.history_window_seconds
+   self.fps_window_seconds = settings.fps_window_seconds
+   self:reset()
 end
 
-function frame_profiler_mt:reset()
+function M.FrameProfiler:reset()
    self.fps = 0.0
    self.fps_instant = 0.0
    self.cpu_ms = 0.0
@@ -63,7 +81,7 @@ function frame_profiler_mt:reset()
    self._fps_sample_frame_count = 0
 end
 
-function frame_profiler_mt:begin_frame()
+function M.FrameProfiler:begin_frame()
    local frame_start_seconds = time.monotonic()
    local last_frame_seconds = self._last_frame_seconds
 
@@ -118,7 +136,7 @@ function frame_profiler_mt:begin_frame()
    self.cpu_ms = 0.0
 end
 
-function frame_profiler_mt:end_frame()
+function M.FrameProfiler:end_frame()
    local frame_start_seconds = self._frame_start_seconds
    if frame_start_seconds == nil then
       error("frame profiler end_frame called without a matching begin_frame", 0)
@@ -173,7 +191,7 @@ function frame_profiler_mt:end_frame()
    self._frame_start_seconds = nil
 end
 
-function frame_profiler_mt:begin_cpu()
+function M.FrameProfiler:begin_cpu()
    if self._frame_start_seconds == nil then
       error("frame profiler begin_cpu called without an active frame", 0)
    end
@@ -184,7 +202,7 @@ function frame_profiler_mt:begin_cpu()
    self._cpu_section_start_seconds = time.monotonic()
 end
 
-function frame_profiler_mt:end_cpu()
+function M.FrameProfiler:end_cpu()
    local cpu_section_start_seconds = self._cpu_section_start_seconds
    if cpu_section_start_seconds == nil then
       error("frame profiler end_cpu called without a matching begin_cpu", 0)
@@ -195,71 +213,20 @@ function frame_profiler_mt:end_cpu()
    self._cpu_section_start_seconds = nil
 end
 
-function frame_profiler_mt:snapshot()
+function M.FrameProfiler:snapshot()
    return self
 end
 
-function frame_profiler_mt:before_frame_hook()
+function M.FrameProfiler:before_frame_hook()
    return function()
       self:begin_frame()
    end
 end
 
-function frame_profiler_mt:after_frame_hook()
+function M.FrameProfiler:after_frame_hook()
    return function()
       self:end_frame()
    end
-end
-
-function M.create_frame_profiler(options)
-   local settings = options
-   if settings == nil then
-      settings = {}
-   end
-   if type(settings) ~= "table" then
-      error("profiler.create_frame_profiler expects options to be a table if provided", 0)
-   end
-
-   local budget_ms = settings.budget_ms
-   if budget_ms == nil then
-      budget_ms = 16.67
-   end
-   budget_ms = tonumber(budget_ms)
-   if budget_ms == nil or budget_ms <= 0 then
-      error("profiler.create_frame_profiler expects options.budget_ms to be a positive number if provided", 0)
-   end
-
-   local history_window_seconds = settings.history_window_seconds
-   if history_window_seconds == nil then
-      history_window_seconds = 1.0
-   end
-   history_window_seconds = tonumber(history_window_seconds)
-   if history_window_seconds == nil or history_window_seconds <= 0 then
-      error(
-         "profiler.create_frame_profiler expects options.history_window_seconds to be a positive number if provided",
-         0
-      )
-   end
-
-   local fps_window_seconds = settings.fps_window_seconds
-   if fps_window_seconds == nil then
-      fps_window_seconds = 0.25
-   end
-   fps_window_seconds = tonumber(fps_window_seconds)
-   if fps_window_seconds == nil or fps_window_seconds <= 0 then
-      error(
-         "profiler.create_frame_profiler expects options.fps_window_seconds to be a positive number if provided",
-         0
-      )
-   end
-
-   local frame_profiler = setmetatable({
-      budget_ms = budget_ms,
-      history_window_seconds = history_window_seconds,
-      fps_window_seconds = fps_window_seconds,
-   }, frame_profiler_mt)
-   frame_profiler:reset()
-   return frame_profiler
 end
 
 return M

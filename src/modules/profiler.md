@@ -6,8 +6,8 @@ The first version provides frame-timing collection only. It does not draw anythi
 
 ## API
 
-- `profiler.create_frame_profiler(options?)`
-  - Creates a frame profiler object.
+- `profiler.FrameProfiler(options?)`
+  - Callable class constructor for frame profiler objects.
   - Optional fields:
     - `budget_ms`
       - Frame budget used for `overruns`.

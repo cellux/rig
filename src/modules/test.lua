@@ -2,8 +2,19 @@ local M = ... or {}
 local time = require("time")
 local uv = require("uv")
 local sched = require("sched")
+local schema = require("schema")
 
 M._registered_cases = M._registered_cases or {}
+
+local non_empty_string_schema = schema.non_empty_string()
+local roots_schema = schema.array(non_empty_string_schema)
+local files_schema = schema.array(non_empty_string_schema)
+local jobs_schema = schema.number {
+   coerce = true,
+   min = 1,
+}:transform(function(value)
+   return math.max(1, math.floor(value))
+end)
 
 local function is_test_script_path(script_path)
    return type(script_path) == "string"
@@ -55,20 +66,9 @@ local function normalize_roots(roots)
    if roots == nil then
       return { "." }
    end
-   if type(roots) ~= "table" then
-      error("test.run expects roots to be a table if provided", 0)
-   end
-   if #roots == 0 then
+   local normalized = schema.assert(roots_schema, roots, "test.run roots")
+   if #normalized == 0 then
       return { "." }
-   end
-
-   local normalized = {}
-   for i = 1, #roots do
-      local root = roots[i]
-      if type(root) ~= "string" or root == "" then
-         error(("test.run expects roots[%d] to be a non-empty string"):format(i), 0)
-      end
-      table.insert(normalized, root)
    end
    return normalized
 end
@@ -77,15 +77,7 @@ local function normalize_jobs(value)
    if value == nil then
       return 1
    end
-   local jobs = tonumber(value)
-   if jobs == nil or jobs < 1 then
-      error("test.run expects jobs to be a positive number if provided", 0)
-   end
-   jobs = math.floor(jobs)
-   if jobs < 1 then
-      jobs = 1
-   end
-   return jobs
+   return schema.assert(jobs_schema, value, "test.run jobs")
 end
 
 local function discover_files(roots)
@@ -335,8 +327,8 @@ function M.run(options)
    local files = opts.files
    if files == nil then
       files = discover_files(roots)
-   elseif type(files) ~= "table" then
-      error("test.run expects files to be a table if provided", 0)
+   else
+      files = schema.assert(files_schema, files, "test.run files")
    end
 
    local results = {}

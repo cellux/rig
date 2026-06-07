@@ -1,4 +1,16 @@
 local M = ... or {}
+local schema = require("schema")
+
+local indent_schema = schema.one_of({
+   schema.integer {
+      min = 0,
+   },
+   schema.string(),
+}, "a string or non-negative integer")
+
+local repr_options_schema = schema.record({
+   indent = indent_schema:optional(),
+})
 
 local function is_identifier(key)
    return type(key) == "string" and key:match("^[_%a][_%w]*$") ~= nil
@@ -10,23 +22,15 @@ local function normalize_options(options)
          indent = nil,
       }
    end
-   if type(options) ~= "table" then
-      error("repr.repr expects options to be a table if provided", 0)
-   end
-
-   local indent = options.indent
+   local normalized = schema.assert(repr_options_schema, options, "repr.repr options")
+   local indent = normalized.indent
    if indent == nil then
       return {
          indent = nil,
       }
    end
    if type(indent) == "number" then
-      if indent < 0 or indent ~= math.floor(indent) then
-         error("repr.repr expects options.indent to be a non-negative integer or string", 0)
-      end
       indent = string.rep(" ", indent)
-   elseif type(indent) ~= "string" then
-      error("repr.repr expects options.indent to be a string or non-negative integer", 0)
    end
 
    return {

@@ -1,6 +1,7 @@
 local M = ... or {}
 local ffi = require("ffi")
 local sched = require("sched")
+local schema = require("schema")
 require("time")
 
 ffi.cdef[[
@@ -58,6 +59,17 @@ M._active_exit_callbacks = M._active_exit_callbacks or {}
 M._active_scandir_callbacks = M._active_scandir_callbacks or {}
 M._active_timer_callbacks = M._active_timer_callbacks or {}
 
+local non_empty_string_schema = schema.non_empty_string()
+local string_array_schema = schema.array(schema.string())
+local uv_module_config_schema = schema.record({
+   main = schema.func():optional(),
+})
+local spawn_spec_schema = schema.record({
+   file = non_empty_string_schema,
+   args = string_array_schema:optional(),
+   cwd = non_empty_string_schema:optional(),
+})
+
 local function uv_error_string(err)
    local ptr = ffi.C.rig_uv_strerror(err)
    if ptr == nil or ptr == ffi.NULL then
@@ -70,10 +82,11 @@ local function normalize_module_config(options)
    if options == nil then
       return {}
    end
-   if type(options) ~= "table" then
-      error("uv module configuration must be a table if provided", 0)
-   end
-   return options
+   return schema.assert(
+      uv_module_config_schema,
+      options,
+      "uv module configuration"
+   )
 end
 
 local function get_uv_module_config(options)
@@ -110,33 +123,16 @@ local function clear_callback_references()
 end
 
 local function normalize_spawn_spec(spec)
-   if type(spec) ~= "table" then
-      error("uv.spawn expects a table", 0)
-   end
-   if type(spec.file) ~= "string" or spec.file == "" then
-      error("uv.spawn requires spec.file to be a non-empty string", 0)
-   end
-   if spec.cwd ~= nil and (type(spec.cwd) ~= "string" or spec.cwd == "") then
-      error("uv.spawn expects spec.cwd to be a non-empty string if provided", 0)
-   end
-
-   local args_list = spec.args
+   local normalized = schema.assert(spawn_spec_schema, spec, "uv.spawn spec")
+   local args_list = normalized.args
    if args_list == nil then
-      args_list = { spec.file }
-   elseif type(args_list) ~= "table" then
-      error("uv.spawn expects spec.args to be a table if provided", 0)
-   end
-
-   for i = 1, #args_list do
-      if type(args_list[i]) ~= "string" then
-         error(("uv.spawn expects spec.args[%d] to be a string"):format(i), 0)
-      end
+      args_list = { normalized.file }
    end
 
    return {
-      file = spec.file,
+      file = normalized.file,
       args = args_list,
-      cwd = spec.cwd,
+      cwd = normalized.cwd,
    }
 end
 

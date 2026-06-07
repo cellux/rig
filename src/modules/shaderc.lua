@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local schema = require("schema")
 
 ffi.cdef[[
 typedef struct shaderc_compiler* shaderc_compiler_t;
@@ -130,6 +131,24 @@ M.SHADERSTAGE_VERTEX = "vertex"
 M.SHADERSTAGE_FRAGMENT = "fragment"
 M.SHADERSTAGE_COMPUTE = "compute"
 
+local shaderc_compile_options_schema = schema.record({
+   source = schema.string(),
+   stage = schema.enum({
+      M.SHADERSTAGE_VERTEX,
+      M.SHADERSTAGE_FRAGMENT,
+      M.SHADERSTAGE_COMPUTE,
+   }),
+   source_name = schema.string():optional(),
+   entrypoint = schema.string():optional(),
+   glsl_version = schema.integer {
+      min = 0,
+   }:optional(),
+   optimization = schema.string():optional(),
+   debug_info = schema.boolean():optional(),
+   preserve_bindings = schema.boolean():optional(),
+   macro_definitions = schema.map(schema.string(), schema.any()):optional(),
+})
+
 local SHADER_KIND = {
    vertex = 0,
    fragment = 1,
@@ -223,20 +242,19 @@ local function apply_macro_definitions(lib, compile_options, macros)
 end
 
 function M.compile_spirv(options)
-   if type(options) ~= "table" then
-      error("shaderc.compile_spirv expects a table")
-   end
+   local normalized = schema.assert(
+      shaderc_compile_options_schema,
+      options,
+      "shaderc.compile_spirv options"
+   )
 
-   local stage = options.stage
+   local stage = normalized.stage
    local shader_kind = SHADER_KIND[stage]
    if shader_kind == nil then
       error("shaderc.compile_spirv requires stage to be 'vertex', 'fragment', or 'compute'")
    end
 
-   local source = options.source
-   if type(source) ~= "string" then
-      error("shaderc.compile_spirv requires source to be a string")
-   end
+   local source = normalized.source
 
    local lib = load_library()
    local compiler = lib.shaderc_compiler_initialize()
@@ -257,33 +275,33 @@ function M.compile_spirv(options)
    lib.shaderc_compile_options_set_auto_map_locations(compile_options, false)
    lib.shaderc_compile_options_set_preserve_bindings(
       compile_options,
-      options.preserve_bindings and true or false
+      normalized.preserve_bindings and true or false
    )
 
-   if options.glsl_version ~= nil then
+   if normalized.glsl_version ~= nil then
       lib.shaderc_compile_options_set_forced_version_profile(
          compile_options,
-         options.glsl_version,
+         normalized.glsl_version,
          0
       )
    end
 
-   if options.debug_info then
+   if normalized.debug_info then
       lib.shaderc_compile_options_set_generate_debug_info(compile_options)
    end
 
-   if options.optimization == "size" then
+   if normalized.optimization == "size" then
       lib.shaderc_compile_options_set_optimization_level(compile_options, 1)
-   elseif options.optimization == "performance" then
+   elseif normalized.optimization == "performance" then
       lib.shaderc_compile_options_set_optimization_level(compile_options, 2)
    else
       lib.shaderc_compile_options_set_optimization_level(compile_options, 0)
    end
 
-   apply_macro_definitions(lib, compile_options, options.macro_definitions)
+   apply_macro_definitions(lib, compile_options, normalized.macro_definitions)
 
-   local source_name = options.source_name or "shader.glsl"
-   local entrypoint = options.entrypoint or "main"
+   local source_name = normalized.source_name or "shader.glsl"
+   local entrypoint = normalized.entrypoint or "main"
    local result = lib.shaderc_compile_into_spv(
       compiler,
       source,

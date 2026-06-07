@@ -1,6 +1,36 @@
 local test = require("test")
 local sdl3 = require("sdl3")
 
+test.case("sdl3 runtime options validate event handlers and driver config shapes", function()
+   local bad_handlers_ok, bad_handlers_err = pcall(function()
+      rig.run {
+         driver = "sdl3",
+         event_handlers = {
+            key = "bad",
+         },
+      }
+   end)
+   test.falsey(bad_handlers_ok)
+   test.match(
+      tostring(bad_handlers_err),
+      "rig%.run options%.event_handlers%.key expects a function"
+   )
+
+   local bad_config_ok, bad_config_err = pcall(function()
+      rig.run {
+         driver = "sdl3",
+         driver_config = {
+            sdl3 = "bad",
+         },
+      }
+   end)
+   test.falsey(bad_config_ok)
+   test.match(
+      tostring(bad_config_err),
+      "rig%.run options%.driver_config%.sdl3 expects a table"
+   )
+end)
+
 test.case("sdl3 exposes time-related SDL APIs", function()
    test.equal(type(sdl3.GetCurrentTime), "function")
    test.equal(type(sdl3.GetTicks), "function")

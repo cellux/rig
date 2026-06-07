@@ -18,7 +18,7 @@ local ant_scale = 1.0
 
 local ants = {}
 local rect = ffi.new("SDL_FRect[1]")
-local frame_profiler = profiler.create_frame_profiler()
+local frame_profiler = profiler.FrameProfiler()
 local slider = {
    x = nil,
    y = 14,

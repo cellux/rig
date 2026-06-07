@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local schema = require("schema")
 
 ffi.cdef[[
 typedef unsigned char BYTE;
@@ -172,6 +173,20 @@ M.SHADERSTAGE_VERTEX = "vertex"
 M.SHADERSTAGE_FRAGMENT = "fragment"
 M.SHADERSTAGE_COMPUTE = "compute"
 
+local dxc_compile_options_schema = schema.record({
+   source = schema.string(),
+   stage = schema.enum({
+      M.SHADERSTAGE_VERTEX,
+      M.SHADERSTAGE_FRAGMENT,
+      M.SHADERSTAGE_COMPUTE,
+   }):optional(M.SHADERSTAGE_VERTEX),
+   entrypoint = schema.string():optional(),
+   source_name = schema.string():optional(),
+   extra_args = schema.array(schema.string()):optional(),
+   preserve_bindings = schema.boolean():optional(),
+   preserve_interface = schema.boolean():optional(),
+})
+
 local dxc_state = {
    library = nil,
    error = nil,
@@ -330,12 +345,11 @@ local function has_error_message(messages)
 end
 
 function M.compile_spirv(options)
-   if type(options) ~= "table" then
-      error("dxc.compile_spirv expects a table")
-   end
-   if type(options.source) ~= "string" then
-      error("dxc.compile_spirv requires source to be a string")
-   end
+   local normalized = schema.assert(
+      dxc_compile_options_schema,
+      options,
+      "dxc.compile_spirv options"
+   )
 
    local lib = load_dxc_library()
    local compiler_out = ffi.new("void *[1]")
@@ -347,11 +361,11 @@ function M.compile_spirv(options)
    end
 
    local compiler = ffi.cast("IDxcCompiler3 *", compiler_out[0])
-   local stage = options.stage or M.SHADERSTAGE_VERTEX
-   local entrypoint = options.entrypoint or "main"
+   local stage = normalized.stage
+   local entrypoint = normalized.entrypoint or "main"
    local target = build_stage_target(stage)
 
-   local source_name = options.source_name or "shader.hlsl"
+   local source_name = normalized.source_name or "shader.hlsl"
    local wide_args = {
       ascii_wide(source_name, "source_name"),
       ascii_wide("-spirv", "internal argument"),
@@ -361,20 +375,17 @@ function M.compile_spirv(options)
       ascii_wide(target, "target profile"),
    }
 
-   if options.preserve_bindings ~= false then
+   if normalized.preserve_bindings ~= false then
       table.insert(wide_args, ascii_wide("-fspv-preserve-bindings", "internal argument"))
    end
-   if options.preserve_interface ~= false then
+   if normalized.preserve_interface ~= false then
       table.insert(wide_args, ascii_wide("-fspv-preserve-interface", "internal argument"))
    end
 
-   if type(options.extra_args) == "table" then
-      for i, arg in ipairs(options.extra_args) do
+   if type(normalized.extra_args) == "table" then
+      for i, arg in ipairs(normalized.extra_args) do
          table.insert(wide_args, ascii_wide(arg, ("extra_args[%d]"):format(i)))
       end
-   elseif options.extra_args ~= nil then
-      release_com(compiler)
-      error("extra_args must be a table if set")
    end
 
    local arg_array = ffi.new("const wchar_t *[?]", #wide_args)
@@ -382,13 +393,13 @@ function M.compile_spirv(options)
       arg_array[i - 1] = arg
    end
 
-   local source_buffer = ffi.new("char[?]", #options.source + 1)
-   ffi.copy(source_buffer, options.source, #options.source)
-   source_buffer[#options.source] = 0
+   local source_buffer = ffi.new("char[?]", #normalized.source + 1)
+   ffi.copy(source_buffer, normalized.source, #normalized.source)
+   source_buffer[#normalized.source] = 0
 
    local source = ffi.new("DxcBuffer[1]")
    source[0].Ptr = source_buffer
-   source[0].Size = #options.source
+   source[0].Size = #normalized.source
    source[0].Encoding = DXC_CP_UTF8
 
    local result_out = ffi.new("void *[1]")

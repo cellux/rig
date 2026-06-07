@@ -139,7 +139,7 @@ local function initialize_scene()
    scene.start_time = time.monotonic()
    font_path = find_font_path()
    face = font.load_face(font_path)
-   frame_profiler = profiler.create_frame_profiler()
+   frame_profiler = profiler.FrameProfiler()
    profiler_style = font.create_style(face, {
       pixel_size = 14,
       page_width = 256,

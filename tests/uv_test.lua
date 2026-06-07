@@ -31,3 +31,20 @@ test.case("sched.sleep waits under uv mode", function()
 
    test.truthy(elapsed >= 0.005)
 end)
+
+test.case("uv.spawn validates spec through schema before awaiting", function()
+   local missing_file_ok, missing_file_err = pcall(function()
+      uv.spawn({})
+   end)
+   test.falsey(missing_file_ok)
+   test.match(tostring(missing_file_err), "uv%.spawn spec%.file expects a non%-empty string")
+
+   local bad_args_ok, bad_args_err = pcall(function()
+      uv.spawn {
+         file = rig.argv[0],
+         args = { rig.argv[0], 123 },
+      }
+   end)
+   test.falsey(bad_args_ok)
+   test.match(tostring(bad_args_err), "uv%.spawn spec%.args%[2%] expects a string")
+end)
