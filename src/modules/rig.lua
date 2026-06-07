@@ -1,6 +1,7 @@
 local M = ... or {}
 local oop = require("oop")
 local repr = require("repr")
+local schema = require("schema")
 
 M.repr = repr.repr
 M.class = oop.class
@@ -189,76 +190,49 @@ for i = 1, #core_runtime_phase_names do
    core_runtime_phases[core_runtime_phase_names[i]] = true
 end
 
+local non_empty_string_schema = schema.non_empty_string()
+local unique_non_empty_string_array_schema = schema.array(
+   non_empty_string_schema,
+   { unique = true }
+)
+local string_to_string_map_schema = schema.map(
+   non_empty_string_schema,
+   non_empty_string_schema
+)
+local option_hooks_schema = schema.map(
+   non_empty_string_schema,
+   schema.func()
+)
+
 local function normalize_service_method_names(method_names)
-   if type(method_names) ~= "table" then
-      error("rig.create_service expects method_names to be a table", 0)
-   end
-
-   local copied = {}
-   local seen = {}
-
-   for i = 1, #method_names do
-      local method_name = method_names[i]
-      if type(method_name) ~= "string" or method_name == "" then
-         error(
-            ("rig.create_service expects method_names[%d] to be a non-empty string"):format(i),
-            0
-         )
-      end
-      if seen[method_name] then
-         error(
-            ("rig.create_service received duplicate method name '%s'"):format(method_name),
-            0
-         )
-      end
-      copied[i] = method_name
-      seen[method_name] = true
-   end
-
-   return copied
+   return schema.assert(
+      unique_non_empty_string_array_schema,
+      method_names,
+      "rig.create_service method_names"
+   )
 end
 
 local function normalize_service_provider_map(map, label)
    if map == nil then
       return {}
    end
-   if type(map) ~= "table" then
-      error(label, 0)
-   end
 
-   local copied = {}
-   for service_id, provider_id in pairs(map) do
-      if type(service_id) ~= "string" or service_id == "" then
-         error(label .. " (service ids must be non-empty strings)", 0)
-      end
-      if type(provider_id) ~= "string" or provider_id == "" then
-         error(label .. " (provider ids must be non-empty strings)", 0)
-      end
-      copied[service_id] = provider_id
-   end
-
-   return copied
+   return schema.assert(string_to_string_map_schema, map, label)
 end
 
 local function normalize_driver_phase_names(phase_names, label)
    if phase_names == nil then
       return {}
    end
-   if type(phase_names) ~= "table" then
-      error(label, 0)
-   end
 
-   local copied = {}
-   local seen = {}
+   local copied = schema.assert(
+      unique_non_empty_string_array_schema,
+      phase_names,
+      label
+   )
 
-   for i = 1, #phase_names do
-      local phase_name = phase_names[i]
-      if type(phase_name) ~= "string" or phase_name == "" then
-         error(
-            ("%s (%d must be a non-empty string)"):format(label, i),
-            0
-         )
-      end
+   for i = 1, #copied do
+      local phase_name = copied[i]
       if core_runtime_phases[phase_name] then
          error(
             ("%s ('%s' is a core runtime phase and must not be redeclared)"):format(
@@ -268,14 +242,6 @@ local function normalize_driver_phase_names(phase_names, label)
             0
          )
       end
-      if seen[phase_name] then
-         error(
-            ("%s (duplicate phase '%s')"):format(label, phase_name),
-            0
-         )
-      end
-      copied[i] = phase_name
-      seen[phase_name] = true
    end
 
    return copied
@@ -479,17 +445,15 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
    if hooks == nil then
       return nil
    end
-   if type(hooks) ~= "table" then
-      error("rig.run expects options.hooks to be a table", 0)
-   end
 
    local allowed_phases = self:build_phase_set()
-   local normalized = {}
+   local normalized = schema.assert(
+      option_hooks_schema,
+      hooks,
+      "rig.run options.hooks"
+   )
 
-   for phase, hook_function in pairs(hooks) do
-      if type(phase) ~= "string" or phase == "" then
-         error("rig.run expects options.hooks keys to be non-empty strings", 0)
-      end
+   for phase in pairs(normalized) do
       if not allowed_phases[phase] then
          error(
             ("rig.run runtime '%s' does not know hook phase '%s'"):format(
@@ -499,17 +463,6 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
             0
          )
       end
-
-      if type(hook_function) ~= "function" then
-         error(
-            ("rig.run expects options.hooks.%s to be a function"):format(
-               phase
-            ),
-            0
-         )
-      end
-
-      normalized[phase] = hook_function
    end
 
    return normalized
