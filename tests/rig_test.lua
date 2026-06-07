@@ -78,6 +78,29 @@ print("rig.argv[3]=" .. tostring(rig.argv[3]))
    test.contains_line(result.stdout, "rig.argv[3]=beta")
 end)
 
+test.case("rig.printf formats through string.format and prints without newline", function()
+   local script_path = os.tmpname()
+   local script_file = assert(io.open(script_path, "w"))
+   script_file:write([[
+rig.printf("%s=%d", "alpha", 42)
+rig.println(" done")
+]])
+   script_file:close()
+
+   local result = uv.spawn {
+      file = rig.argv[0],
+      args = {
+         rig.argv[0],
+         script_path,
+      },
+   }
+
+   os.remove(script_path)
+
+   test.truthy(result.success, result.stderr)
+   test.contains_line(result.stdout, "alpha=42 done")
+end)
+
 test.case("repr module entrypoints agree", function()
    test.equal(repr({
       a = 1,

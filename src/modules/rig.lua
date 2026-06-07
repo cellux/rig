@@ -39,6 +39,10 @@ function M.print(...)
    print_values(false, ...)
 end
 
+function M.printf(format_string, ...)
+   M.print(string.format(format_string, ...))
+end
+
 function M.println(...)
    print_values(true, ...)
 end
