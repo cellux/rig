@@ -4,16 +4,6 @@
 
 #include <lauxlib.h>
 
-void rig_push_module(lua_State *L, const char *module_name) {
-  lua_getglobal(L, module_name);
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    lua_newtable(L);
-    lua_pushvalue(L, -1);
-    lua_setglobal(L, module_name);
-  }
-}
-
 int rig_push_module_function(lua_State *L, const char *module_name,
                              const char *function_name) {
   lua_getglobal(L, module_name);
@@ -117,9 +107,8 @@ static int rig_execute_module_chunk(lua_State *L, const rig_module_desc *module,
 }
 
 static int rig_load_module(lua_State *L, const rig_module_desc *module) {
-  int published = 0;
+  lua_newtable(L);
 
-  rig_push_module(L, module->name);
   int top_with_context = lua_gettop(L);
 
   if (module->register_fn != NULL) {
@@ -138,10 +127,6 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
                                  top_with_context) != 0) {
       return -1;
     }
-    if (rig_publish_module(L, module->name) != 0) {
-      return -1;
-    }
-    published = 1;
   }
 
   if (module->fennel_bytecode != NULL && module->fennel_bytecode_len != NULL) {
@@ -150,13 +135,9 @@ static int rig_load_module(lua_State *L, const rig_module_desc *module) {
                                  top_with_context) != 0) {
       return -1;
     }
-    if (rig_publish_module(L, module->name) != 0) {
-      return -1;
-    }
-    published = 1;
   }
 
-  if (!published && rig_publish_module(L, module->name) != 0) {
+  if (rig_publish_module(L, module->name) != 0) {
     return -1;
   }
 

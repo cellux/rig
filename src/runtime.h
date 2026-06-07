@@ -21,7 +21,6 @@ typedef struct rig_module_desc {
 extern const rig_module_desc rig_modules[];
 extern const size_t rig_module_count;
 
-void rig_push_module(lua_State *L, const char *module_name);
 int rig_push_module_function(lua_State *L, const char *module_name,
                              const char *function_name);
 int rig_invoke_module_function(lua_State *L, const char *module_name,
