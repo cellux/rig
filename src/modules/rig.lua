@@ -1,55 +1,18 @@
 local M = ... or {}
-local lua_tostring = _G.tostring
+local repr = require("repr")
 
-local function is_identifier(key)
-   return type(key) == "string" and key:match("^[_%a][_%w]*$") ~= nil
-end
-
-local function serialize_lua(value, seen)
-   local value_type = type(value)
-
-   if value_type ~= "table" then
-      if value_type == "string" then
-         return string.format("%q", value)
-      end
-      return tostring(value)
-   end
-
-   if seen[value] then
-      return "{ --[[cycle]] }"
-   end
-   seen[value] = true
-
-   local parts = {}
-   for k, v in pairs(value) do
-      local val_repr = serialize_lua(v, seen)
-      local key_repr
-      if is_identifier(k) then
-         key_repr = k
-      else
-         key_repr = "[" .. serialize_lua(k, seen) .. "]"
-      end
-      table.insert(parts, key_repr .. " = " .. val_repr)
-   end
-
-   seen[value] = nil
-   return "{" .. table.concat(parts, ", ") .. "}"
-end
+M.repr = repr.repr
 
 function M.tostring(value)
    if type(value) == "table" then
-      return serialize_lua(value, {})
+      return M.repr(value)
    end
-   return lua_tostring(value)
+   return tostring(value)
 end
 
-local function write_values(with_newline, ...)
+local function print_values(with_newline, ...)
    local parts = {}
    local stringify = M.tostring
-
-   if type(stringify) ~= "function" then
-      stringify = lua_tostring
-   end
 
    for i = 1, select("#", ...) do
       local text = stringify(select(i, ...))
@@ -73,11 +36,11 @@ local function write_values(with_newline, ...)
 end
 
 function M.print(...)
-   write_values(false, ...)
+   print_values(false, ...)
 end
 
 function M.println(...)
-   write_values(true, ...)
+   print_values(true, ...)
 end
 
 local resource_scope_mt = {}

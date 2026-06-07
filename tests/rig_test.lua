@@ -1,5 +1,6 @@
 local test = require("test")
 local uv = require("uv")
+local repr = require("repr")
 
 test.case("rig globals are available", function()
    test.equal(type(rig), "table")
@@ -75,6 +76,20 @@ print("rig.argv[3]=" .. tostring(rig.argv[3]))
    test.contains_line(result.stdout, "rig.argv[1]=" .. script_path)
    test.contains_line(result.stdout, "rig.argv[2]=alpha")
    test.contains_line(result.stdout, "rig.argv[3]=beta")
+end)
+
+test.case("repr module entrypoints agree", function()
+   test.equal(repr({
+      a = 1,
+   }), '{a = 1}')
+   test.equal(repr.repr({ a = 1 }), rig.repr({ a = 1 }))
+end)
+
+test.case("rig.tostring keeps non-table values unquoted", function()
+   test.equal(rig.tostring("hello"), "hello")
+   test.equal(rig.tostring({
+      a = 1,
+   }), "{a = 1}")
 end)
 
 test.case("resource scope releases in the expected order", function()

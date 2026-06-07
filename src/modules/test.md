@@ -18,7 +18,7 @@ Async test-runner helpers built on top of `uv` and `sched`.
   - Fails unless `value` is falsey.
 - `test.equal(actual, expected[, message])`
   - Fails unless `actual == expected`.
-  - On failure it prints both values using `rig.tostring(...)` when available.
+  - On failure it prints both values using `rig.tostring(...)`.
 - `test.match(value, pattern[, message])`
   - Fails unless `value:match(pattern)` succeeds.
   - `value` must be a string.

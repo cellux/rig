@@ -1,5 +1,6 @@
 # One module name per line; order defines load order.
 fennel
+repr
 rig
 dl
 freetype

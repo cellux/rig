@@ -2,7 +2,6 @@ local M = ... or {}
 local time = require("time")
 local uv = require("uv")
 local sched = require("sched")
-local lua_tostring = _G.tostring
 
 M._registered_cases = M._registered_cases or {}
 
@@ -16,12 +15,6 @@ end
 
 local function reset_registered_cases()
    M._registered_cases = {}
-end
-
-local function stringify(value)
-   local tostring_fn = rig ~= nil and type(rig.tostring) == "function"
-      and rig.tostring or lua_tostring
-   return tostring_fn(value)
 end
 
 local function format_multiline(text, prefix)
@@ -210,8 +203,8 @@ function M.equal(actual, expected, message)
    else
       table.insert(parts, "expected values to be equal")
    end
-   table.insert(parts, "expected: " .. stringify(expected))
-   table.insert(parts, "actual:   " .. stringify(actual))
+   table.insert(parts, "expected: " .. rig.tostring(expected))
+   table.insert(parts, "actual:   " .. rig.tostring(actual))
    fail_with_message(table.concat(parts, "\n"))
 end
 
@@ -237,7 +230,7 @@ function M.match(value, pattern, message)
       table.insert(parts, "expected string to match pattern")
    end
    table.insert(parts, "pattern: " .. pattern)
-   table.insert(parts, "value:   " .. stringify(value))
+   table.insert(parts, "value:   " .. rig.tostring(value))
    fail_with_message(table.concat(parts, "\n"))
 end
 
@@ -265,7 +258,7 @@ function M.contains_line(value, expected_line, message)
       table.insert(parts, "expected string to contain line")
    end
    table.insert(parts, "expected line: " .. expected_line)
-   table.insert(parts, "value:         " .. stringify(value))
+   table.insert(parts, "value:         " .. rig.tostring(value))
    fail_with_message(table.concat(parts, "\n"))
 end
 
