@@ -206,6 +206,10 @@ local option_hooks_schema = schema.map(
    non_empty_string_schema,
    schema.func()
 )
+local runtime_preset_schema = schema.record({
+   driver = non_empty_string_schema,
+   providers = string_to_string_map_schema:optional(),
+})
 local resolve_runtime_options_schema = schema.record({
    mode = non_empty_string_schema:optional(),
    driver = non_empty_string_schema:optional(),
@@ -513,28 +517,16 @@ function M.register_runtime_preset(name, preset)
    if type(name) ~= "string" or name == "" then
       raise("rig.register_runtime_preset expects name to be a non-empty string")
    end
-   if type(preset) ~= "table" then
-      raise("rig.register_runtime_preset expects preset to be a table")
-   end
    if _runtime_presets[name] ~= nil then
       raise("rig.register_runtime_preset already has a runtime preset '%s'", name)
    end
 
-   local driver_id = preset.driver
-   if driver_id == nil then
-      driver_id = name
-   end
-   if type(driver_id) ~= "string" or driver_id == "" then
-      raise("rig.register_runtime_preset expects preset.driver to be a non-empty string")
-   end
-
-   local normalized = {
-      driver = driver_id,
-      providers = normalize_service_provider_map(
-         preset.providers,
-         "rig.register_runtime_preset expects preset.providers to be a table if provided"
-      ),
-   }
+   local normalized = schema.assert(
+      runtime_preset_schema,
+      preset,
+      "rig.register_runtime_preset preset"
+   )
+   normalized.providers = normalized.providers or {}
 
    _runtime_presets[name] = normalized
    return normalized

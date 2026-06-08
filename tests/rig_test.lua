@@ -277,6 +277,27 @@ test.case("service registry validates providers and resolves by active providers
    test.falsey(duplicate_preset_ok)
    test.match(tostring(duplicate_preset_err), "already has a runtime preset")
 
+   local extra_preset_field_ok, extra_preset_field_err = pcall(function()
+      rig.register_runtime_preset("rig_test_service_preset_extra_field", {
+         driver = "rig_test_service_driver",
+         extra = true,
+      })
+   end)
+   test.falsey(extra_preset_field_ok)
+   test.match(
+      tostring(extra_preset_field_err),
+      "rig%.register_runtime_preset preset%.extra is not allowed"
+   )
+
+   local missing_driver_ok, missing_driver_err = pcall(function()
+      rig.register_runtime_preset("rig_test_service_preset_missing_driver", {})
+   end)
+   test.falsey(missing_driver_ok)
+   test.match(
+      tostring(missing_driver_err),
+      "rig%.register_runtime_preset preset%.driver expects a non%-empty string"
+   )
+
    rig.run {
       mode = "rig_test_service_preset",
    }

@@ -43,7 +43,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `driver.phases` may declare additional hook phases beyond the core runtime phases.
 - `rig.register_runtime_preset(name, preset)`
   - Registers a named preset that selects one driver plus default service providers.
-  - `preset.driver` selects the runtime driver.
+  - `preset.driver` is required and selects the runtime driver.
   - `preset.providers[service_id] = provider_id` sets default service providers for that preset.
 - `rig.register_runtime_hook(phase, hook)`
   - Registers a hook function for a named runtime phase.
