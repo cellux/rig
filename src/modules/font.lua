@@ -61,7 +61,10 @@ local function normalize_atlas_dimension(name, value, default_value)
 
    local normalized = tonumber(value)
    if normalized == nil or normalized <= 0 then
-      rig.raise(("font.create_atlas expects options.%s to be a positive number if provided"):format(name))
+      rig.raise(
+         "font.create_atlas expects options.%s to be a positive number if provided",
+         name
+      )
    end
 
    normalized = math.floor(normalized)
@@ -80,7 +83,7 @@ local function ensure_freetype_library()
    local library_out = ffi.new("FT_Library[1]")
    local rc = freetype.Init_FreeType(library_out)
    if rc ~= 0 then
-      rig.raise(("freetype.Init_FreeType failed with error %d"):format(rc))
+      rig.raise("freetype.Init_FreeType failed with error %d", rc)
    end
 
    freetype_library = library_out[0]
@@ -124,13 +127,11 @@ local function open_face(path, face_index)
    local face_out = ffi.new("FT_Face[1]")
    local rc = freetype.New_Face(ensure_freetype_library(), path, face_index, face_out)
    if rc ~= 0 then
-      error(
-         ("freetype.New_Face failed for '%s' (face %d) with error %d"):format(
-            path,
-            face_index,
-            rc
-         ),
-         0
+      rig.raise(
+         "freetype.New_Face failed for '%s' (face %d) with error %d",
+         path,
+         face_index,
+         rc
       )
    end
 
@@ -335,13 +336,11 @@ function M.create_sized_face(face, pixel_size)
    local rc = freetype.Set_Pixel_Sizes(ft_face, 0, normalized_pixel_size)
    if rc ~= 0 then
       freetype.Done_Face(ft_face)
-      error(
-         ("freetype.Set_Pixel_Sizes failed for '%s' size %d with error %d"):format(
-            face.path,
-            normalized_pixel_size,
-            rc
-         ),
-         0
+      rig.raise(
+         "freetype.Set_Pixel_Sizes failed for '%s' size %d with error %d",
+         face.path,
+         normalized_pixel_size,
+         rc
       )
    end
 
@@ -570,12 +569,10 @@ function M.rasterize_glyph(sized_face, glyph_id, options)
 
    local rc = freetype.Load_Glyph(sized_face._ft_face, normalized_glyph_id, load_flags)
    if rc ~= 0 then
-      error(
-         ("freetype.Load_Glyph failed for glyph %d with error %d"):format(
-            normalized_glyph_id,
-            rc
-         ),
-         0
+      rig.raise(
+         "freetype.Load_Glyph failed for glyph %d with error %d",
+         normalized_glyph_id,
+         rc
       )
    end
 
@@ -587,12 +584,10 @@ function M.rasterize_glyph(sized_face, glyph_id, options)
    if bit.band(load_flags, freetype.LOAD_RENDER) == 0 then
       local render_rc = freetype.Render_Glyph(glyph, render_mode)
       if render_rc ~= 0 then
-         error(
-            ("freetype.Render_Glyph failed for glyph %d with error %d"):format(
-               normalized_glyph_id,
-               render_rc
-            ),
-            0
+         rig.raise(
+            "freetype.Render_Glyph failed for glyph %d with error %d",
+            normalized_glyph_id,
+            render_rc
          )
       end
    end
@@ -652,14 +647,12 @@ local function choose_page_for_glyph(atlas, glyph_width, glyph_height)
    local needed_height = glyph_height + padding * 2
 
    if needed_width > atlas.page_width or needed_height > atlas.page_height then
-      error(
-         ("glyph %dx%d does not fit into atlas page %dx%d"):format(
-            glyph_width,
-            glyph_height,
-            atlas.page_width,
-            atlas.page_height
-         ),
-         0
+      rig.raise(
+         "glyph %dx%d does not fit into atlas page %dx%d",
+         glyph_width,
+         glyph_height,
+         atlas.page_width,
+         atlas.page_height
       )
    end
 
@@ -729,10 +722,7 @@ local function write_gray_glyph(page, glyph, dest_x, dest_y)
             page.buffer[dest_offset + col] = on and 255 or 0
          end
       else
-         error(
-            ("font atlas does not support pixel_mode %d"):format(glyph.pixel_mode),
-            0
-         )
+         rig.raise("font atlas does not support pixel_mode %d", glyph.pixel_mode)
       end
    end
 end

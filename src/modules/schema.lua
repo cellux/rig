@@ -133,10 +133,8 @@ function M.ArraySchema:decode(value, path)
       local item = self.item_schema:decode(value[i], index_path(path, i))
       if self.unique then
          if seen[item] then
-            error(
-               index_path(path, i) .. " duplicates an earlier array value",
-               0
-            )
+            raise(
+               index_path(path, i) .. " duplicates an earlier array value")
          end
          seen[item] = true
       end

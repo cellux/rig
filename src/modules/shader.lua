@@ -149,12 +149,12 @@ function M.compile(options)
       }
    end
    if compiled == nil then
-      rig.raise(tostring(compile_err or "shader compilation failed"))
+      rig.raise(compile_err or "shader compilation failed")
    end
 
    local reflection, reflection_err = spirvcross.reflect_spirv(compiled)
    if reflection == nil then
-      rig.raise(tostring(reflection_err or "SPIR-V reflection failed"))
+      rig.raise(reflection_err or "SPIR-V reflection failed")
    end
 
    return {

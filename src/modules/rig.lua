@@ -39,13 +39,13 @@ local function print_values(stream, with_newline, ...)
 
    local ok, err = stream:write(output)
    if not ok then
-      raise(tostring(err or "failed to write output"))
+      raise(err or "failed to write output")
    end
 
    if type(stream.flush) == "function" then
       ok, err = stream:flush()
       if not ok then
-         raise(tostring(err or "failed to flush output"))
+         raise(err or "failed to flush output")
       end
    end
 end
@@ -237,12 +237,10 @@ local function normalize_driver_phase_names(phase_names, label)
    for i = 1, #copied do
       local phase_name = copied[i]
       if core_runtime_phases[phase_name] then
-         error(
-            ("%s ('%s' is a core runtime phase and must not be redeclared)"):format(
-               label,
-               phase_name
-            ),
-            0
+         raise(
+            "%s ('%s' is a core runtime phase and must not be redeclared)",
+            label,
+            phase_name
          )
       end
    end
@@ -268,10 +266,7 @@ function M.ServiceRegistry:create_service(service_id, method_names)
    local methods = normalize_service_method_names(method_names)
    local existing = self:get(service_id)
    if existing ~= nil then
-      error(
-         ("rig.create_service already has a service '%s'"):format(service_id),
-         0
-      )
+      raise("rig.create_service already has a service '%s'", service_id)
    end
 
    local service = {
@@ -296,31 +291,24 @@ function M.ServiceRegistry:register_service_provider(service_id, provider_id, pr
 
    local service = self:get(service_id)
    if service == nil then
-      error(
-         ("rig.register_service_provider does not know service '%s'"):format(service_id),
-         0
-      )
+      raise("rig.register_service_provider does not know service '%s'", service_id)
    end
    if service.providers[provider_id] ~= nil then
-      error(
-         ("rig.register_service_provider already has a provider for service '%s' with id '%s'"):format(
-            service_id,
-            provider_id
-         ),
-         0
+      raise(
+         "rig.register_service_provider already has a provider for service '%s' with id '%s'",
+         service_id,
+         provider_id
       )
    end
 
    for i = 1, #service.methods do
       local method_name = service.methods[i]
       if type(provider[method_name]) ~= "function" then
-         error(
-            ("rig.register_service_provider requires provider '%s' for service '%s' to implement method '%s'"):format(
-               provider_id,
-               service_id,
-               method_name
-            ),
-            0
+         raise(
+            "rig.register_service_provider requires provider '%s' for service '%s' to implement method '%s'",
+            provider_id,
+            service_id,
+            method_name
          )
       end
    end
@@ -335,20 +323,15 @@ function M.ServiceRegistry:resolve_service_providers(providers)
    for service_id, provider_id in pairs(providers) do
       local service = self:get(service_id)
       if service == nil then
-         error(
-            ("references unknown service '%s'"):format(service_id),
-            0
-         )
+         raise("references unknown service '%s'", service_id)
       end
 
       local provider = service.providers[provider_id]
       if provider == nil then
-         error(
-            ("selects provider '%s' for service '%s', but no such provider is registered"):format(
-               provider_id,
-               service_id
-            ),
-            0
+         raise(
+            "selects provider '%s' for service '%s', but no such provider is registered",
+            provider_id,
+            service_id
          )
       end
 
@@ -410,21 +393,16 @@ function M.ActiveRuntime:init(spec)
       return
    end
 
-   error(("rig.run runtime '%s' %s"):format(
-      self.runtime_id,
-      tostring(service_providers_or_err)
-   ), 0)
+   raise("rig.run runtime '%s' %s", self.runtime_id, tostring(service_providers_or_err))
 end
 
 function M.ActiveRuntime:require_service(service_id)
    local provider = self.service_providers[service_id]
    if provider == nil then
-      error(
-         ("rig.require_service('%s') has no provider for active runtime '%s'"):format(
-            service_id,
-            self.runtime_id
-         ),
-         0
+      raise(
+         "rig.require_service('%s') has no provider for active runtime '%s'",
+         service_id,
+         self.runtime_id
       )
    end
 
@@ -458,12 +436,10 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
 
    for phase in pairs(normalized) do
       if not allowed_phases[phase] then
-         error(
-            ("rig.run runtime '%s' does not know hook phase '%s'"):format(
-               self.runtime_id,
-               phase
-            ),
-            0
+         raise(
+            "rig.run runtime '%s' does not know hook phase '%s'",
+            self.runtime_id,
+            phase
          )
       end
    end
@@ -496,12 +472,7 @@ function M.require_service(service_id)
    end
 
    if getmetatable(_active_runtime) ~= M.ActiveRuntime then
-      error(
-         ("rig.require_service('%s') requires an active runtime"):format(
-            service_id
-         ),
-         0
-      )
+      raise("rig.require_service('%s') requires an active runtime", service_id)
    end
 
    return _active_runtime:require_service(service_id)
@@ -562,10 +533,7 @@ local function resolve_runtime(options)
    if mode_id ~= nil then
       preset = _runtime_presets[mode_id]
       if preset == nil then
-         error(
-            ("rig.run does not know runtime mode '%s'"):format(mode_id),
-            0
-         )
+         raise("rig.run does not know runtime mode '%s'", mode_id)
       end
    end
 
@@ -582,16 +550,10 @@ local function resolve_runtime(options)
 
    local driver = _runtime_drivers[driver_id]
    if driver == nil then
-      error(
-         ("rig.run does not know runtime driver '%s'"):format(driver_id),
-         0
-      )
+      raise("rig.run does not know runtime driver '%s'", driver_id)
    end
    if type(driver.loop) ~= "function" then
-      error(
-         ("runtime driver '%s' is missing loop()"):format(driver_id),
-         0
-      )
+      raise("runtime driver '%s' is missing loop()", driver_id)
    end
 
    local providers = {}
@@ -700,7 +662,7 @@ M.script_loaders = {
 
 function M.load_script(script_path, source)
    if type(script_path) ~= "string" then
-      error("rig.load_script expects script_path to be a string")
+      raise("rig.load_script expects script_path to be a string")
    end
    if type(source) ~= "string" then
       error("rig.load_script expects source to be a string")
@@ -724,24 +686,20 @@ function M.load_script(script_path, source)
       ("failed to load script '%s' with any registered loader\n%s"):format(
          script_path,
          table.concat(loader_errors, "\n")
-      ),
-      0
-   )
+      ))
 end
 
 function M.run_script_file(script_path)
    if type(script_path) ~= "string" then
-      error("rig.run_script_file expects script_path to be a string")
+      raise("rig.run_script_file expects script_path to be a string")
    end
 
    local file, open_err = io.open(script_path, "rb")
    if file == nil then
-      error(
-         ("failed to open '%s': %s"):format(
-            script_path,
-            open_err or "unknown error"
-         ),
-         0
+      raise(
+         "failed to open '%s': %s",
+         script_path,
+         open_err or "unknown error"
       )
    end
 
@@ -749,26 +707,20 @@ function M.run_script_file(script_path)
    file:close()
 
    if source == nil then
-      error(
-         ("failed to read '%s': %s"):format(
-            script_path,
-            read_err or "unknown error"
-         ),
-         0
+      raise(
+         "failed to read '%s': %s",
+         script_path,
+         read_err or "unknown error"
       )
    end
 
    local result = M.load_script(script_path, source)
 
-   if script_path:match("_test%.lua$") ~= nil
-      or script_path:match("_test%.fnl$") ~= nil then
-      local test_mod = require("test")
-      if type(test_mod) == "table"
-         and type(test_mod.run_registered_cases) == "function" then
-         test_mod.run_registered_cases {
-            script_path = script_path,
-         }
-      end
+   if script_path:match("_test%.lua$")
+      or script_path:match("_test%.fnl$") then
+      require("test").run_registered_cases {
+         script_path = script_path,
+      }
    end
 
    return result

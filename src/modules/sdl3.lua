@@ -418,7 +418,7 @@ local function load_sdl_library()
       return sdl_library
    end
    if sdl_library_error ~= nil then
-      error(sdl_library_error)
+      rig.raise(sdl_library_error)
    end
 
    local candidates = {
@@ -1119,7 +1119,7 @@ local function normalize_gpu_shader_format(compiled)
    if numeric == nil then
       error(("compiled shader format '%s' is not supported by SDL GPU"):format(
          format
-      ), 0)
+      ))
    end
 
    return numeric
@@ -1164,7 +1164,7 @@ end
 
 function M.create_gpu_shader(device, compiled, props)
    if device == nil then
-      error("sdl3.create_gpu_shader requires an SDL_GPUDevice*")
+      rig.raise("sdl3.create_gpu_shader requires an SDL_GPUDevice*")
    end
    if type(compiled) ~= "table" then
       error("sdl3.create_gpu_shader requires a compiled shader table")
@@ -1174,12 +1174,12 @@ function M.create_gpu_shader(device, compiled, props)
    if shader_stage == nil then
       error(("shader stage '%s' is not a graphics shader stage"):format(
          compiled.stage
-      ), 0)
+      ))
    end
 
    local valid_layout, layout_err = validate_graphics_spirv_layout(compiled)
    if not valid_layout then
-      rig.raise(tostring(layout_err or "shader layout validation failed"))
+      rig.raise(layout_err or "shader layout validation failed")
    end
 
    local reflection = compiled.reflection
@@ -1387,7 +1387,7 @@ end
 
 local function normalize_init_flags(flags_number)
    if type(flags_number) ~= "number" then
-      error("sdl3 init_flags must be a number")
+      rig.raise("sdl3 init_flags must be a number")
    end
 
    local flags_integer = math.floor(flags_number)
@@ -1725,9 +1725,7 @@ local function apply_gl_attributes(attributes)
             ("failed to set OpenGL attribute '%s': %s"):format(
                key,
                get_error_string()
-            ),
-            0
-         )
+            ))
       end
    end
 end
@@ -1822,7 +1820,7 @@ end
 
 local function present()
    if runtime_renderer == nil then
-      error("SDL renderer is not initialized")
+      rig.raise("SDL renderer is not initialized")
    end
    if not M.RenderPresent(runtime_renderer) then
       error("failed to present renderer: " .. ffi.string(M.GetError()))
@@ -1940,7 +1938,7 @@ local function ensure_gl_font_backend_state()
    )
 
    gl.EnableVertexAttribArray(0)
-   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 0))
+   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *"))
    gl.EnableVertexAttribArray(1)
    gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 8))
 
@@ -2074,7 +2072,7 @@ local function ensure_gl_font_page_texture(text_renderer, page_index)
    local state = text_renderer._state
    local page = atlas.pages[page_index]
    if page == nil then
-      rig.raise(("font atlas has no page %d"):format(page_index))
+      rig.raise("font atlas has no page %d", page_index)
    end
 
    local revision = page.revision or 0
@@ -2172,7 +2170,7 @@ local function ensure_font_page_texture(text_renderer, page_index)
    local state = text_renderer._state
    local page = atlas.pages[page_index]
    if page == nil then
-      rig.raise(("font atlas has no page %d"):format(page_index))
+      rig.raise("font atlas has no page %d", page_index)
    end
 
    local revision = page.revision or 0
@@ -2494,17 +2492,17 @@ function M.clear(r, g, b, a)
    local renderer_ptr = runtime_renderer
 
    if renderer_ptr == nil then
-      error("sdl3.clear requires an active SDL renderer")
+      rig.raise("sdl3.clear requires an active SDL renderer")
    end
 
    local renderer = ffi.cast("SDL_Renderer *", renderer_ptr)
-   local rr = color_component(r, 0)
+   local rr = color_component(r)
    local gg = color_component(g, 0)
    local bb = color_component(b, 0)
    local aa = color_component(a, 1)
 
    if not M.SetRenderDrawColor(renderer, rr, gg, bb, aa) then
-      error("failed to set draw color: " .. ffi.string(M.GetError()))
+      rig.raise("failed to set draw color: " .. ffi.string(M.GetError()))
    end
    if not M.RenderClear(renderer) then
       error("failed to clear render target: " .. ffi.string(M.GetError()))
@@ -2761,9 +2759,7 @@ local shader_stage_service_sdl3_gpu = {
          error(
             ("shader.stage provider 'sdl3_gpu' requires a SPIR-V artifact, got '%s'"):format(
                tostring(artifact.artifact_kind)
-            ),
-            0
-         )
+            ))
       end
 
       local device = M.get_gpu_device()
@@ -2785,19 +2781,15 @@ local shader_stage_service_sdl3_gpu = {
 local shader_stage_service_sdl3_gl = {
    create_stage = function(spec)
       if spec.artifact_kind ~= "source" then
-         error(
-            ("shader.stage provider 'sdl3_gl' requires a source artifact, got '%s'"):format(
-               tostring(spec.artifact_kind)
-            ),
-            0
+         rig.raise(
+            "shader.stage provider 'sdl3_gl' requires a source artifact, got '%s'",
+            tostring(spec.artifact_kind)
          )
       end
       if spec.language ~= "glsl" then
-         error(
-            ("shader.stage provider 'sdl3_gl' currently supports only GLSL source, got '%s'"):format(
-               tostring(spec.language)
-            ),
-            0
+         rig.raise(
+            "shader.stage provider 'sdl3_gl' currently supports only GLSL source, got '%s'",
+            tostring(spec.language)
          )
       end
 
@@ -2811,11 +2803,9 @@ local shader_stage_service_sdl3_gl = {
          shader_type = rawget(gl, "COMPUTE_SHADER")
       end
       if shader_type == nil then
-         error(
-            ("shader stage '%s' is not supported by the OpenGL runtime provider"):format(
-               tostring(spec.stage)
-            ),
-            0
+         rig.raise(
+            "shader stage '%s' is not supported by the OpenGL runtime provider",
+            tostring(spec.stage)
          )
       end
 
@@ -2854,10 +2844,8 @@ end
 local function require_render_callback(mode_options, mode_key)
    local callback = mode_options.render
    if type(callback) ~= "function" then
-      error(
-         "rig.run requires " .. mode_key .. ".render to be a function",
-         0
-      )
+      rig.raise(
+         "rig.run requires " .. mode_key .. ".render to be a function")
    end
    return callback
 end

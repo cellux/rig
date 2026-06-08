@@ -20,8 +20,8 @@ end)
 local function is_test_script_path(script_path)
    return type(script_path) == "string"
       and (
-         script_path:match("_test%.lua$") ~= nil
-         or script_path:match("_test%.fnl$") ~= nil
+         script_path:match("_test%.lua$")
+         or script_path:match("_test%.fnl$")
       )
 end
 
@@ -42,10 +42,10 @@ end
 
 local function register_case(kind, name, fn)
    if type(name) ~= "string" or name == "" then
-      rig.raise(("test.%s expects name to be a non-empty string"):format(kind))
+      rig.raise("test.%s expects name to be a non-empty string", kind)
    end
    if type(fn) ~= "function" then
-      rig.raise(("test.%s expects fn to be a function"):format(kind))
+      rig.raise("test.%s expects fn to be a function", kind)
    end
 
    table.insert(M._registered_cases, {
@@ -85,8 +85,8 @@ local function discover_files(roots)
    local files = {}
 
    local function is_test_file(name)
-      return name:match("_test%.lua$") ~= nil
-         or name:match("_test%.fnl$") ~= nil
+      return name:match("_test%.lua$")
+         or name:match("_test%.fnl$")
    end
 
    local function walk(path)
@@ -287,12 +287,10 @@ function M.fixture(setup, teardown)
 
          if not ok then
             if not teardown_ok then
-               error(
+               rig.raise(
                   tostring(body_err)
                      .. "\nfixture teardown also failed:\n"
-                     .. tostring(teardown_err),
-                  0
-               )
+                     .. tostring(teardown_err))
             end
             rig.raise(body_err)
          end
@@ -527,13 +525,11 @@ function M.run_registered_cases(options)
 
    summary.success = summary.failed == 0
    if not summary.success then
-      error(
-         ("test file '%s' failed: %d of %d cases failed"):format(
-            script_path,
-            summary.failed,
-            summary.total
-         ),
-         0
+      rig.raise(
+         "test file '%s' failed: %d of %d cases failed",
+         script_path,
+         summary.failed,
+         summary.total
       )
    end
 

@@ -67,24 +67,20 @@ typedef void (*rig_gl__DrawArrays)(GLenum mode, GLint first, GLsizei count);
 local function bind_function(name)
    local ptr, err = sdl3.get_gl_proc_address("gl" .. name)
    if ptr == nil then
-      error(
-         ("failed to resolve OpenGL function gl%s: %s"):format(
-            name,
-            err or "unknown error"
-         ),
-         0
+      rig.raise(
+         "failed to resolve OpenGL function gl%s: %s",
+         name,
+         err or "unknown error"
       )
    end
 
    local typedef_name = "rig_gl__" .. name
    local ok, fn_or_err = pcall(ffi.cast, typedef_name, ptr)
    if not ok then
-      error(
-         ("resolved OpenGL function gl%s, but %s is not declared in gl.lua ffi.cdef"):format(
-            name,
-            typedef_name
-         ),
-         0
+      rig.raise(
+         "resolved OpenGL function gl%s, but %s is not declared in gl.lua ffi.cdef",
+         name,
+         typedef_name
       )
    end
 
@@ -189,7 +185,7 @@ function M.link_program(shaders)
       local shader = tonumber(shaders[i]) or 0
       if shader == 0 then
          M.DeleteProgram(program)
-         rig.raise(("gl.link_program expects shaders[%d] to be a valid shader object"):format(i))
+         rig.raise("gl.link_program expects shaders[%d] to be a valid shader object", i)
       end
       M.AttachShader(program, shader)
    end

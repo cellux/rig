@@ -185,10 +185,7 @@ local function spawn_internal(spec, on_exit)
    )
    if rc ~= 0 then
       M._active_exit_callbacks[exit_callback] = nil
-      error(
-         ("uv.spawn failed for '%s': %s"):format(spec.file, uv_error_string(rc)),
-         0
-      )
+      rig.raise("uv.spawn failed for '%s': %s", spec.file, uv_error_string(rc))
    end
 end
 
@@ -247,7 +244,7 @@ local function scandir_internal(path, on_done)
    local rc = ffi.C.rig_uv_scandir(M._loop, path, completion_callback)
    if rc ~= 0 then
       M._active_scandir_callbacks[completion_callback] = nil
-      rig.raise(("uv.scandir failed for '%s': %s"):format(path, uv_error_string(rc)))
+      rig.raise("uv.scandir failed for '%s': %s", path, uv_error_string(rc))
    end
 end
 
@@ -274,12 +271,10 @@ local function sleep_internal(seconds, on_done)
    local rc = ffi.C.rig_uv_sleep_once(M._loop, timeout_ms, completion_callback)
    if rc ~= 0 then
       M._active_timer_callbacks[completion_callback] = nil
-      error(
-         ("uv.sleep failed for %.6f seconds: %s"):format(
-            seconds,
-            uv_error_string(rc)
-         ),
-         0
+      rig.raise(
+         "uv.sleep failed for %.6f seconds: %s",
+         seconds,
+         uv_error_string(rc)
       )
    end
 end
@@ -400,10 +395,8 @@ local function run_scheduler_loop(runtime_options, outer_options)
          end
       else
          scheduler:deactivate()
-         error(
-            "uv scheduler deadlocked: tasks are waiting but no async operations are pending",
-            0
-         )
+         rig.raise(
+            "uv scheduler deadlocked: tasks are waiting but no async operations are pending")
       end
    end
 

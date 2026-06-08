@@ -280,10 +280,7 @@ function M.register_handler(kind, handler)
       rig.raise("sched.register_handler expects handler to be a function")
    end
    if M._handlers[kind] ~= nil then
-      error(
-         ("sched.register_handler already has a handler for '%s'"):format(kind),
-         0
-      )
+      rig.raise("sched.register_handler already has a handler for '%s'", kind)
    end
 
    M._handlers[kind] = handler
@@ -364,7 +361,7 @@ function M.join(tasks)
    for i = 1, #tasks do
       local task = tasks[i]
       if type(task) ~= "table" or type(task.co) ~= "thread" then
-         rig.raise(("sched.join expects tasks[%d] to be a scheduler task"):format(i))
+         rig.raise("sched.join expects tasks[%d] to be a scheduler task", i)
       end
       if not task._done then
          table.insert(pending, task)
