@@ -29,7 +29,7 @@ end
 local function read_all(path)
   local f, err = io.open(path, "rb")
   if f == nil then
-    fail("failed to open '%s': %s", path, tostring(err))
+    fail("failed to open '%s': %s", path, err)
   end
 
   local content = f:read("*all")
@@ -85,7 +85,7 @@ end
 local function write_all(path, content)
   local f, err = io.open(path, "wb")
   if f == nil then
-    fail("failed to open '%s': %s", path, tostring(err))
+    fail("failed to open '%s': %s", path, err)
   end
   f:write(content)
   f:close()
@@ -94,7 +94,7 @@ end
 local function load_fennel_module(path)
   local chunk, load_err = loadfile(path)
   if chunk == nil then
-    fail("failed to load fennel module '%s': %s", path, tostring(load_err))
+    fail("failed to load fennel module '%s': %s", path, load_err)
   end
 
   local fennel = chunk()
@@ -117,7 +117,7 @@ local function to_lua_source(source, ext)
   local fennel = load_fennel_module(fennel_module_source)
   local ok, lua_source = pcall(fennel.compileString, source, {filename = source_path})
   if not ok then
-    fail("failed to compile fennel '%s': %s", source_path, tostring(lua_source))
+    fail("failed to compile fennel '%s': %s", source_path, lua_source)
   end
   if type(lua_source) ~= "string" then
     fail("compiler returned non-string output for '%s'", source_path)

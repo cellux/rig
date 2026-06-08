@@ -69,7 +69,7 @@ local function bind_function(name)
       error(
          ("failed to resolve OpenGL function gl%s: %s"):format(
             name,
-            tostring(err or "unknown error")
+            err or "unknown error"
          ),
          0
       )

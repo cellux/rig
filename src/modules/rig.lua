@@ -736,7 +736,7 @@ function M.run_script_file(script_path)
       error(
          ("failed to open '%s': %s"):format(
             script_path,
-            tostring(open_err or "unknown error")
+            open_err or "unknown error"
          ),
          0
       )
@@ -749,7 +749,7 @@ function M.run_script_file(script_path)
       error(
          ("failed to read '%s': %s"):format(
             script_path,
-            tostring(read_err or "unknown error")
+            read_err or "unknown error"
          ),
          0
       )

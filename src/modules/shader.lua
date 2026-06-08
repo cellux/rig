@@ -37,7 +37,7 @@ local function read_file(path)
    if file == nil then
       return nil, ("failed to open '%s': %s"):format(
          path,
-         tostring(open_err or "unknown error")
+         open_err or "unknown error"
       )
    end
 
@@ -46,7 +46,7 @@ local function read_file(path)
    if contents == nil then
       return nil, ("failed to read '%s': %s"):format(
          path,
-         tostring(read_err or "unknown error")
+         read_err or "unknown error"
       )
    end
 

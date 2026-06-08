@@ -1117,7 +1117,7 @@ local function normalize_gpu_shader_format(compiled)
    local numeric = tonumber(format)
    if numeric == nil then
       error(("compiled shader format '%s' is not supported by SDL GPU"):format(
-         tostring(format)
+         format
       ), 0)
    end
 
@@ -1149,8 +1149,8 @@ local function validate_graphics_spirv_layout(compiled)
                ):format(
                   compiled.stage,
                   kind,
-                  tostring(item.name or "<unnamed>"),
-                  tostring(item.set),
+                  item.name or "<unnamed>",
+                  item.set,
                   expected_set
                )
             end
@@ -1172,7 +1172,7 @@ function M.create_gpu_shader(device, compiled, props)
    local shader_stage = STAGE_TO_SDL[compiled.stage]
    if shader_stage == nil then
       error(("shader stage '%s' is not a graphics shader stage"):format(
-         tostring(compiled.stage)
+         compiled.stage
       ), 0)
    end
 
@@ -1381,7 +1381,7 @@ local function format_factory_error(factory_name, detail, fallback)
    if detail == nil then
       return ("%s failed: %s"):format(factory_name, fallback)
    end
-   return ("%s failed: %s"):format(factory_name, tostring(detail))
+   return ("%s failed: %s"):format(factory_name, detail)
 end
 
 local function normalize_init_flags(flags_number)

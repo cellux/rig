@@ -14,7 +14,7 @@ end
 local function read_lines(path)
   local f, err = io.open(path, "rb")
   if f == nil then
-    fail("failed to open '%s': %s", path, tostring(err))
+    fail("failed to open '%s': %s", path, err)
   end
 
   local lines = {}
@@ -159,7 +159,7 @@ table.insert(out, "")
 
 local output_file, out_err = io.open(output_path, "wb")
 if output_file == nil then
-  fail("failed to open '%s': %s", output_path, tostring(out_err))
+  fail("failed to open '%s': %s", output_path, out_err)
 end
 output_file:write(table.concat(out, "\n"))
 output_file:close()
