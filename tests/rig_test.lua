@@ -269,6 +269,14 @@ test.case("service registry validates providers and resolves by active providers
       },
    })
 
+   local duplicate_preset_ok, duplicate_preset_err = pcall(function()
+      rig.register_runtime_preset("rig_test_service_preset", {
+         driver = "rig_test_service_driver",
+      })
+   end)
+   test.falsey(duplicate_preset_ok)
+   test.match(tostring(duplicate_preset_err), "already has a runtime preset")
+
    rig.run {
       mode = "rig_test_service_preset",
    }

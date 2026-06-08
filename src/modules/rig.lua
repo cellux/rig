@@ -516,6 +516,9 @@ function M.register_runtime_preset(name, preset)
    if type(preset) ~= "table" then
       raise("rig.register_runtime_preset expects preset to be a table")
    end
+   if _runtime_presets[name] ~= nil then
+      raise("rig.register_runtime_preset already has a runtime preset '%s'", name)
+   end
 
    local driver_id = preset.driver
    if driver_id == nil then
