@@ -202,27 +202,6 @@ local string_to_string_map_schema = schema.map(
    non_empty_string_schema,
    non_empty_string_schema
 )
-local option_hooks_schema = schema.map(
-   non_empty_string_schema,
-   schema.func()
-)
-local runtime_driver_schema = schema.record({
-   phases = unique_non_empty_string_array_schema:optional(),
-   setup = schema.func():optional(),
-   loop = schema.func(),
-   shutdown = schema.func():optional(),
-})
-local runtime_preset_schema = schema.record({
-   driver = non_empty_string_schema,
-   providers = string_to_string_map_schema:optional(),
-})
-local resolve_runtime_options_schema = schema.record({
-   mode = non_empty_string_schema:optional(),
-   driver = non_empty_string_schema:optional(),
-   providers = string_to_string_map_schema:optional(),
-}, {
-   allow_extra = true,
-})
 
 M.ServiceRegistry = M.class()
 
@@ -409,6 +388,11 @@ function M.ActiveRuntime:build_phase_set()
    return phases
 end
 
+local option_hooks_schema = schema.map(
+   non_empty_string_schema,
+   schema.func()
+)
+
 function M.ActiveRuntime:normalize_option_hooks(hooks)
    if hooks == nil then
       return nil
@@ -465,6 +449,13 @@ function M.require_service(service_id)
    return _active_runtime:require_service(service_id)
 end
 
+local runtime_driver_schema = schema.record({
+   phases = unique_non_empty_string_array_schema:optional(),
+   setup = schema.func():optional(),
+   loop = schema.func(),
+   shutdown = schema.func():optional(),
+})
+
 function M.register_runtime_driver(name, driver)
    if type(name) ~= "string" or name == "" then
       raise("rig.register_runtime_driver expects name to be a non-empty string")
@@ -490,6 +481,11 @@ function M.register_runtime_driver(name, driver)
    return normalized
 end
 
+local runtime_preset_schema = schema.record({
+   driver = non_empty_string_schema,
+   providers = string_to_string_map_schema:optional(),
+})
+
 function M.register_runtime_preset(name, preset)
    if type(name) ~= "string" or name == "" then
       raise("rig.register_runtime_preset expects name to be a non-empty string")
@@ -508,6 +504,14 @@ function M.register_runtime_preset(name, preset)
    _runtime_presets[name] = normalized
    return normalized
 end
+
+local resolve_runtime_options_schema = schema.record({
+   mode = non_empty_string_schema:optional(),
+   driver = non_empty_string_schema:optional(),
+   providers = string_to_string_map_schema:optional(),
+}, {
+   allow_extra = true,
+})
 
 local function resolve_runtime(options)
    options = schema.assert(
