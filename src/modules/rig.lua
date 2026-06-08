@@ -388,7 +388,6 @@ function M.ActiveRuntime:init(spec)
    self.driver = spec.driver
    self.driver_id = spec.driver_id
    self.mode_id = spec.mode_id
-   self.runtime_id = spec.runtime_id
    self.providers = spec.providers or {}
    self.option_hooks = self:normalize_option_hooks(spec.option_hooks)
 
@@ -400,7 +399,15 @@ function M.ActiveRuntime:init(spec)
       return
    end
 
-   raise("rig.run runtime '%s' %s", self.runtime_id, tostring(service_providers_or_err))
+   raise(
+      "rig.run runtime '%s' %s",
+      self:runtime_id(),
+      service_providers_or_err
+   )
+end
+
+function M.ActiveRuntime:runtime_id()
+   return self.mode_id or self.driver_id
 end
 
 function M.ActiveRuntime:require_service(service_id)
@@ -409,7 +416,7 @@ function M.ActiveRuntime:require_service(service_id)
       raise(
          "rig.require_service('%s') has no provider for active runtime '%s'",
          service_id,
-         self.runtime_id
+         self:runtime_id()
       )
    end
 
@@ -445,7 +452,7 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
       if not allowed_phases[phase] then
          raise(
             "rig.run runtime '%s' does not know hook phase '%s'",
-            self.runtime_id,
+            self:runtime_id(),
             phase
          )
       end
@@ -575,13 +582,11 @@ local function resolve_runtime(options)
       providers[service_id] = provider_id
    end
 
-   local runtime_id = mode_id or driver_id
    return driver, M.ActiveRuntime {
       service_registry = _service_registry,
       driver = driver,
       driver_id = driver_id,
       mode_id = mode_id,
-      runtime_id = runtime_id,
       providers = providers,
       option_hooks = options.hooks,
    }

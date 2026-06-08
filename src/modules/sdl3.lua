@@ -1710,7 +1710,7 @@ local function apply_gl_attributes(attributes)
    for key, value in pairs(requested) do
       local field = GL_ATTRIBUTE_VALUES[key]
       if field == nil then
-         rig.raise("unsupported OpenGL attribute '" .. tostring(key) .. "'")
+         rig.raise("unsupported OpenGL attribute '%s'", key)
       end
 
       local normalized = value
@@ -2745,7 +2745,7 @@ local sdl3_gpu_mesh_service = {
          }
       end
 
-      rig.raise("unsupported mesh layout '" .. tostring(mesh.layout) .. "'")
+      rig.raise("unsupported mesh layout '%s'", mesh.layout)
    end,
 }
 

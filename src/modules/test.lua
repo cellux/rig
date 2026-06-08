@@ -285,18 +285,19 @@ function M.fixture(setup, teardown)
             end)
          end
 
-         if not ok then
-            if not teardown_ok then
-               rig.raise(
-                  tostring(body_err)
-                     .. "\nfixture teardown also failed:\n"
-                     .. tostring(teardown_err))
+        if not ok then
+           if not teardown_ok then
+              rig.raise(
+                  "%s\nfixture teardown also failed:\n%s",
+                  body_err,
+                  teardown_err
+               )
             end
             rig.raise(body_err)
          end
 
          if not teardown_ok then
-            rig.raise("fixture teardown failed:\n" .. tostring(teardown_err))
+            rig.raise("fixture teardown failed:\n%s", teardown_err)
          end
       end
    end
