@@ -1,5 +1,5 @@
 local M = ... or {}
-local oop = require("oop")
+local rig = require("rig")
 local schema = require("schema")
 local time = require("time")
 
@@ -13,7 +13,7 @@ local frame_profiler_options_schema = schema.record({
    fps_window_seconds = positive_number_schema:optional(0.25),
 })
 
-M.FrameProfiler = oop.class()
+M.FrameProfiler = rig.class()
 
 local function update_metric_history(history, now_seconds, value, window_seconds)
    history[#history + 1] = {
@@ -139,10 +139,10 @@ end
 function M.FrameProfiler:end_frame()
    local frame_start_seconds = self._frame_start_seconds
    if frame_start_seconds == nil then
-      error("frame profiler end_frame called without a matching begin_frame", 0)
+      rig.raise("frame profiler end_frame called without a matching begin_frame")
    end
    if self._cpu_section_start_seconds ~= nil then
-      error("frame profiler end_frame called while a CPU section is still open", 0)
+      rig.raise("frame profiler end_frame called while a CPU section is still open")
    end
 
    self.cpu_ms = self._cpu_accumulator_ms
@@ -193,10 +193,10 @@ end
 
 function M.FrameProfiler:begin_cpu()
    if self._frame_start_seconds == nil then
-      error("frame profiler begin_cpu called without an active frame", 0)
+      rig.raise("frame profiler begin_cpu called without an active frame")
    end
    if self._cpu_section_start_seconds ~= nil then
-      error("frame profiler begin_cpu called while a CPU section is already open", 0)
+      rig.raise("frame profiler begin_cpu called while a CPU section is already open")
    end
 
    self._cpu_section_start_seconds = time.monotonic()
@@ -205,7 +205,7 @@ end
 function M.FrameProfiler:end_cpu()
    local cpu_section_start_seconds = self._cpu_section_start_seconds
    if cpu_section_start_seconds == nil then
-      error("frame profiler end_cpu called without a matching begin_cpu", 0)
+      rig.raise("frame profiler end_cpu called without a matching begin_cpu")
    end
 
    self._cpu_accumulator_ms =

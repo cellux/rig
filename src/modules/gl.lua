@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 local sdl3 = require("sdl3")
 
 ffi.cdef[[
@@ -118,12 +119,12 @@ end
 
 function M.create_shader(shader_type, source)
    if type(source) ~= "string" then
-      error("gl.create_shader requires shader source to be a string", 0)
+      rig.raise("gl.create_shader requires shader source to be a string")
    end
 
    local shader = M.CreateShader(shader_type)
    if shader == 0 then
-      error("glCreateShader returned 0", 0)
+      rig.raise("glCreateShader returned 0")
    end
 
    local source_ptrs = ffi.new("const GLchar *[1]")
@@ -138,7 +139,7 @@ function M.create_shader(shader_type, source)
    if compiled[0] == 0 then
       local log = shader_log(shader)
       M.DeleteShader(shader)
-      error("OpenGL shader compilation failed:\n" .. log, 0)
+      rig.raise("OpenGL shader compilation failed:\n" .. log)
    end
 
    return shader
@@ -146,13 +147,13 @@ end
 
 function M.create_program(options)
    if type(options) ~= "table" then
-      error("gl.create_program expects a table", 0)
+      rig.raise("gl.create_program expects a table")
    end
    if type(options.vertex_source) ~= "string" then
-      error("gl.create_program requires vertex_source", 0)
+      rig.raise("gl.create_program requires vertex_source")
    end
    if type(options.fragment_source) ~= "string" then
-      error("gl.create_program requires fragment_source", 0)
+      rig.raise("gl.create_program requires fragment_source")
    end
 
    local vertex_shader = M.create_shader(M.VERTEX_SHADER, options.vertex_source)
@@ -166,29 +167,29 @@ function M.create_program(options)
    M.DeleteShader(vertex_shader)
    M.DeleteShader(fragment_shader)
    if not ok then
-      error(program_or_err, 0)
+      rig.raise(program_or_err)
    end
    return program_or_err
 end
 
 function M.link_program(shaders)
    if type(shaders) ~= "table" then
-      error("gl.link_program expects a table of shader objects", 0)
+      rig.raise("gl.link_program expects a table of shader objects")
    end
    if #shaders == 0 then
-      error("gl.link_program requires at least one shader object", 0)
+      rig.raise("gl.link_program requires at least one shader object")
    end
 
    local program = M.CreateProgram()
    if program == 0 then
-      error("glCreateProgram returned 0", 0)
+      rig.raise("glCreateProgram returned 0")
    end
 
    for i = 1, #shaders do
       local shader = tonumber(shaders[i]) or 0
       if shader == 0 then
          M.DeleteProgram(program)
-         error(("gl.link_program expects shaders[%d] to be a valid shader object"):format(i), 0)
+         rig.raise(("gl.link_program expects shaders[%d] to be a valid shader object"):format(i))
       end
       M.AttachShader(program, shader)
    end
@@ -200,7 +201,7 @@ function M.link_program(shaders)
    if linked[0] == 0 then
       local log = program_log(program)
       M.DeleteProgram(program)
-      error("OpenGL program link failed:\n" .. log, 0)
+      rig.raise("OpenGL program link failed:\n" .. log)
    end
 
    return program
@@ -208,7 +209,7 @@ end
 
 function M.buffer_data(target, data, usage)
    if type(data) ~= "string" then
-      error("gl.buffer_data currently expects data to be a string", 0)
+      rig.raise("gl.buffer_data currently expects data to be a string")
    end
 
    M.BufferData(target, #data, data, usage)
@@ -216,7 +217,7 @@ end
 
 function M.get_uniform_location(program, name)
    if type(name) ~= "string" then
-      error("gl.get_uniform_location expects name to be a string", 0)
+      rig.raise("gl.get_uniform_location expects name to be a string")
    end
 
    return tonumber(M.GetUniformLocation(program, name)) or -1

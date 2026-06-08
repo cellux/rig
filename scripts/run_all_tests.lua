@@ -73,7 +73,7 @@ rig.run {
          )
 
          if not summary.success then
-            error("test run failed", 0)
+            rig.raise("test run failed")
          end
          end,
       },

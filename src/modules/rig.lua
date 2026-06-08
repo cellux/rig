@@ -1,10 +1,13 @@
 local M = ... or {}
-local oop = require("oop")
+local prelude = require("prelude")
 local repr = require("repr")
 local schema = require("schema")
 
 M.repr = repr.repr
-M.class = oop.class
+M.class = prelude.class
+M.raise = prelude.raise
+
+local raise = M.raise
 
 function M.tostring(value)
    if type(value) == "table" then
@@ -24,7 +27,7 @@ local function print_values(stream, with_newline, ...)
    for i = 1, select("#", ...) do
       local text = stringify(select(i, ...))
       if type(text) ~= "string" then
-         error("'tostring' must return a string to 'rig.print'", 0)
+         raise("'tostring' must return a string to 'rig.print'")
       end
       parts[i] = text
    end
@@ -36,13 +39,13 @@ local function print_values(stream, with_newline, ...)
 
    local ok, err = stream:write(output)
    if not ok then
-      error(tostring(err or "failed to write output"), 0)
+      raise(tostring(err or "failed to write output"))
    end
 
    if type(stream.flush) == "function" then
       ok, err = stream:flush()
       if not ok then
-         error(tostring(err or "failed to flush output"), 0)
+         raise(tostring(err or "failed to flush output"))
       end
    end
 end
@@ -83,7 +86,7 @@ function M.fprintln(stream, ...)
    print_values(stream, true, ...)
 end
 
-M.ResourceScope = oop.class()
+M.ResourceScope = M.class()
 
 local function add_scope_entry(scope, resource, release_fn)
    local entry = {
@@ -97,10 +100,10 @@ end
 
 function M.ResourceScope:init(context, label)
    if context == nil then
-      error("rig.ResourceScope requires a context value", 0)
+      raise("rig.ResourceScope requires a context value")
    end
    if label ~= nil and (type(label) ~= "string" or label == "") then
-      error("rig.ResourceScope expects label to be a non-empty string if provided", 0)
+      raise("rig.ResourceScope expects label to be a non-empty string if provided")
    end
 
    self.context = context
@@ -112,13 +115,13 @@ end
 
 function M.ResourceScope:adopt(resource, release_fn)
    if self._released then
-      error("cannot adopt a resource into a released " .. self._scope_label, 0)
+      raise("cannot adopt a resource into a released " .. self._scope_label)
    end
    if resource == nil then
-      error("rig.ResourceScope:adopt requires a resource", 0)
+      raise("rig.ResourceScope:adopt requires a resource")
    end
    if type(release_fn) ~= "function" then
-      error("rig.ResourceScope:adopt requires a release function", 0)
+      raise("rig.ResourceScope:adopt requires a release function")
    end
 
    add_scope_entry(self, resource, release_fn)
@@ -127,16 +130,16 @@ end
 
 function M.ResourceScope:replace(key, resource, release_fn)
    if self._released then
-      error("cannot replace a resource in a released " .. self._scope_label, 0)
+      raise("cannot replace a resource in a released " .. self._scope_label)
    end
    if type(key) ~= "string" or key == "" then
-      error("rig.ResourceScope:replace requires a non-empty string key", 0)
+      raise("rig.ResourceScope:replace requires a non-empty string key")
    end
    if resource == nil then
-      error("rig.ResourceScope:replace requires a resource", 0)
+      raise("rig.ResourceScope:replace requires a resource")
    end
    if type(release_fn) ~= "function" then
-      error("rig.ResourceScope:replace requires a release function", 0)
+      raise("rig.ResourceScope:replace requires a release function")
    end
 
    local existing = self._named_entries[key]
@@ -247,7 +250,7 @@ local function normalize_driver_phase_names(phase_names, label)
    return copied
 end
 
-M.ServiceRegistry = oop.class()
+M.ServiceRegistry = M.class()
 
 function M.ServiceRegistry:init()
    self._by_id = {}
@@ -259,7 +262,7 @@ end
 
 function M.ServiceRegistry:create_service(service_id, method_names)
    if type(service_id) ~= "string" or service_id == "" then
-      error("rig.create_service expects service_id to be a non-empty string", 0)
+      raise("rig.create_service expects service_id to be a non-empty string")
    end
 
    local methods = normalize_service_method_names(method_names)
@@ -282,13 +285,13 @@ end
 
 function M.ServiceRegistry:register_service_provider(service_id, provider_id, provider)
    if type(service_id) ~= "string" or service_id == "" then
-      error("rig.register_service_provider expects service_id to be a non-empty string", 0)
+      raise("rig.register_service_provider expects service_id to be a non-empty string")
    end
    if type(provider_id) ~= "string" or provider_id == "" then
-      error("rig.register_service_provider expects provider_id to be a non-empty string", 0)
+      raise("rig.register_service_provider expects provider_id to be a non-empty string")
    end
    if type(provider) ~= "table" then
-      error("rig.register_service_provider expects provider to be a table", 0)
+      raise("rig.register_service_provider expects provider to be a table")
    end
 
    local service = self:get(service_id)
@@ -359,10 +362,10 @@ local _service_registry = M.ServiceRegistry()
 
 function M.register_runtime_hook(phase, hook)
    if type(phase) ~= "string" or phase == "" then
-      error("rig.register_runtime_hook expects phase to be a non-empty string", 0)
+      raise("rig.register_runtime_hook expects phase to be a non-empty string")
    end
    if type(hook) ~= "function" then
-      error("rig.register_runtime_hook expects hook to be a function", 0)
+      raise("rig.register_runtime_hook expects hook to be a function")
    end
 
    local hooks = _runtime_hooks[phase]
@@ -384,11 +387,11 @@ local function run_runtime_hooks(phase, ...)
    end
 end
 
-M.ActiveRuntime = oop.class()
+M.ActiveRuntime = M.class()
 
 function M.ActiveRuntime:init(spec)
    if type(spec) ~= "table" then
-      error("rig.ActiveRuntime expects a table", 0)
+      raise("rig.ActiveRuntime expects a table")
    end
 
    self.service_registry = spec.service_registry
@@ -489,7 +492,7 @@ end
 
 function M.require_service(service_id)
    if type(service_id) ~= "string" or service_id == "" then
-      error("rig.require_service expects service_id to be a non-empty string", 0)
+      raise("rig.require_service expects service_id to be a non-empty string")
    end
 
    if getmetatable(_active_runtime) ~= M.ActiveRuntime then
@@ -506,10 +509,10 @@ end
 
 function M.register_runtime_driver(name, driver)
    if type(name) ~= "string" or name == "" then
-      error("rig.register_runtime_driver expects name to be a non-empty string", 0)
+      raise("rig.register_runtime_driver expects name to be a non-empty string")
    end
    if type(driver) ~= "table" then
-      error("rig.register_runtime_driver expects driver to be a table", 0)
+      raise("rig.register_runtime_driver expects driver to be a table")
    end
 
    driver.phases = normalize_driver_phase_names(
@@ -523,10 +526,10 @@ end
 
 function M.register_runtime_preset(name, preset)
    if type(name) ~= "string" or name == "" then
-      error("rig.register_runtime_preset expects name to be a non-empty string", 0)
+      raise("rig.register_runtime_preset expects name to be a non-empty string")
    end
    if type(preset) ~= "table" then
-      error("rig.register_runtime_preset expects preset to be a table", 0)
+      raise("rig.register_runtime_preset expects preset to be a table")
    end
 
    local driver_id = preset.driver
@@ -534,7 +537,7 @@ function M.register_runtime_preset(name, preset)
       driver_id = name
    end
    if type(driver_id) ~= "string" or driver_id == "" then
-      error("rig.register_runtime_preset expects preset.driver to be a non-empty string", 0)
+      raise("rig.register_runtime_preset expects preset.driver to be a non-empty string")
    end
 
    local normalized = {
@@ -552,7 +555,7 @@ end
 local function resolve_runtime(options)
    local mode_id = options.mode
    if mode_id ~= nil and (type(mode_id) ~= "string" or mode_id == "") then
-      error("rig.run expects options.mode to be a non-empty string if provided", 0)
+      raise("rig.run expects options.mode to be a non-empty string if provided")
    end
 
    local preset = nil
@@ -568,13 +571,13 @@ local function resolve_runtime(options)
 
    local driver_id = options.driver
    if driver_id ~= nil and (type(driver_id) ~= "string" or driver_id == "") then
-      error("rig.run expects options.driver to be a non-empty string if provided", 0)
+      raise("rig.run expects options.driver to be a non-empty string if provided")
    end
    if driver_id == nil and preset ~= nil then
       driver_id = preset.driver
    end
    if type(driver_id) ~= "string" or driver_id == "" then
-      error("rig.run requires options.driver or options.mode to be a non-empty string", 0)
+      raise("rig.run requires options.driver or options.mode to be a non-empty string")
    end
 
    local driver = _runtime_drivers[driver_id]
@@ -620,7 +623,7 @@ end
 
 function M.run(options)
    if type(options) ~= "table" then
-      error("rig.run expects a table", 0)
+      raise("rig.run expects a table")
    end
    local driver, resolved_runtime = resolve_runtime(options)
 
@@ -648,7 +651,7 @@ function M.run(options)
    _active_runtime = previous_runtime
 
    if not ok then
-      error(err, 0)
+      raise(err)
    end
 end
 

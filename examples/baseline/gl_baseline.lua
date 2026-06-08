@@ -82,7 +82,7 @@ local function find_font_path()
       end
    end
 
-   error("could not find a system DejaVuSans.ttf font", 0)
+   rig.raise("could not find a system DejaVuSans.ttf font")
 end
 
 local function draw_label(text, x, baseline_y, r, g, b, a)
@@ -129,7 +129,7 @@ end
 local function set_vsync(enabled)
    local interval = enabled and 1 or 0
    if not sdl3.GL_SetSwapInterval(interval) then
-      error("failed to set OpenGL swap interval: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to set OpenGL swap interval: " .. ffi.string(sdl3.GetError()))
    end
    vsync_enabled = enabled
 end
@@ -218,7 +218,7 @@ local function initialize_gl_resources()
    scene.rect_vbo = tonumber(gl_buffers[0]) or 0
 
    if scene.rect_vao == 0 or scene.rect_vbo == 0 then
-      error("failed to create OpenGL rectangle resources", 0)
+      rig.raise("failed to create OpenGL rectangle resources")
    end
 
    gl.BindVertexArray(scene.rect_vao)
@@ -229,7 +229,7 @@ local function initialize_gl_resources()
    scene.rect_view_size_location = gl.get_uniform_location(scene.rect_program, "u_view_size")
    scene.rect_color_location = gl.get_uniform_location(scene.rect_program, "u_color")
    if scene.rect_view_size_location < 0 or scene.rect_color_location < 0 then
-      error("failed to locate OpenGL rectangle uniforms", 0)
+      rig.raise("failed to locate OpenGL rectangle uniforms")
    end
 end
 

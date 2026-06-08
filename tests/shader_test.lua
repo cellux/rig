@@ -51,7 +51,7 @@ end)
 test.case("shader.create_stage validates source specs through schema", function()
    rig.register_service_provider("shader.stage", "shader_test_provider_validation", {
       create_stage = function()
-         error("create_stage should not be reached", 0)
+         rig.raise("create_stage should not be reached")
       end,
       destroy_stage = function() end,
    })

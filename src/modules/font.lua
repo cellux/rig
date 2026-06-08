@@ -29,7 +29,7 @@ local function normalize_face_index(face_index)
 
    local value = tonumber(face_index)
    if value == nil or value < 0 then
-      error("font.load_face expects face_index to be a non-negative number if provided", 0)
+      rig.raise("font.load_face expects face_index to be a non-negative number if provided")
    end
 
    value = math.floor(value)
@@ -43,7 +43,7 @@ end
 local function normalize_pixel_size(pixel_size)
    local value = tonumber(pixel_size)
    if value == nil or value <= 0 then
-      error("font.create_sized_face expects pixel_size to be a positive number", 0)
+      rig.raise("font.create_sized_face expects pixel_size to be a positive number")
    end
 
    value = math.floor(value)
@@ -61,7 +61,7 @@ local function normalize_atlas_dimension(name, value, default_value)
 
    local normalized = tonumber(value)
    if normalized == nil or normalized <= 0 then
-      error(("font.create_atlas expects options.%s to be a positive number if provided"):format(name), 0)
+      rig.raise(("font.create_atlas expects options.%s to be a positive number if provided"):format(name))
    end
 
    normalized = math.floor(normalized)
@@ -80,7 +80,7 @@ local function ensure_freetype_library()
    local library_out = ffi.new("FT_Library[1]")
    local rc = freetype.Init_FreeType(library_out)
    if rc ~= 0 then
-      error(("freetype.Init_FreeType failed with error %d"):format(rc), 0)
+      rig.raise(("freetype.Init_FreeType failed with error %d"):format(rc))
    end
 
    freetype_library = library_out[0]
@@ -139,46 +139,46 @@ end
 
 local function ensure_face(face)
    if getmetatable(face) ~= face_mt then
-      error("font.create_sized_face expects a face returned by font.load_face", 0)
+      rig.raise("font.create_sized_face expects a face returned by font.load_face")
    end
    if face._released then
-      error("font face has been released", 0)
+      rig.raise("font face has been released")
    end
 end
 
 local function ensure_sized_face(sized_face)
    if getmetatable(sized_face) ~= sized_face_mt then
-      error("font operation expects a sized face created by font.create_sized_face", 0)
+      rig.raise("font operation expects a sized face created by font.create_sized_face")
    end
    if sized_face._released then
-      error("font sized face has been released", 0)
+      rig.raise("font sized face has been released")
    end
 end
 
 local function ensure_atlas(atlas)
    if getmetatable(atlas) ~= atlas_mt then
-      error("font operation expects an atlas created by font.create_atlas", 0)
+      rig.raise("font operation expects an atlas created by font.create_atlas")
    end
    if atlas._released then
-      error("font atlas has been released", 0)
+      rig.raise("font atlas has been released")
    end
 end
 
 local function ensure_text_renderer(text_renderer)
    if getmetatable(text_renderer) ~= text_renderer_mt then
-      error("font operation expects a text renderer created by font.create_text_renderer", 0)
+      rig.raise("font operation expects a text renderer created by font.create_text_renderer")
    end
    if text_renderer._released then
-      error("font text renderer has been released", 0)
+      rig.raise("font text renderer has been released")
    end
 end
 
 local function ensure_style(style)
    if getmetatable(style) ~= style_mt then
-      error("font operation expects a style created by font.create_style", 0)
+      rig.raise("font operation expects a style created by font.create_style")
    end
    if style._released then
-      error("font style has been released", 0)
+      rig.raise("font style has been released")
    end
 end
 
@@ -247,7 +247,7 @@ end
 
 function atlas_mt:get_page_data(page_index)
    if self._released then
-      error("font atlas has been released", 0)
+      rig.raise("font atlas has been released")
    end
 
    local page = self.pages[page_index]
@@ -319,7 +319,7 @@ end
 
 function M.load_face(path, face_index)
    if type(path) ~= "string" or path == "" then
-      error("font.load_face expects path to be a non-empty string", 0)
+      rig.raise("font.load_face expects path to be a non-empty string")
    end
 
    local normalized_face_index = normalize_face_index(face_index)
@@ -348,7 +348,7 @@ function M.create_sized_face(face, pixel_size)
    local hb_font = harfbuzz.ft_font_create_referenced(ft_face)
    if hb_font == nil or hb_font == ffi.NULL then
       freetype.Done_Face(ft_face)
-      error("harfbuzz.ft_font_create_referenced returned nil", 0)
+      rig.raise("harfbuzz.ft_font_create_referenced returned nil")
    end
 
    harfbuzz.ft_font_set_load_flags(
@@ -375,7 +375,7 @@ end
 function M.create_style(face, options)
    ensure_face(face)
    if type(options) ~= "table" then
-      error("font.create_style expects options to be a table", 0)
+      rig.raise("font.create_style expects options to be a table")
    end
 
    local sized_face = M.create_sized_face(face, options.pixel_size)
@@ -396,7 +396,7 @@ function M.create_style(face, options)
          atlas:release()
       end
       sized_face:release()
-      error(err, 0)
+      rig.raise(err)
    end
 
    return setmetatable({
@@ -412,15 +412,15 @@ end
 function M.shape(sized_face, text, options)
    ensure_sized_face(sized_face)
    if type(text) ~= "string" then
-      error("font.shape expects text to be a string", 0)
+      rig.raise("font.shape expects text to be a string")
    end
    if options ~= nil and type(options) ~= "table" then
-      error("font.shape expects options to be a table if provided", 0)
+      rig.raise("font.shape expects options to be a table if provided")
    end
 
    local hb_buffer = ffi.gc(harfbuzz.buffer_create(), harfbuzz.buffer_destroy)
    if hb_buffer == nil or hb_buffer == ffi.NULL then
-      error("harfbuzz.buffer_create returned nil", 0)
+      rig.raise("harfbuzz.buffer_create returned nil")
    end
 
    harfbuzz.buffer_add_utf8(hb_buffer, text, #text, 0, -1)
@@ -437,7 +437,7 @@ function M.shape(sized_face, text, options)
       end
       if options.language ~= nil then
          if type(options.language) ~= "string" or options.language == "" then
-            error("font.shape expects options.language to be a non-empty string if provided", 0)
+            rig.raise("font.shape expects options.language to be a non-empty string if provided")
          end
          harfbuzz.buffer_set_language(
             hb_buffer,
@@ -496,10 +496,10 @@ end
 function M.build_text_run(atlas, text, options)
    ensure_atlas(atlas)
    if type(text) ~= "string" then
-      error("font.build_text_run expects text to be a string", 0)
+      rig.raise("font.build_text_run expects text to be a string")
    end
    if options ~= nil and type(options) ~= "table" then
-      error("font.build_text_run expects options to be a table if provided", 0)
+      rig.raise("font.build_text_run expects options to be a table if provided")
    end
 
    local shaped = M.shape(atlas.sized_face, text, options)
@@ -531,10 +531,10 @@ end
 function M.warm_text(atlas, text, options)
    ensure_atlas(atlas)
    if type(text) ~= "string" then
-      error("font.warm_text expects text to be a string", 0)
+      rig.raise("font.warm_text expects text to be a string")
    end
    if options ~= nil and type(options) ~= "table" then
-      error("font.warm_text expects options to be a table if provided", 0)
+      rig.raise("font.warm_text expects options to be a table if provided")
    end
 
    local shaped = M.shape(atlas.sized_face, text, options)
@@ -548,12 +548,12 @@ function M.rasterize_glyph(sized_face, glyph_id, options)
 
    local normalized_glyph_id = tonumber(glyph_id)
    if normalized_glyph_id == nil or normalized_glyph_id < 0 then
-      error("font.rasterize_glyph expects glyph_id to be a non-negative number", 0)
+      rig.raise("font.rasterize_glyph expects glyph_id to be a non-negative number")
    end
    normalized_glyph_id = math.floor(normalized_glyph_id)
 
    if options ~= nil and type(options) ~= "table" then
-      error("font.rasterize_glyph expects options to be a table if provided", 0)
+      rig.raise("font.rasterize_glyph expects options to be a table if provided")
    end
 
    local render_mode = freetype.RENDER_MODE_NORMAL
@@ -581,7 +581,7 @@ function M.rasterize_glyph(sized_face, glyph_id, options)
 
    local glyph = sized_face._ft_face.glyph
    if glyph == nil or glyph == ffi.NULL then
-      error("freetype face did not provide a glyph slot", 0)
+      rig.raise("freetype face did not provide a glyph slot")
    end
 
    if bit.band(load_flags, freetype.LOAD_RENDER) == 0 then
@@ -618,7 +618,7 @@ function M.get_cached_glyph(sized_face, glyph_id)
 
    local normalized_glyph_id = tonumber(glyph_id)
    if normalized_glyph_id == nil or normalized_glyph_id < 0 then
-      error("font.get_cached_glyph expects glyph_id to be a non-negative number", 0)
+      rig.raise("font.get_cached_glyph expects glyph_id to be a non-negative number")
    end
    normalized_glyph_id = math.floor(normalized_glyph_id)
 
@@ -740,7 +740,7 @@ end
 function M.create_atlas(sized_face, options)
    ensure_sized_face(sized_face)
    if options ~= nil and type(options) ~= "table" then
-      error("font.create_atlas expects options to be a table if provided", 0)
+      rig.raise("font.create_atlas expects options to be a table if provided")
    end
 
    local page_width = nil
@@ -770,7 +770,7 @@ function M.atlas_get_glyph(atlas, glyph_id)
 
    local normalized_glyph_id = tonumber(glyph_id)
    if normalized_glyph_id == nil or normalized_glyph_id < 0 then
-      error("font.atlas_get_glyph expects glyph_id to be a non-negative number", 0)
+      rig.raise("font.atlas_get_glyph expects glyph_id to be a non-negative number")
    end
    normalized_glyph_id = math.floor(normalized_glyph_id)
 
@@ -865,13 +865,13 @@ end
 function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
    ensure_text_renderer(text_renderer)
    if type(packed) ~= "table" then
-      error("font.draw_packed_glyph expects packed to be a table", 0)
+      rig.raise("font.draw_packed_glyph expects packed to be a table")
    end
    if type(x) ~= "number" then
-      error("font.draw_packed_glyph expects x to be a number", 0)
+      rig.raise("font.draw_packed_glyph expects x to be a number")
    end
    if type(y) ~= "number" then
-      error("font.draw_packed_glyph expects y to be a number", 0)
+      rig.raise("font.draw_packed_glyph expects y to be a number")
    end
 
    local draw_scale = scale
@@ -879,7 +879,7 @@ function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
       draw_scale = 1.0
    end
    if type(draw_scale) ~= "number" then
-      error("font.draw_packed_glyph expects scale to be a number if provided", 0)
+      rig.raise("font.draw_packed_glyph expects scale to be a number if provided")
    end
 
    local draw_r = r
@@ -915,16 +915,16 @@ end
 function M.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
    ensure_text_renderer(text_renderer)
    if type(run) ~= "table" then
-      error("font.draw_text_run expects run to be a table", 0)
+      rig.raise("font.draw_text_run expects run to be a table")
    end
    if type(base_x) ~= "number" then
-      error("font.draw_text_run expects base_x to be a number", 0)
+      rig.raise("font.draw_text_run expects base_x to be a number")
    end
    if type(baseline_y) ~= "number" then
-      error("font.draw_text_run expects baseline_y to be a number", 0)
+      rig.raise("font.draw_text_run expects baseline_y to be a number")
    end
    if color_fn ~= nil and type(color_fn) ~= "function" then
-      error("font.draw_text_run expects color_fn to be a function if provided", 0)
+      rig.raise("font.draw_text_run expects color_fn to be a function if provided")
    end
 
    text_renderer._provider.draw_text_run(

@@ -1,6 +1,7 @@
 local M = ... or {}
 local ffi = require("ffi")
 local bit = bit
+local rig = require("rig")
 local sched = require("sched")
 local schema = require("schema")
 require("font")
@@ -734,12 +735,12 @@ local function normalize_vertex_input_rate(value)
    if type(value) == "string" then
       local normalized = VERTEX_INPUT_RATES[value]
       if normalized == nil then
-         error("unsupported vertex input rate '" .. value .. "'", 0)
+         rig.raise("unsupported vertex input rate '" .. value .. "'")
       end
       return normalized
    end
    if type(value) ~= "number" then
-      error("vertex input rate must be a string or number", 0)
+      rig.raise("vertex input rate must be a string or number")
    end
    return value
 end
@@ -748,12 +749,12 @@ local function normalize_vertex_attribute_format(value)
    if type(value) == "string" then
       local normalized = VERTEX_ATTRIBUTE_FORMATS[value]
       if normalized == nil then
-         error("unsupported vertex attribute format '" .. value .. "'", 0)
+         rig.raise("unsupported vertex attribute format '" .. value .. "'")
       end
       return normalized
    end
    if type(value) ~= "number" then
-      error("vertex attribute format must be a string or number", 0)
+      rig.raise("vertex attribute format must be a string or number")
    end
    return value
 end
@@ -761,7 +762,7 @@ end
 local GPUVertexBufferDescription = ffi.metatype("SDL_GPUVertexBufferDescription", {
    __new = function(ct, spec)
       if type(spec) ~= "table" then
-         error("vertex buffer descriptions must be tables", 0)
+         rig.raise("vertex buffer descriptions must be tables")
       end
 
       local description = ffi.new(ct)
@@ -780,7 +781,7 @@ local GPUVertexBufferDescription = ffi.metatype("SDL_GPUVertexBufferDescription"
 local GPUVertexAttribute = ffi.metatype("SDL_GPUVertexAttribute", {
    __new = function(ct, spec)
       if type(spec) ~= "table" then
-         error("vertex attributes must be tables", 0)
+         rig.raise("vertex attributes must be tables")
       end
 
       local attribute = ffi.new(ct)
@@ -798,7 +799,7 @@ local GPUVertexAttribute = ffi.metatype("SDL_GPUVertexAttribute", {
 local GPUBufferCreateInfo = ffi.metatype("SDL_GPUBufferCreateInfo", {
    __new = function(ct, spec)
       if type(spec) ~= "table" then
-         error("sdl3.build_gpu_buffer_create_info expects a table", 0)
+         rig.raise("sdl3.build_gpu_buffer_create_info expects a table")
       end
 
       local create_info = ffi.new(ct)
@@ -853,7 +854,7 @@ end
 local GPUColorTargetDescription = ffi.metatype("SDL_GPUColorTargetDescription", {
    __new = function(ct, spec)
       if type(spec) ~= "table" then
-         error("color target descriptions must be tables", 0)
+         rig.raise("color target descriptions must be tables")
       end
 
       local description = ffi.new(ct)
@@ -935,12 +936,12 @@ function M.build_vertex_input_state(layout)
    local attribute_specs = {}
    for i, buffer in ipairs(layout.buffers) do
       if type(buffer) ~= "table" then
-         error("vertex input buffers must be tables", 0)
+         rig.raise("vertex input buffers must be tables")
       end
       local buffer_slot = tonumber(buffer.slot or (i - 1)) or 0
       local attributes = buffer.attributes
       if type(attributes) ~= "table" then
-         error("each vertex input buffer requires an attributes table", 0)
+         rig.raise("each vertex input buffer requires an attributes table")
       end
       for _, attribute in ipairs(attributes) do
          local spec = {}
@@ -975,7 +976,7 @@ end
 
 function M.build_color_target_descriptions(specs)
    if type(specs) ~= "table" then
-      error("sdl3.build_color_target_descriptions expects a table", 0)
+      rig.raise("sdl3.build_color_target_descriptions expects a table")
    end
 
    local descriptions = ffi.new("SDL_GPUColorTargetDescription[?]", #specs)
@@ -988,7 +989,7 @@ end
 
 function M.build_graphics_pipeline_create_info(spec)
    if type(spec) ~= "table" then
-      error("sdl3.build_graphics_pipeline_create_info expects a table", 0)
+      rig.raise("sdl3.build_graphics_pipeline_create_info expects a table")
    end
 
    local create_info = ffi.new("SDL_GPUGraphicsPipelineCreateInfo[1]")
@@ -1178,12 +1179,12 @@ function M.create_gpu_shader(device, compiled, props)
 
    local valid_layout, layout_err = validate_graphics_spirv_layout(compiled)
    if not valid_layout then
-      error(tostring(layout_err or "shader layout validation failed"), 0)
+      rig.raise(tostring(layout_err or "shader layout validation failed"))
    end
 
    local reflection = compiled.reflection
    if type(reflection) ~= "table" or type(reflection.resource_info) ~= "table" then
-      error("compiled shader is missing reflection.resource_info", 0)
+      rig.raise("compiled shader is missing reflection.resource_info")
    end
 
    local code_buffer = ffi.new("Uint8[?]", #compiled.bytecode)
@@ -1206,7 +1207,7 @@ function M.create_gpu_shader(device, compiled, props)
 
    local shader_handle = M.CreateGPUShader(device, create_info)
    if shader_handle == nil then
-      error(ffi.string(M.GetError()), 0)
+      rig.raise(ffi.string(M.GetError()))
    end
 
    return shader_handle
@@ -1233,7 +1234,7 @@ function sdl3_resource_scope_methods:create_gpu_buffer(create_info)
 
    local buffer = M.CreateGPUBuffer(self.context, normalized)
    if buffer == nil then
-      error("failed to create GPU buffer: " .. get_error_string(), 0)
+      rig.raise("failed to create GPU buffer: " .. get_error_string())
    end
 
    return self:adopt(buffer, function(device, resource)
@@ -1250,7 +1251,7 @@ function sdl3_resource_scope_methods:create_graphics_pipeline(create_info)
 
    local pipeline = M.CreateGPUGraphicsPipeline(self.context, normalized)
    if pipeline == nil then
-      error("failed to create GPU graphics pipeline: " .. get_error_string(), 0)
+      rig.raise("failed to create GPU graphics pipeline: " .. get_error_string())
    end
 
    return self:adopt(pipeline, function(device, resource)
@@ -1269,7 +1270,7 @@ end
 
 function M.resource_scope(device)
    if device == nil then
-      error("sdl3.resource_scope requires an SDL_GPUDevice*", 0)
+      rig.raise("sdl3.resource_scope requires an SDL_GPUDevice*")
    end
 
    local scope = rig.ResourceScope(device, "sdl3 resource scope")
@@ -1472,7 +1473,7 @@ end
 
 function M.get_gl_proc_address(name)
    if type(name) ~= "string" or name == "" then
-      error("sdl3.get_gl_proc_address expects a non-empty string", 0)
+      rig.raise("sdl3.get_gl_proc_address expects a non-empty string")
    end
 
    local ptr = M.GL_GetProcAddress(name)
@@ -1485,11 +1486,11 @@ end
 
 local function get_window_size()
    if runtime_window == nil then
-      error("an SDL window must exist before querying window size", 0)
+      rig.raise("an SDL window must exist before querying window size")
    end
 
    if not M.GetWindowSize(runtime_window, window_size_width, window_size_height) then
-      error("failed to query window size: " .. get_error_string(), 0)
+      rig.raise("failed to query window size: " .. get_error_string())
    end
 
    return tonumber(window_size_width[0]) or 0,
@@ -1524,7 +1525,7 @@ local function create_window_or_fail(options, owned_init_flags)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3 create_window must be a function", 0)
+      rig.raise("sdl3 create_window must be a function")
    end
 
    local window_ptr, window_err = create_window(options)
@@ -1542,7 +1543,7 @@ local function create_window_or_fail(options, owned_init_flags)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3 create_window must return SDL_Window* cdata", 0)
+      rig.raise("sdl3 create_window must return SDL_Window* cdata")
    end
 
    return window_ptr, owned_init_flags
@@ -1557,7 +1558,7 @@ local function setup(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3 create_renderer must be a function", 0)
+      rig.raise("sdl3 create_renderer must be a function")
    end
 
    local renderer_ptr, renderer_err = create_renderer(window_ptr)
@@ -1577,7 +1578,7 @@ local function setup(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("sdl3 create_renderer must return SDL_Renderer* cdata", 0)
+      rig.raise("sdl3 create_renderer must return SDL_Renderer* cdata")
    end
 
    runtime_window = window_ptr
@@ -1673,7 +1674,7 @@ local function gl_attribute_int(value)
    end
    local normalized = tonumber(value)
    if normalized == nil then
-      error("OpenGL attribute values must be booleans or numbers", 0)
+      rig.raise("OpenGL attribute values must be booleans or numbers")
    end
    return normalized
 end
@@ -1682,7 +1683,7 @@ local function normalize_gl_profile(value)
    if type(value) == "string" then
       local field = GL_PROFILE_VALUES[value]
       if field == nil then
-         error("unsupported OpenGL context profile '" .. value .. "'", 0)
+         rig.raise("unsupported OpenGL context profile '" .. value .. "'")
       end
       return M[field]
    end
@@ -1703,13 +1704,13 @@ local function apply_gl_attributes(attributes)
       }
    end
    if type(requested) ~= "table" then
-      error("sdl3_gl gl_attributes must be a table", 0)
+      rig.raise("sdl3_gl gl_attributes must be a table")
    end
 
    for key, value in pairs(requested) do
       local field = GL_ATTRIBUTE_VALUES[key]
       if field == nil then
-         error("unsupported OpenGL attribute '" .. tostring(key) .. "'", 0)
+         rig.raise("unsupported OpenGL attribute '" .. tostring(key) .. "'")
       end
 
       local normalized = value
@@ -1733,7 +1734,7 @@ end
 
 local function setup_gl(options)
    if options ~= nil and type(options) ~= "table" then
-      error("sdl3_gl options must be a table if provided", 0)
+      rig.raise("sdl3_gl options must be a table if provided")
    end
 
    options = normalize_driver_config(options)
@@ -1741,7 +1742,7 @@ local function setup_gl(options)
       [M.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
    })
    if window_props == nil then
-      error(props_err, 0)
+      rig.raise(props_err)
    end
 
    local window_options = {}
@@ -1759,7 +1760,7 @@ local function setup_gl(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("failed to create OpenGL context: " .. get_error_string(), 0)
+      rig.raise("failed to create OpenGL context: " .. get_error_string())
    end
 
    if not M.GL_MakeCurrent(window_ptr, gl_context) then
@@ -1768,7 +1769,7 @@ local function setup_gl(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("failed to make OpenGL context current: " .. get_error_string(), 0)
+      rig.raise("failed to make OpenGL context current: " .. get_error_string())
    end
 
    local swap_interval = options.swap_interval
@@ -1781,7 +1782,7 @@ local function setup_gl(options)
       if owned_init_flags ~= nil then
          M.QuitSubSystem(owned_init_flags)
       end
-      error("failed to set OpenGL swap interval: " .. get_error_string(), 0)
+      rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
    end
 
    runtime_window = window_ptr
@@ -1830,10 +1831,10 @@ end
 
 local function present_gl()
    if runtime_window == nil or runtime_gl_context == nil then
-      error("an OpenGL window and context must be initialized before presenting", 0)
+      rig.raise("an OpenGL window and context must be initialized before presenting")
    end
    if not M.GL_SwapWindow(runtime_window) then
-      error("failed to swap OpenGL window: " .. get_error_string(), 0)
+      rig.raise("failed to swap OpenGL window: " .. get_error_string())
    end
 end
 
@@ -1926,7 +1927,7 @@ local function ensure_gl_font_backend_state()
          gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
       end
       gl.DeleteProgram(program)
-      error("failed to create OpenGL font vertex objects", 0)
+      rig.raise("failed to create OpenGL font vertex objects")
    end
 
    gl.BindVertexArray(vao)
@@ -1952,7 +1953,7 @@ local function ensure_gl_font_backend_state()
       gl_font_vertex_arrays[0] = vao
       gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
       gl.DeleteProgram(program)
-      error("failed to locate OpenGL font shader uniforms", 0)
+      rig.raise("failed to locate OpenGL font shader uniforms")
    end
 
    gl.UseProgram(program)
@@ -1973,11 +1974,11 @@ end
 
 local function get_window_size_in_pixels()
    if runtime_window == nil then
-      error("an SDL window must exist before querying pixel size", 0)
+      rig.raise("an SDL window must exist before querying pixel size")
    end
 
    if not M.GetWindowSizeInPixels(runtime_window, gl_font_window_width, gl_font_window_height) then
-      error("failed to query window size in pixels: " .. get_error_string(), 0)
+      rig.raise("failed to query window size in pixels: " .. get_error_string())
    end
 
    return tonumber(gl_font_window_width[0]) or 0,
@@ -2043,7 +2044,7 @@ local function upload_gl_font_page_texture(page, texture)
       gl.GenTextures(1, gl_font_textures)
       texture_id = tonumber(gl_font_textures[0]) or 0
       if texture_id == 0 then
-         error("failed to create OpenGL font texture", 0)
+         rig.raise("failed to create OpenGL font texture")
       end
    end
 
@@ -2073,7 +2074,7 @@ local function ensure_gl_font_page_texture(text_renderer, page_index)
    local state = text_renderer._state
    local page = atlas.pages[page_index]
    if page == nil then
-      error(("font atlas has no page %d"):format(page_index), 0)
+      rig.raise(("font atlas has no page %d"):format(page_index))
    end
 
    local revision = page.revision or 0
@@ -2147,12 +2148,12 @@ local function upload_font_page_texture(page, texture)
          page.height
       )
       if page_texture == nil or page_texture == ffi.NULL then
-         error("failed to create SDL texture: " .. ffi.string(M.GetError()), 0)
+         rig.raise("failed to create SDL texture: " .. ffi.string(M.GetError()))
       end
 
       if not M.SetTextureBlendMode(page_texture, M.BLENDMODE_BLEND) then
          M.DestroyTexture(page_texture)
-         error("failed to set SDL texture blend mode: " .. ffi.string(M.GetError()), 0)
+         rig.raise("failed to set SDL texture blend mode: " .. ffi.string(M.GetError()))
       end
    end
 
@@ -2160,7 +2161,7 @@ local function upload_font_page_texture(page, texture)
       if texture == nil or texture == ffi.NULL then
          M.DestroyTexture(page_texture)
       end
-      error("failed to upload SDL texture: " .. ffi.string(M.GetError()), 0)
+      rig.raise("failed to upload SDL texture: " .. ffi.string(M.GetError()))
    end
 
    return page_texture
@@ -2171,7 +2172,7 @@ local function ensure_font_page_texture(text_renderer, page_index)
    local state = text_renderer._state
    local page = atlas.pages[page_index]
    if page == nil then
-      error(("font atlas has no page %d"):format(page_index), 0)
+      rig.raise(("font atlas has no page %d"):format(page_index))
    end
 
    local revision = page.revision or 0
@@ -2218,10 +2219,10 @@ function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, scale
 
    local texture = ensure_font_page_texture(text_renderer, packed.page_index)
    if not M.SetTextureColorMod(texture, r, g, b) then
-      error("failed to set texture color modulation: " .. ffi.string(M.GetError()), 0)
+      rig.raise("failed to set texture color modulation: " .. ffi.string(M.GetError()))
    end
    if not M.SetTextureAlphaMod(texture, a) then
-      error("failed to set texture alpha modulation: " .. ffi.string(M.GetError()), 0)
+      rig.raise("failed to set texture alpha modulation: " .. ffi.string(M.GetError()))
    end
 
    font_src_rect[0].x = packed.x
@@ -2235,7 +2236,7 @@ function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, scale
    font_dst_rect[0].h = packed.height * scale
 
    if not M.RenderTexture(runtime_renderer, texture, font_src_rect, font_dst_rect) then
-      error("failed to render SDL texture: " .. ffi.string(M.GetError()), 0)
+      rig.raise("failed to render SDL texture: " .. ffi.string(M.GetError()))
    end
 end
 
@@ -2368,13 +2369,13 @@ end
 
 function M.upload_to_gpu_buffer(device, buffer, data)
    if device == nil then
-      error("sdl3.upload_to_gpu_buffer requires an SDL_GPUDevice*", 0)
+      rig.raise("sdl3.upload_to_gpu_buffer requires an SDL_GPUDevice*")
    end
    if buffer == nil then
-      error("sdl3.upload_to_gpu_buffer requires an SDL_GPUBuffer*", 0)
+      rig.raise("sdl3.upload_to_gpu_buffer requires an SDL_GPUBuffer*")
    end
    if type(data) ~= "string" then
-      error("sdl3.upload_to_gpu_buffer requires data to be a string", 0)
+      rig.raise("sdl3.upload_to_gpu_buffer requires data to be a string")
    end
 
    local transfer_info = ffi.new("SDL_GPUTransferBufferCreateInfo[1]")
@@ -2384,13 +2385,13 @@ function M.upload_to_gpu_buffer(device, buffer, data)
 
    local transfer_buffer = M.CreateGPUTransferBuffer(device, transfer_info)
    if transfer_buffer == nil then
-      error("failed to create GPU transfer buffer: " .. get_error_string(), 0)
+      rig.raise("failed to create GPU transfer buffer: " .. get_error_string())
    end
 
    local mapped = M.MapGPUTransferBuffer(device, transfer_buffer, false)
    if mapped == nil then
       M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-      error("failed to map GPU transfer buffer: " .. get_error_string(), 0)
+      rig.raise("failed to map GPU transfer buffer: " .. get_error_string())
    end
    ffi.copy(mapped, data, #data)
    M.UnmapGPUTransferBuffer(device, transfer_buffer)
@@ -2398,7 +2399,7 @@ function M.upload_to_gpu_buffer(device, buffer, data)
    local command_buffer = M.AcquireGPUCommandBuffer(device)
    if command_buffer == nil then
       M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-      error("failed to acquire GPU command buffer: " .. get_error_string(), 0)
+      rig.raise("failed to acquire GPU command buffer: " .. get_error_string())
    end
 
    local copy_pass = M.BeginGPUCopyPass(command_buffer)
@@ -2416,7 +2417,7 @@ function M.upload_to_gpu_buffer(device, buffer, data)
 
    if not M.SubmitGPUCommandBuffer(command_buffer) then
       M.ReleaseGPUTransferBuffer(device, transfer_buffer)
-      error("failed to submit GPU upload command buffer: " .. get_error_string(), 0)
+      rig.raise("failed to submit GPU upload command buffer: " .. get_error_string())
    end
 
    M.ReleaseGPUTransferBuffer(device, transfer_buffer)
@@ -2424,7 +2425,7 @@ end
 
 function M.choose_depth_format(device)
    if device == nil then
-      error("sdl3.choose_depth_format requires an SDL_GPUDevice*", 0)
+      rig.raise("sdl3.choose_depth_format requires an SDL_GPUDevice*")
    end
 
    local candidates = {
@@ -2444,12 +2445,12 @@ function M.choose_depth_format(device)
       end
    end
 
-   error("no supported depth texture format found", 0)
+   rig.raise("no supported depth texture format found")
 end
 
 function M.create_depth_texture(device, width, height, format)
    if device == nil then
-      error("sdl3.create_depth_texture requires an SDL_GPUDevice*", 0)
+      rig.raise("sdl3.create_depth_texture requires an SDL_GPUDevice*")
    end
 
    if format == nil then
@@ -2469,7 +2470,7 @@ function M.create_depth_texture(device, width, height, format)
 
    local texture = M.CreateGPUTexture(device, create_info)
    if texture == nil then
-      error("failed to create GPU depth texture: " .. get_error_string(), 0)
+      rig.raise("failed to create GPU depth texture: " .. get_error_string())
    end
 
    return texture, format
@@ -2621,10 +2622,10 @@ end
 
 local function render_frame(render_fn)
    if type(render_fn) ~= "function" then
-      error("sdl3.render_frame requires a render function", 0)
+      rig.raise("sdl3.render_frame requires a render function")
    end
    if runtime_renderer == nil then
-      error("an SDL renderer must be initialized before sdl3.render_frame", 0)
+      rig.raise("an SDL renderer must be initialized before sdl3.render_frame")
    end
 
    render_fn()
@@ -2633,18 +2634,18 @@ end
 
 local function render_gpu_frame(render_fn)
    if type(render_fn) ~= "function" then
-      error("sdl3.render_gpu_frame requires a render function", 0)
+      rig.raise("sdl3.render_gpu_frame requires a render function")
    end
    if runtime_gpu_device == nil then
-      error("an SDL GPU device must be initialized before sdl3.render_gpu_frame", 0)
+      rig.raise("an SDL GPU device must be initialized before sdl3.render_gpu_frame")
    end
    if runtime_window == nil then
-      error("an SDL window must be initialized before sdl3.render_gpu_frame", 0)
+      rig.raise("an SDL window must be initialized before sdl3.render_gpu_frame")
    end
 
    local command_buffer = M.AcquireGPUCommandBuffer(runtime_gpu_device)
    if command_buffer == nil then
-      error("failed to acquire GPU command buffer: " .. get_error_string(), 0)
+      rig.raise("failed to acquire GPU command buffer: " .. get_error_string())
    end
 
    local swapchain_texture_out = ffi.new("SDL_GPUTexture *[1]")
@@ -2657,7 +2658,7 @@ local function render_gpu_frame(render_fn)
       width_out,
       height_out
    ) then
-      error("failed to acquire swapchain texture: " .. get_error_string(), 0)
+      rig.raise("failed to acquire swapchain texture: " .. get_error_string())
    end
 
    local swapchain_texture = swapchain_texture_out[0]
@@ -2671,7 +2672,7 @@ local function render_gpu_frame(render_fn)
    end
 
    if not M.SubmitGPUCommandBuffer(command_buffer) then
-      error("failed to submit GPU command buffer: " .. get_error_string(), 0)
+      rig.raise("failed to submit GPU command buffer: " .. get_error_string())
    end
 
    return swapchain_texture ~= nil
@@ -2679,10 +2680,10 @@ end
 
 local function render_gl_frame(render_fn)
    if type(render_fn) ~= "function" then
-      error("sdl3_gl render requires a render function", 0)
+      rig.raise("sdl3_gl render requires a render function")
    end
    if runtime_window == nil or runtime_gl_context == nil then
-      error("an SDL OpenGL context must be initialized before rendering", 0)
+      rig.raise("an SDL OpenGL context must be initialized before rendering")
    end
 
    render_fn()
@@ -2693,7 +2694,7 @@ local function current_monotonic_seconds()
    local counter = tonumber(M.GetPerformanceCounter())
    local frequency = tonumber(M.GetPerformanceFrequency())
    if frequency == nil or frequency <= 0 then
-      error("sdl3.GetPerformanceFrequency returned an invalid value", 0)
+      rig.raise("sdl3.GetPerformanceFrequency returned an invalid value")
    end
    return counter / frequency
 end
@@ -2702,7 +2703,7 @@ local function current_time_seconds()
    local ticks = ffi.new("int64_t[1]")
    if not M.GetCurrentTime(ticks) then
       local err = M.GetError()
-      error("sdl3.GetCurrentTime failed: " .. ffi.string(err), 0)
+      rig.raise("sdl3.GetCurrentTime failed: " .. ffi.string(err))
    end
    return tonumber(ticks[0]) / 1000000000.0
 end
@@ -2719,7 +2720,7 @@ local sdl3_time_service = {
 local sdl3_gpu_mesh_service = {
    build_vertex_input = function(mesh)
       if type(mesh) ~= "table" then
-         error("mesh.vertex_input provider expects a mesh table", 0)
+         rig.raise("mesh.vertex_input provider expects a mesh table")
       end
 
       if mesh.layout == "position_color_f32" then
@@ -2746,7 +2747,7 @@ local sdl3_gpu_mesh_service = {
          }
       end
 
-      error("unsupported mesh layout '" .. tostring(mesh.layout) .. "'", 0)
+      rig.raise("unsupported mesh layout '" .. tostring(mesh.layout) .. "'")
    end,
 }
 
@@ -2767,7 +2768,7 @@ local shader_stage_service_sdl3_gpu = {
 
       local device = M.get_gpu_device()
       if device == nil then
-         error("shader.create_stage requires an active SDL GPU device", 0)
+         rig.raise("shader.create_stage requires an active SDL GPU device")
       end
 
       return M.create_gpu_shader(device, artifact, spec.props)
@@ -2775,7 +2776,7 @@ local shader_stage_service_sdl3_gpu = {
    destroy_stage = function(stage)
       local device = M.get_gpu_device()
       if device == nil then
-         error("shader.destroy_stage requires an active SDL GPU device", 0)
+         rig.raise("shader.destroy_stage requires an active SDL GPU device")
       end
       M.ReleaseGPUShader(device, stage)
    end,

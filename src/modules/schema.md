@@ -106,7 +106,7 @@ local shader_stage_schema = schema.non_empty_string()
       if lowered == "fragment" then
          return 2
       end
-      error("shader stage expects vertex or fragment", 0)
+      rig.raise("shader stage expects vertex or fragment")
    end)
 ```
 

@@ -8,7 +8,7 @@ local sdl3 = require("sdl3")
 local time = require("time")
 
 local function fail(message)
-   error(message, 0)
+   rig.raise(message)
 end
 
 local vertex_shader_source = [[
@@ -133,7 +133,7 @@ local function after_setup()
    shader.destroy_stage(vertex_shader)
    shader.destroy_stage(fragment_shader)
    if not ok then
-      error(linked_or_err, 0)
+      rig.raise(linked_or_err)
    end
    program = linked_or_err
 

@@ -1,4 +1,5 @@
 local M = ... or {}
+local rig = require("rig")
 local time = require("time")
 local uv = require("uv")
 local sched = require("sched")
@@ -41,10 +42,10 @@ end
 
 local function register_case(kind, name, fn)
    if type(name) ~= "string" or name == "" then
-      error(("test.%s expects name to be a non-empty string"):format(kind), 0)
+      rig.raise(("test.%s expects name to be a non-empty string"):format(kind))
    end
    if type(fn) ~= "function" then
-      error(("test.%s expects fn to be a function"):format(kind), 0)
+      rig.raise(("test.%s expects fn to be a function"):format(kind))
    end
 
    table.insert(M._registered_cases, {
@@ -55,7 +56,7 @@ local function register_case(kind, name, fn)
 end
 
 local function fail_with_message(message)
-   error(message, 0)
+   rig.raise(message)
 end
 
 local function format_duration(duration_s)
@@ -91,7 +92,7 @@ local function discover_files(roots)
    local function walk(path)
       local entries, err = uv.scandir(path)
       if entries == nil then
-         error(err, 0)
+         rig.raise(err)
       end
 
       for i = 1, #entries do
@@ -147,7 +148,7 @@ end
 
 function M.fail(message)
    if type(message) ~= "string" or message == "" then
-      error("test.fail expects a non-empty string message", 0)
+      rig.raise("test.fail expects a non-empty string message")
    end
    fail_with_message(message)
 end
@@ -160,7 +161,7 @@ function M.truthy(value, message)
    if message == nil then
       message = "expected a truthy value"
    elseif type(message) ~= "string" or message == "" then
-      error("test.truthy expects message to be a non-empty string if provided", 0)
+      rig.raise("test.truthy expects message to be a non-empty string if provided")
    end
 
    fail_with_message(message)
@@ -174,7 +175,7 @@ function M.falsey(value, message)
    if message == nil then
       message = "expected a falsey value"
    elseif type(message) ~= "string" or message == "" then
-      error("test.falsey expects message to be a non-empty string if provided", 0)
+      rig.raise("test.falsey expects message to be a non-empty string if provided")
    end
 
    fail_with_message(message)
@@ -186,7 +187,7 @@ function M.equal(actual, expected, message)
    end
 
    if message ~= nil and (type(message) ~= "string" or message == "") then
-      error("test.equal expects message to be a non-empty string if provided", 0)
+      rig.raise("test.equal expects message to be a non-empty string if provided")
    end
 
    local parts = {}
@@ -202,13 +203,13 @@ end
 
 function M.match(value, pattern, message)
    if type(value) ~= "string" then
-      error("test.match expects value to be a string", 0)
+      rig.raise("test.match expects value to be a string")
    end
    if type(pattern) ~= "string" or pattern == "" then
-      error("test.match expects pattern to be a non-empty string", 0)
+      rig.raise("test.match expects pattern to be a non-empty string")
    end
    if message ~= nil and (type(message) ~= "string" or message == "") then
-      error("test.match expects message to be a non-empty string if provided", 0)
+      rig.raise("test.match expects message to be a non-empty string if provided")
    end
 
    if value:match(pattern) ~= nil then
@@ -228,13 +229,13 @@ end
 
 function M.contains_line(value, expected_line, message)
    if type(value) ~= "string" then
-      error("test.contains_line expects value to be a string", 0)
+      rig.raise("test.contains_line expects value to be a string")
    end
    if type(expected_line) ~= "string" or expected_line == "" then
-      error("test.contains_line expects expected_line to be a non-empty string", 0)
+      rig.raise("test.contains_line expects expected_line to be a non-empty string")
    end
    if message ~= nil and (type(message) ~= "string" or message == "") then
-      error("test.contains_line expects message to be a non-empty string if provided", 0)
+      rig.raise("test.contains_line expects message to be a non-empty string if provided")
    end
 
    for line in value:gmatch("[^\n]+") do
@@ -256,15 +257,15 @@ end
 
 function M.fixture(setup, teardown)
    if type(setup) ~= "function" then
-      error("test.fixture expects setup to be a function", 0)
+      rig.raise("test.fixture expects setup to be a function")
    end
    if teardown ~= nil and type(teardown) ~= "function" then
-      error("test.fixture expects teardown to be a function if provided", 0)
+      rig.raise("test.fixture expects teardown to be a function if provided")
    end
 
    return function(body)
       if type(body) ~= "function" then
-         error("test.fixture wrapper expects body to be a function", 0)
+         rig.raise("test.fixture wrapper expects body to be a function")
       end
 
       return function()
@@ -293,11 +294,11 @@ function M.fixture(setup, teardown)
                   0
                )
             end
-            error(body_err, 0)
+            rig.raise(body_err)
          end
 
          if not teardown_ok then
-            error("fixture teardown failed:\n" .. tostring(teardown_err), 0)
+            rig.raise("fixture teardown failed:\n" .. tostring(teardown_err))
          end
       end
    end
@@ -306,7 +307,7 @@ end
 function M.discover(options)
    local opts = options or {}
    if type(opts) ~= "table" then
-      error("test.discover expects a table if provided", 0)
+      rig.raise("test.discover expects a table if provided")
    end
    return discover_files(normalize_roots(opts.roots))
 end
@@ -314,12 +315,12 @@ end
 function M.run(options)
    local opts = options or {}
    if type(opts) ~= "table" then
-      error("test.run expects a table if provided", 0)
+      rig.raise("test.run expects a table if provided")
    end
 
    local executable = rig.argv[0]
    if type(executable) ~= "string" or executable == "" then
-      error("test.run requires rig.argv[0]", 0)
+      rig.raise("test.run requires rig.argv[0]")
    end
 
    local roots = normalize_roots(opts.roots)
@@ -410,7 +411,7 @@ end
 function M.run_registered_cases(options)
    local opts = options or {}
    if type(opts) ~= "table" then
-      error("test.run_registered_cases expects a table if provided", 0)
+      rig.raise("test.run_registered_cases expects a table if provided")
    end
 
    local script_path = opts.script_path

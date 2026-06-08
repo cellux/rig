@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 local sched = require("sched")
 local schema = require("schema")
 require("time")
@@ -95,7 +96,7 @@ local function get_uv_module_config(options)
       return {}
    end
    if type(module_config) ~= "table" then
-      error("rig.run expects options.module_config to be a table if provided", 0)
+      rig.raise("rig.run expects options.module_config to be a table if provided")
    end
 
    local uv_config = module_config.uv
@@ -110,7 +111,7 @@ local function read_clock(clock_id, label)
    local nanoseconds = ffi.new("int32_t[1]")
    local rc = ffi.C.rig_uv_clock_read(clock_id, seconds, nanoseconds)
    if rc ~= 0 then
-      error(label .. " failed: " .. uv_error_string(rc), 0)
+      rig.raise(label .. " failed: " .. uv_error_string(rc))
    end
 
    return tonumber(seconds[0]), tonumber(nanoseconds[0])
@@ -138,17 +139,17 @@ end
 
 local function normalize_scandir_path(path)
    if type(path) ~= "string" or path == "" then
-      error("uv.scandir expects path to be a non-empty string", 0)
+      rig.raise("uv.scandir expects path to be a non-empty string")
    end
    return path
 end
 
 local function spawn_internal(spec, on_exit)
    if M._loop == nil then
-      error("uv.spawn requires an active uv loop", 0)
+      rig.raise("uv.spawn requires an active uv loop")
    end
    if type(on_exit) ~= "function" then
-      error("uv internal spawn requires an exit callback", 0)
+      rig.raise("uv internal spawn requires an exit callback")
    end
 
    local args = ffi.new("const char *[?]", #spec.args + 1)
@@ -202,7 +203,7 @@ local function parse_scandir_entries(entries_data, entries_len)
 
       local terminator = string.find(data, "\0", i, true)
       if terminator == nil then
-         error("uv.scandir received malformed entry data", 0)
+         rig.raise("uv.scandir received malformed entry data")
       end
 
       table.insert(entries, {
@@ -217,10 +218,10 @@ end
 
 local function scandir_internal(path, on_done)
    if M._loop == nil then
-      error("uv.scandir requires an active uv loop", 0)
+      rig.raise("uv.scandir requires an active uv loop")
    end
    if type(on_done) ~= "function" then
-      error("uv internal scandir requires a completion callback", 0)
+      rig.raise("uv internal scandir requires a completion callback")
    end
 
    local completion_callback
@@ -246,16 +247,16 @@ local function scandir_internal(path, on_done)
    local rc = ffi.C.rig_uv_scandir(M._loop, path, completion_callback)
    if rc ~= 0 then
       M._active_scandir_callbacks[completion_callback] = nil
-      error(("uv.scandir failed for '%s': %s"):format(path, uv_error_string(rc)), 0)
+      rig.raise(("uv.scandir failed for '%s': %s"):format(path, uv_error_string(rc)))
    end
 end
 
 local function sleep_internal(seconds, on_done)
    if M._loop == nil then
-      error("uv.sleep requires an active uv loop", 0)
+      rig.raise("uv.sleep requires an active uv loop")
    end
    if type(on_done) ~= "function" then
-      error("uv internal sleep requires a completion callback", 0)
+      rig.raise("uv internal sleep requires a completion callback")
    end
 
    local timeout_ms = math.ceil(seconds * 1000.0)
@@ -289,7 +290,7 @@ end
 
 function M.stop()
    if M._loop == nil then
-      error("uv.stop requires an active uv loop", 0)
+      rig.raise("uv.stop requires an active uv loop")
    end
    ffi.C.rig_uv_stop(M._loop)
 end
@@ -337,7 +338,7 @@ local function setup(options)
    if M._loop ~= nil then
       local rc = ffi.C.rig_uv_loop_delete(M._loop)
       if rc ~= 0 then
-         error("failed to close previous uv loop: " .. uv_error_string(rc), 0)
+         rig.raise("failed to close previous uv loop: " .. uv_error_string(rc))
       end
       M._loop = nil
    end
@@ -345,7 +346,7 @@ local function setup(options)
    clear_callback_references()
    local loop = ffi.C.rig_uv_loop_new()
    if loop == nil or loop == ffi.NULL then
-      error("failed to create uv loop", 0)
+      rig.raise("failed to create uv loop")
    end
 
    M._loop = loop
@@ -361,7 +362,7 @@ local function setup(options)
 
       if not ok then
          scheduler:end_async()
-         error(err, 0)
+         rig.raise(err)
       end
    end)
 end
@@ -370,12 +371,12 @@ local function run_scheduler_loop(runtime_options, outer_options)
    local options = normalize_module_config(runtime_options)
    local main = options.main
    if main ~= nil and type(main) ~= "function" then
-      error("uv.main must be a function if provided", 0)
+      rig.raise("uv.main must be a function if provided")
    end
 
    local scheduler = M._scheduler
    if scheduler == nil then
-      error("uv scheduler is not initialized", 0)
+      rig.raise("uv scheduler is not initialized")
    end
 
    scheduler:activate()
@@ -395,7 +396,7 @@ local function run_scheduler_loop(runtime_options, outer_options)
          local rc = ffi.C.rig_uv_run(M._loop)
          if rc < 0 then
             scheduler:deactivate()
-            error("uv loop failed: " .. uv_error_string(rc), 0)
+            rig.raise("uv loop failed: " .. uv_error_string(rc))
          end
       else
          scheduler:deactivate()
@@ -424,7 +425,7 @@ local function shutdown()
    while true do
       local rc = ffi.C.rig_uv_run_nowait(loop_handle)
       if rc < 0 then
-         error("uv loop failed during shutdown: " .. uv_error_string(rc), 0)
+         rig.raise("uv loop failed during shutdown: " .. uv_error_string(rc))
       end
       if rc == 0 then
          break
@@ -433,7 +434,7 @@ local function shutdown()
 
    local rc = ffi.C.rig_uv_loop_delete(loop_handle)
    if rc ~= 0 then
-      error("failed to close uv loop: " .. uv_error_string(rc), 0)
+      rig.raise("failed to close uv loop: " .. uv_error_string(rc))
    end
 end
 
@@ -448,7 +449,7 @@ sched.register_handler("uv.spawn", function(scheduler, task, spec)
 
    if not ok then
       scheduler:end_async()
-      error(err, 0)
+      rig.raise(err)
    end
 end)
 
@@ -467,7 +468,7 @@ sched.register_handler("uv.scandir", function(scheduler, task, path)
 
    if not ok then
       scheduler:end_async()
-      error(err, 0)
+      rig.raise(err)
    end
 end)
 

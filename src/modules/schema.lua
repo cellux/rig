@@ -1,5 +1,7 @@
 local M = ... or {}
-local oop = require("oop")
+local prelude = require("prelude")
+local class = prelude.class
+local raise = prelude.raise
 
 local function path_label(path)
    if type(path) == "string" and path ~= "" then
@@ -17,30 +19,30 @@ local function index_path(path, index)
 end
 
 local function fail(path, message)
-   error(path_label(path) .. " expects " .. message, 0)
+   raise(path_label(path) .. " expects " .. message)
 end
 
 local function ensure_schema(value, label)
    if not M.Schema:is_instance(value) then
-      error((label or "schema") .. " must be a schema object", 0)
+      raise((label or "schema") .. " must be a schema object")
    end
    return value
 end
 
-M.Schema = oop.class()
-M.DecodeSchema = oop.class(M.Schema)
-M.OptionalSchema = oop.class(M.Schema)
-M.ArraySchema = oop.class(M.Schema)
-M.MapSchema = oop.class(M.Schema)
-M.RecordSchema = oop.class(M.Schema)
-M.EnumSchema = oop.class(M.Schema)
-M.OneOfSchema = oop.class(M.Schema)
-M.MetatableSchema = oop.class(M.Schema)
-M.TransformSchema = oop.class(M.Schema)
-M.CheckedSchema = oop.class(M.Schema)
+M.Schema = class()
+M.DecodeSchema = class(M.Schema)
+M.OptionalSchema = class(M.Schema)
+M.ArraySchema = class(M.Schema)
+M.MapSchema = class(M.Schema)
+M.RecordSchema = class(M.Schema)
+M.EnumSchema = class(M.Schema)
+M.OneOfSchema = class(M.Schema)
+M.MetatableSchema = class(M.Schema)
+M.TransformSchema = class(M.Schema)
+M.CheckedSchema = class(M.Schema)
 
 function M.Schema:decode(_, _)
-   error("schema.decode must be implemented by subclasses", 0)
+   raise("schema.decode must be implemented by subclasses")
 end
 
 function M.Schema:check(value, path)
@@ -54,7 +56,7 @@ end
 function M.Schema:assert(value, path)
    local ok, normalized_or_err = self:check(value, path)
    if not ok then
-      error(normalized_or_err, 0)
+      raise(normalized_or_err)
    end
    return normalized_or_err
 end
@@ -73,10 +75,10 @@ end
 
 function M.DecodeSchema:init(description, decode_fn)
    if type(description) ~= "string" or description == "" then
-      error("schema.DecodeSchema expects a non-empty string description", 0)
+      raise("schema.DecodeSchema expects a non-empty string description")
    end
    if type(decode_fn) ~= "function" then
-      error("schema.DecodeSchema expects a decode function", 0)
+      raise("schema.DecodeSchema expects a decode function")
    end
 
    self.description = description
@@ -101,7 +103,7 @@ end
 
 function M.ArraySchema:init(item_schema, options)
    if options ~= nil and type(options) ~= "table" then
-      error("schema.ArraySchema expects options to be a table if provided", 0)
+      raise("schema.ArraySchema expects options to be a table if provided")
    end
 
    self.item_schema = ensure_schema(item_schema, "schema.ArraySchema item_schema")
@@ -165,16 +167,16 @@ end
 
 function M.RecordSchema:init(fields, options)
    if type(fields) ~= "table" then
-      error("schema.RecordSchema expects fields to be a table", 0)
+      raise("schema.RecordSchema expects fields to be a table")
    end
    if options ~= nil and type(options) ~= "table" then
-      error("schema.RecordSchema expects options to be a table if provided", 0)
+      raise("schema.RecordSchema expects options to be a table if provided")
    end
 
    self.fields = {}
    for key, field_schema in pairs(fields) do
       if type(key) ~= "string" or key == "" then
-         error("schema.RecordSchema field names must be non-empty strings", 0)
+         raise("schema.RecordSchema field names must be non-empty strings")
       end
       self.fields[key] = ensure_schema(
          field_schema,
@@ -203,7 +205,7 @@ function M.RecordSchema:decode(value, path)
    for key, extra_value in pairs(value) do
       if self.fields[key] == nil then
          if not self.allow_extra then
-            error(field_path(path, key) .. " is not allowed", 0)
+            raise(field_path(path, key) .. " is not allowed")
          end
          normalized[key] = extra_value
       end
@@ -214,7 +216,7 @@ end
 
 function M.EnumSchema:init(values)
    if type(values) ~= "table" then
-      error("schema.EnumSchema expects values to be a table", 0)
+      raise("schema.EnumSchema expects values to be a table")
    end
 
    self.values = {}
@@ -236,10 +238,10 @@ end
 
 function M.OneOfSchema:init(choices, description)
    if type(choices) ~= "table" then
-      error("schema.OneOfSchema expects choices to be a table", 0)
+      raise("schema.OneOfSchema expects choices to be a table")
    end
    if description ~= nil and (type(description) ~= "string" or description == "") then
-      error("schema.OneOfSchema expects description to be a non-empty string if provided", 0)
+      raise("schema.OneOfSchema expects description to be a non-empty string if provided")
    end
 
    self.choices = {}
@@ -264,15 +266,15 @@ function M.OneOfSchema:decode(value, path)
       fail(path, self.description)
    end
 
-   error(last_err or (path_label(path) .. " did not match any schema choice"), 0)
+   raise(last_err or (path_label(path) .. " did not match any schema choice"))
 end
 
 function M.MetatableSchema:init(expected_metatable, description)
    if type(expected_metatable) ~= "table" then
-      error("schema.MetatableSchema expects expected_metatable to be a table", 0)
+      raise("schema.MetatableSchema expects expected_metatable to be a table")
    end
    if type(description) ~= "string" or description == "" then
-      error("schema.MetatableSchema expects description to be a non-empty string", 0)
+      raise("schema.MetatableSchema expects description to be a non-empty string")
    end
 
    self.expected_metatable = expected_metatable
@@ -289,7 +291,7 @@ end
 function M.TransformSchema:init(inner, transform_fn)
    self.inner = ensure_schema(inner, "schema.TransformSchema inner")
    if type(transform_fn) ~= "function" then
-      error("schema.TransformSchema expects a transform function", 0)
+      raise("schema.TransformSchema expects a transform function")
    end
    self.transform_fn = transform_fn
 end
@@ -302,10 +304,10 @@ end
 function M.CheckedSchema:init(inner, description, check_fn)
    self.inner = ensure_schema(inner, "schema.CheckedSchema inner")
    if type(description) ~= "string" or description == "" then
-      error("schema.CheckedSchema expects a non-empty string description", 0)
+      raise("schema.CheckedSchema expects a non-empty string description")
    end
    if type(check_fn) ~= "function" then
-      error("schema.CheckedSchema expects a check function", 0)
+      raise("schema.CheckedSchema expects a check function")
    end
    self.description = description
    self.check_fn = check_fn
@@ -328,13 +330,13 @@ end
 function M.string(options)
    local opts = options or {}
    if type(opts) ~= "table" then
-      error("schema.string expects options to be a table if provided", 0)
+      raise("schema.string expects options to be a table if provided")
    end
 
    local non_empty = opts.non_empty == true
    local pattern = opts.pattern
    if pattern ~= nil and type(pattern) ~= "string" then
-      error("schema.string expects options.pattern to be a string if provided", 0)
+      raise("schema.string expects options.pattern to be a string if provided")
    end
 
    return M.DecodeSchema(
@@ -363,7 +365,7 @@ end
 function M.number(options)
    local opts = options or {}
    if type(opts) ~= "table" then
-      error("schema.number expects options to be a table if provided", 0)
+      raise("schema.number expects options to be a table if provided")
    end
 
    local coerce = opts.coerce == true

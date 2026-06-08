@@ -8,7 +8,11 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Alias for `repr.repr(value[, options])`.
   - Returns a best-effort Lua-readable representation for any value.
 - `rig.class(parent?)`
-  - Alias for `oop.class(parent?)`.
+  - Alias for `prelude.class(parent?)`.
+- `rig.raise(message[, ...])`
+  - Alias for `prelude.raise(message[, ...])`.
+  - Raises an error without adding Lua stack-location prefixes.
+  - If extra arguments are provided, formats the message through `string.format(...)` first.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.

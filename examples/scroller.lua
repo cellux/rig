@@ -110,7 +110,7 @@ local function find_font_path()
       end
    end
 
-   error("examples/scroller.lua could not find a system TTF font; install DejaVu Sans or edit the font candidates", 0)
+   rig.raise("examples/scroller.lua could not find a system TTF font; install DejaVu Sans or edit the font candidates")
 end
 
 local function clamp(value, low, high)
@@ -139,7 +139,7 @@ end
 
 local function set_draw_color(renderer, r, g, b, a)
    if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
-      error("failed to set renderer color: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to set renderer color: " .. ffi.string(sdl3.GetError()))
    end
 end
 
@@ -149,7 +149,7 @@ local function fill_rect(renderer, x, y, w, h)
    draw_rect[0].w = w
    draw_rect[0].h = h
    if not sdl3.RenderFillRect(renderer, draw_rect) then
-      error("failed to draw rectangle: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to draw rectangle: " .. ffi.string(sdl3.GetError()))
    end
 end
 
@@ -176,17 +176,17 @@ local function upload_raster_texture(renderer, field, line_height)
       texture_height
    )
    if texture == nil or texture == ffi.NULL then
-      error("failed to create raster texture: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to create raster texture: " .. ffi.string(sdl3.GetError()))
    end
 
    if not sdl3.UpdateTexture(texture, nil, rgba, 4) then
       sdl3.DestroyTexture(texture)
-      error("failed to upload raster texture: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to upload raster texture: " .. ffi.string(sdl3.GetError()))
    end
 
    if not sdl3.SetTextureBlendMode(texture, sdl3.BLENDMODE_BLEND) then
       sdl3.DestroyTexture(texture)
-      error("failed to set raster texture blend mode: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to set raster texture blend mode: " .. ffi.string(sdl3.GetError()))
    end
 
    return texture, texture_height
@@ -257,7 +257,7 @@ local function draw_rasterbars(renderer, layout)
    local half_motion_range = motion_range * 0.5
 
    if not sdl3.SetTextureAlphaMod(scene.raster_texture, math.floor(scene.raster_alpha * 255 + 0.5)) then
-      error("failed to set raster texture alpha modulation: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to set raster texture alpha modulation: " .. ffi.string(sdl3.GetError()))
    end
 
    for split_index = 1, #scene.raster_splits do
@@ -279,7 +279,7 @@ local function draw_rasterbars(renderer, layout)
          dst_rect[0].w = split_width
          dst_rect[0].h = visible_height
          if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
-            error("failed to render raster texture: " .. ffi.string(sdl3.GetError()), 0)
+            rig.raise("failed to render raster texture: " .. ffi.string(sdl3.GetError()))
          end
       else
          local first_height = texture_height - source_y_pixels
@@ -294,7 +294,7 @@ local function draw_rasterbars(renderer, layout)
          dst_rect[0].w = split_width
          dst_rect[0].h = first_height
          if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
-            error("failed to render raster texture head: " .. ffi.string(sdl3.GetError()), 0)
+            rig.raise("failed to render raster texture head: " .. ffi.string(sdl3.GetError()))
          end
 
          src_rect[0].x = 0
@@ -306,7 +306,7 @@ local function draw_rasterbars(renderer, layout)
          dst_rect[0].w = split_width
          dst_rect[0].h = second_height
          if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
-            error("failed to render raster texture tail: " .. ffi.string(sdl3.GetError()), 0)
+            rig.raise("failed to render raster texture tail: " .. ffi.string(sdl3.GetError()))
          end
       end
    end
@@ -529,7 +529,7 @@ local function set_vsync(enabled)
    local renderer = sdl3.get_renderer()
    local interval = enabled and 1 or 0
    if not sdl3.SetRenderVSync(renderer, interval) then
-      error("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()))
    end
    vsync_enabled = enabled
 end
@@ -914,7 +914,7 @@ local function render_frame()
       scene.background_color[4]
    )
    if not sdl3.RenderClear(renderer) then
-      error("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
    end
 
    if scene.raster_enabled then

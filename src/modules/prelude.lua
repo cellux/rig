@@ -1,8 +1,15 @@
 local M = ... or {}
 
+function M.raise(message, ...)
+   if select("#", ...) > 0 then
+      message = string.format(message, ...)
+   end
+   error(message, 0)
+end
+
 function M.class(parent)
    if parent ~= nil and type(parent) ~= "table" then
-      error("oop.class expects parent to be a table if provided", 0)
+      M.raise("prelude.class expects parent to be a table if provided")
    end
 
    local c = {}

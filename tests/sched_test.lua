@@ -193,7 +193,7 @@ test.case("scheduler surfaces handler errors and completes the task", function()
    local task
 
    scheduler:set_handler("custom.fail", function()
-      error("handler failed", 0)
+      rig.raise("handler failed")
    end)
 
    scheduler:activate()
@@ -238,7 +238,7 @@ test.case("scheduler reports coroutine errors and completes the task", function(
 
    scheduler:activate()
    task = sched.spawn(function()
-      error("task exploded", 0)
+      rig.raise("task exploded")
    end)
 
    local ok, err = pcall(function()

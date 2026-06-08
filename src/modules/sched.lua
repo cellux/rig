@@ -1,4 +1,5 @@
 local M = ... or {}
+local rig = require("rig")
 
 M._handlers = M._handlers or {}
 M._active_scheduler = M._active_scheduler or nil
@@ -48,7 +49,7 @@ M._handlers["sched.park"] = function()
 end
 
 M._handlers["sched.sleep"] = function()
-   error("no active runtime provides sched.sleep", 0)
+   rig.raise("no active runtime provides sched.sleep")
 end
 
 local function set_pending_error(self, err)
@@ -139,7 +140,7 @@ end
 
 function scheduler_mt:spawn(fn, ...)
    if type(fn) ~= "function" then
-      error("sched.spawn expects a function", 0)
+      rig.raise("sched.spawn expects a function")
    end
 
    local task = {
@@ -158,10 +159,10 @@ end
 
 function scheduler_mt:set_handler(kind, handler)
    if type(kind) ~= "string" or kind == "" then
-      error("scheduler:set_handler expects kind to be a non-empty string", 0)
+      rig.raise("scheduler:set_handler expects kind to be a non-empty string")
    end
    if type(handler) ~= "function" then
-      error("scheduler:set_handler expects handler to be a function", 0)
+      rig.raise("scheduler:set_handler expects handler to be a function")
    end
    self._handlers[kind] = handler
 end
@@ -176,10 +177,10 @@ end
 
 function scheduler_mt:sleep_until(task, deadline)
    if type(task) ~= "table" or type(task.co) ~= "thread" then
-      error("scheduler:sleep_until expects a scheduler task", 0)
+      rig.raise("scheduler:sleep_until expects a scheduler task")
    end
    if type(deadline) ~= "number" then
-      error("scheduler:sleep_until expects deadline to be a number", 0)
+      rig.raise("scheduler:sleep_until expects deadline to be a number")
    end
 
    enqueue_item(self._sleeping, {
@@ -190,7 +191,7 @@ end
 
 function scheduler_mt:wake_due_sleepers(now)
    if type(now) ~= "number" then
-      error("scheduler:wake_due_sleepers expects now to be a number", 0)
+      rig.raise("scheduler:wake_due_sleepers expects now to be a number")
    end
 
    local sleeping = self._sleeping
@@ -214,7 +215,7 @@ end
 
 function scheduler_mt:end_async()
    if self._pending_async <= 0 then
-      error("scheduler pending async count underflow", 0)
+      rig.raise("scheduler pending async count underflow")
    end
    self._pending_async = self._pending_async - 1
 end
@@ -256,7 +257,7 @@ function scheduler_mt:drain()
    if self._pending_error ~= nil then
       local err = self._pending_error
       self._pending_error = nil
-      error(err, 0)
+      rig.raise(err)
    end
 end
 
@@ -273,10 +274,10 @@ end
 
 function M.register_handler(kind, handler)
    if type(kind) ~= "string" or kind == "" then
-      error("sched.register_handler expects kind to be a non-empty string", 0)
+      rig.raise("sched.register_handler expects kind to be a non-empty string")
    end
    if type(handler) ~= "function" then
-      error("sched.register_handler expects handler to be a function", 0)
+      rig.raise("sched.register_handler expects handler to be a function")
    end
    if M._handlers[kind] ~= nil then
       error(
@@ -290,7 +291,7 @@ end
 
 function M.create(label)
    if label ~= nil and (type(label) ~= "string" or label == "") then
-      error("sched.create expects label to be a non-empty string if provided", 0)
+      rig.raise("sched.create expects label to be a non-empty string if provided")
    end
 
    return setmetatable({
@@ -308,7 +309,7 @@ end
 
 function M.build_request(kind, payload)
    if type(kind) ~= "string" or kind == "" then
-      error("sched.build_request expects kind to be a non-empty string", 0)
+      rig.raise("sched.build_request expects kind to be a non-empty string")
    end
 
    return setmetatable({
@@ -319,7 +320,7 @@ end
 
 function M.await(kind, payload)
    if M._current_task == nil then
-      error("sched.await may only be called from a scheduler-managed coroutine", 0)
+      rig.raise("sched.await may only be called from a scheduler-managed coroutine")
    end
    return coroutine.yield(M.build_request(kind, payload))
 end
@@ -334,10 +335,10 @@ end
 
 function M.sleep(seconds)
    if type(seconds) ~= "number" then
-      error("sched.sleep expects seconds to be a number", 0)
+      rig.raise("sched.sleep expects seconds to be a number")
    end
    if seconds < 0 then
-      error("sched.sleep expects seconds to be non-negative", 0)
+      rig.raise("sched.sleep expects seconds to be non-negative")
    end
 
    return M.await("sched.sleep", seconds)
@@ -346,24 +347,24 @@ end
 function M.spawn(fn, ...)
    local scheduler = M._active_scheduler
    if scheduler == nil then
-      error("sched.spawn requires an active scheduler", 0)
+      rig.raise("sched.spawn requires an active scheduler")
    end
    return scheduler:spawn(fn, ...)
 end
 
 function M.join(tasks)
    if M._current_task == nil then
-      error("sched.join may only be called from a scheduler-managed coroutine", 0)
+      rig.raise("sched.join may only be called from a scheduler-managed coroutine")
    end
    if type(tasks) ~= "table" then
-      error("sched.join expects a table of tasks", 0)
+      rig.raise("sched.join expects a table of tasks")
    end
 
    local pending = {}
    for i = 1, #tasks do
       local task = tasks[i]
       if type(task) ~= "table" or type(task.co) ~= "thread" then
-         error(("sched.join expects tasks[%d] to be a scheduler task"):format(i), 0)
+         rig.raise(("sched.join expects tasks[%d] to be a scheduler task"):format(i))
       end
       if not task._done then
          table.insert(pending, task)

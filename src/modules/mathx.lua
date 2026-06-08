@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 
 ffi.cdef[[
 typedef float rig_mathx_mat4[16];
@@ -27,13 +28,13 @@ end
 
 local function require_mat4(value, name)
    if type(value) ~= "cdata" then
-      error(name .. " must be a float[16] cdata matrix", 0)
+      rig.raise(name .. " must be a float[16] cdata matrix")
    end
 end
 
 local function require_vec3(value, name)
    if type(value) ~= "cdata" then
-      error(name .. " must be a float[3] cdata vector", 0)
+      rig.raise(name .. " must be a float[3] cdata vector")
    end
 end
 
@@ -44,7 +45,7 @@ end
 local function normalize_components(x, y, z, label)
    local length = vec3_length_components(x, y, z)
    if length == 0.0 then
-      error(label .. " must not be a zero-length vector", 0)
+      rig.raise(label .. " must not be a zero-length vector")
    end
    local inv = 1.0 / length
    return x * inv, y * inv, z * inv

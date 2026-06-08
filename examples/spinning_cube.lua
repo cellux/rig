@@ -7,7 +7,7 @@ local shader = require("shader")
 local time = require("time")
 
 local function fail(message)
-   error(message, 0)
+   rig.raise(message)
 end
 
 local vertex_shader_source = [[

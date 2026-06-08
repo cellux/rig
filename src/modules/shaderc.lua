@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 local schema = require("schema")
 
 ffi.cdef[[
@@ -220,12 +221,12 @@ local function apply_macro_definitions(lib, compile_options, macros)
       return
    end
    if type(macros) ~= "table" then
-      error("shaderc macro_definitions must be a table", 0)
+      rig.raise("shaderc macro_definitions must be a table")
    end
 
    for name, value in pairs(macros) do
       if type(name) ~= "string" then
-         error("shaderc macro definition names must be strings", 0)
+         rig.raise("shaderc macro definition names must be strings")
       end
       local macro_value = value
       if macro_value ~= nil then

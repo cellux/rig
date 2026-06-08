@@ -76,7 +76,7 @@ local function normalize_source_artifact(options)
 
    local source, source_name_or_err = load_source(normalized)
    if source == nil then
-      error(source_name_or_err, 0)
+      rig.raise(source_name_or_err)
    end
 
    local source_name = normalized.source_name or source_name_or_err
@@ -149,12 +149,12 @@ function M.compile(options)
       }
    end
    if compiled == nil then
-      error(tostring(compile_err or "shader compilation failed"), 0)
+      rig.raise(tostring(compile_err or "shader compilation failed"))
    end
 
    local reflection, reflection_err = spirvcross.reflect_spirv(compiled)
    if reflection == nil then
-      error(tostring(reflection_err or "SPIR-V reflection failed"), 0)
+      rig.raise(tostring(reflection_err or "SPIR-V reflection failed"))
    end
 
    return {

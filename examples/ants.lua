@@ -224,7 +224,7 @@ local function set_color(renderer, color)
    local b = math.floor(color[3] * 255 + 0.5)
    local a = math.floor(color[4] * 255 + 0.5)
    if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
-      error("failed to set renderer color: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to set renderer color: " .. ffi.string(sdl3.GetError()))
    end
 end
 
@@ -238,13 +238,13 @@ local function fill_rect(renderer, x, y, w, h)
    rect[0].w = w
    rect[0].h = h
    if not sdl3.RenderFillRect(renderer, rect) then
-      error("failed to draw ant segment: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to draw ant segment: " .. ffi.string(sdl3.GetError()))
    end
 end
 
 local function draw_line(renderer, x1, y1, x2, y2)
    if not sdl3.RenderLine(renderer, x1, y1, x2, y2) then
-      error("failed to draw ant leg: " .. ffi.string(sdl3.GetError()), 0)
+      rig.raise("failed to draw ant leg: " .. ffi.string(sdl3.GetError()))
    end
 end
 
@@ -748,7 +748,7 @@ local function on_render()
    frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
    if renderer == nil then
-      error("sdl3 runtime did not provide a renderer", 0)
+      rig.raise("sdl3 runtime did not provide a renderer")
    end
 
    sdl3.clear(0.06, 0.08, 0.05, 1.0)

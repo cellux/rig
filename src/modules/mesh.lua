@@ -68,17 +68,17 @@ local function resolve_face_colors(options)
    end
 
    if type(options.colors) ~= "table" then
-      error("mesh.make_cube colors must be 'face' or a table", 0)
+      rig.raise("mesh.make_cube colors must be 'face' or a table")
    end
    if #options.colors ~= 6 then
-      error("mesh.make_cube colors table must contain 6 face colors", 0)
+      rig.raise("mesh.make_cube colors table must contain 6 face colors")
    end
 
    local colors = {}
    for i = 1, 6 do
       local color = options.colors[i]
       if type(color) ~= "table" then
-         error("mesh.make_cube face colors must be tables", 0)
+         rig.raise("mesh.make_cube face colors must be tables")
       end
       colors[i] = clone_color(color)
    end
@@ -106,7 +106,7 @@ function M.make_cube(options)
 
    local size = tonumber(options.size) or 2.0
    if size <= 0.0 then
-      error("mesh.make_cube size must be positive", 0)
+      rig.raise("mesh.make_cube size must be positive")
    end
 
    local half_extent = size * 0.5

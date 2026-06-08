@@ -1,8 +1,8 @@
-local oop = require("oop")
+local prelude = require("prelude")
 local test = require("test")
 
-test.case("oop.class constructs instances and calls init", function()
-   local Point = oop.class()
+test.case("prelude.class constructs instances and calls init", function()
+   local Point = prelude.class()
 
    function Point:init(x, y)
       self.x = x
@@ -21,8 +21,8 @@ test.case("oop.class constructs instances and calls init", function()
    test.equal(getmetatable(point), Point)
 end)
 
-test.case("oop.class supports single inheritance for methods", function()
-   local Animal = oop.class()
+test.case("prelude.class supports single inheritance for methods", function()
+   local Animal = prelude.class()
 
    function Animal:init(name)
       self.name = name
@@ -36,7 +36,7 @@ test.case("oop.class supports single inheritance for methods", function()
       return self.name .. ":" .. self:speak()
    end
 
-   local Dog = oop.class(Animal)
+   local Dog = prelude.class(Animal)
 
    function Dog:speak()
       return "woof"
@@ -49,26 +49,26 @@ test.case("oop.class supports single inheritance for methods", function()
    test.equal(getmetatable(Dog).__index, Animal)
 end)
 
-test.case("oop.class accepts missing init", function()
-   local Empty = oop.class()
+test.case("prelude.class accepts missing init", function()
+   local Empty = prelude.class()
    local instance = Empty()
 
    test.equal(type(instance), "table")
    test.equal(getmetatable(instance), Empty)
 end)
 
-test.case("oop.class validates parent type", function()
+test.case("prelude.class validates parent type", function()
    local ok, err = pcall(function()
-      oop.class("not a class")
+      prelude.class("not a class")
    end)
 
    test.falsey(ok)
    test.match(tostring(err), "expects parent to be a table")
 end)
 
-test.case("oop.class supports is_instance across inheritance", function()
-   local Animal = oop.class()
-   local Dog = oop.class(Animal)
+test.case("prelude.class supports is_instance across inheritance", function()
+   local Animal = prelude.class()
+   local Dog = prelude.class(Animal)
    local dog = Dog()
 
    test.truthy(Dog:is_instance(dog))
@@ -76,6 +76,16 @@ test.case("oop.class supports is_instance across inheritance", function()
    test.falsey(Dog:is_instance({}))
 end)
 
-test.case("rig.class aliases oop.class", function()
-   test.equal(rig.class, oop.class)
+test.case("prelude.raise raises without stack location and formats when needed", function()
+   local ok, err = pcall(function()
+      prelude.raise("bad value '%s'", "x")
+   end)
+
+   test.falsey(ok)
+   test.equal(err, "bad value 'x'")
+end)
+
+test.case("rig aliases prelude.class and prelude.raise", function()
+   test.equal(rig.class, prelude.class)
+   test.equal(rig.raise, prelude.raise)
 end)
