@@ -206,6 +206,13 @@ local option_hooks_schema = schema.map(
    non_empty_string_schema,
    schema.func()
 )
+local resolve_runtime_options_schema = schema.record({
+   mode = non_empty_string_schema:optional(),
+   driver = non_empty_string_schema:optional(),
+   providers = string_to_string_map_schema:optional(),
+}, {
+   allow_extra = true,
+})
 
 local function normalize_service_method_names(method_names)
    return schema.assert(
@@ -524,10 +531,13 @@ function M.register_runtime_preset(name, preset)
 end
 
 local function resolve_runtime(options)
+   options = schema.assert(
+      resolve_runtime_options_schema,
+      options,
+      "rig.run options"
+   )
+
    local mode_id = options.mode
-   if mode_id ~= nil and (type(mode_id) ~= "string" or mode_id == "") then
-      raise("rig.run expects options.mode to be a non-empty string if provided")
-   end
 
    local preset = nil
    if mode_id ~= nil then
@@ -538,13 +548,10 @@ local function resolve_runtime(options)
    end
 
    local driver_id = options.driver
-   if driver_id ~= nil and (type(driver_id) ~= "string" or driver_id == "") then
-      raise("rig.run expects options.driver to be a non-empty string if provided")
-   end
    if driver_id == nil and preset ~= nil then
       driver_id = preset.driver
    end
-   if type(driver_id) ~= "string" or driver_id == "" then
+   if driver_id == nil then
       raise("rig.run requires options.driver or options.mode to be a non-empty string")
    end
 
@@ -563,10 +570,7 @@ local function resolve_runtime(options)
       end
    end
 
-   local override_providers = normalize_service_provider_map(
-      options.providers,
-      "rig.run expects options.providers to be a table if provided"
-   )
+   local override_providers = options.providers or {}
    for service_id, provider_id in pairs(override_providers) do
       providers[service_id] = provider_id
    end

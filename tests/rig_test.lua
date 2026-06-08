@@ -323,6 +323,35 @@ test.case("rig.run validates provider mappings before the driver starts", functi
    test.match(tostring(unknown_service_err), "unknown service")
 end)
 
+test.case("rig.run validates option shapes before resolving the runtime", function()
+   local bad_mode_ok, bad_mode_err = pcall(function()
+      rig.run {
+         mode = "",
+      }
+   end)
+   test.falsey(bad_mode_ok)
+   test.match(tostring(bad_mode_err), "rig.run options%.mode expects a non%-empty string")
+
+   local bad_driver_ok, bad_driver_err = pcall(function()
+      rig.run {
+         driver = false,
+      }
+   end)
+   test.falsey(bad_driver_ok)
+   test.match(tostring(bad_driver_err), "rig.run options%.driver expects a non%-empty string")
+
+   local bad_provider_map_ok, bad_provider_map_err = pcall(function()
+      rig.run {
+         driver = "rig_test_validation_driver",
+         providers = {
+            [1] = "rig_test_provider_alpha",
+         },
+      }
+   end)
+   test.falsey(bad_provider_map_ok)
+   test.match(tostring(bad_provider_map_err), "rig.run options%.providers key expects a non%-empty string")
+end)
+
 test.case("rig.run validates and executes declared hook phases", function()
    local observed = {}
 
