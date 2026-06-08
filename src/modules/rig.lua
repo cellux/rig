@@ -206,6 +206,12 @@ local option_hooks_schema = schema.map(
    non_empty_string_schema,
    schema.func()
 )
+local runtime_driver_schema = schema.record({
+   phases = unique_non_empty_string_array_schema:optional(),
+   setup = schema.func():optional(),
+   loop = schema.func(),
+   shutdown = schema.func():optional(),
+})
 local runtime_preset_schema = schema.record({
    driver = non_empty_string_schema,
    providers = string_to_string_map_schema:optional(),
@@ -217,47 +223,6 @@ local resolve_runtime_options_schema = schema.record({
 }, {
    allow_extra = true,
 })
-
-local function normalize_service_method_names(method_names)
-   return schema.assert(
-      unique_non_empty_string_array_schema,
-      method_names,
-      "rig.create_service method_names"
-   )
-end
-
-local function normalize_service_provider_map(map, label)
-   if map == nil then
-      return {}
-   end
-
-   return schema.assert(string_to_string_map_schema, map, label)
-end
-
-local function normalize_driver_phase_names(phase_names, label)
-   if phase_names == nil then
-      return {}
-   end
-
-   local copied = schema.assert(
-      unique_non_empty_string_array_schema,
-      phase_names,
-      label
-   )
-
-   for i = 1, #copied do
-      local phase_name = copied[i]
-      if core_runtime_phases[phase_name] then
-         raise(
-            "%s ('%s' is a core runtime phase and must not be redeclared)",
-            label,
-            phase_name
-         )
-      end
-   end
-
-   return copied
-end
 
 M.ServiceRegistry = M.class()
 
@@ -274,7 +239,11 @@ function M.ServiceRegistry:create_service(service_id, method_names)
       raise("rig.create_service expects service_id to be a non-empty string")
    end
 
-   local methods = normalize_service_method_names(method_names)
+   local methods = schema.assert(
+      unique_non_empty_string_array_schema,
+      method_names,
+      "rig.create_service method_names"
+   )
    local existing = self:get(service_id)
    if existing ~= nil then
       raise("rig.create_service already has a service '%s'", service_id)
@@ -489,7 +458,7 @@ function M.require_service(service_id)
       raise("rig.require_service expects service_id to be a non-empty string")
    end
 
-   if getmetatable(_active_runtime) ~= M.ActiveRuntime then
+   if not _active_runtime then
       raise("rig.require_service('%s') requires an active runtime", service_id)
    end
 
@@ -500,17 +469,25 @@ function M.register_runtime_driver(name, driver)
    if type(name) ~= "string" or name == "" then
       raise("rig.register_runtime_driver expects name to be a non-empty string")
    end
-   if type(driver) ~= "table" then
-      raise("rig.register_runtime_driver expects driver to be a table")
+
+   local normalized = schema.assert(
+      runtime_driver_schema,
+      driver,
+      "rig.register_runtime_driver driver"
+   )
+   normalized.phases = normalized.phases or {}
+   for i = 1, #normalized.phases do
+      local phase_name = normalized.phases[i]
+      if core_runtime_phases[phase_name] then
+         raise(
+            "rig.register_runtime_driver driver.phases ('%s' is a core runtime phase and must not be redeclared)",
+            phase_name
+         )
+      end
    end
 
-   driver.phases = normalize_driver_phase_names(
-      driver.phases,
-      "rig.register_runtime_driver expects driver.phases to be a table of non-empty strings if provided"
-   )
-
-   _runtime_drivers[name] = driver
-   return driver
+   _runtime_drivers[name] = normalized
+   return normalized
 end
 
 function M.register_runtime_preset(name, preset)

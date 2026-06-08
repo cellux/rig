@@ -352,6 +352,31 @@ test.case("rig.run validates provider mappings before the driver starts", functi
    test.match(tostring(unknown_service_err), "unknown service")
 end)
 
+test.case("rig.register_runtime_driver validates driver shape", function()
+   local bad_loop_ok, bad_loop_err = pcall(function()
+      rig.register_runtime_driver("rig_test_bad_driver", {
+         loop = false,
+      })
+   end)
+   test.falsey(bad_loop_ok)
+   test.match(
+      tostring(bad_loop_err),
+      "rig%.register_runtime_driver driver%.loop expects a function"
+   )
+
+   local extra_field_ok, extra_field_err = pcall(function()
+      rig.register_runtime_driver("rig_test_extra_driver_field", {
+         loop = function() end,
+         extra = true,
+      })
+   end)
+   test.falsey(extra_field_ok)
+   test.match(
+      tostring(extra_field_err),
+      "rig%.register_runtime_driver driver%.extra is not allowed"
+   )
+end)
+
 test.case("rig.run validates option shapes before resolving the runtime", function()
    local bad_mode_ok, bad_mode_err = pcall(function()
       rig.run {
