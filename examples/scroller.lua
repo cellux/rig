@@ -22,6 +22,7 @@ local full_alpha = 255
 local fixed_animation_dt = 1.0 / 120.0
 local max_animation_dt = 0.05
 local max_animation_steps_per_frame = 6
+local lerp
 local sprite_outline_offsets = {
    { -2, -2 },
    { 0, -2 },
@@ -32,6 +33,9 @@ local sprite_outline_offsets = {
    { 0, 2 },
    { 2, 2 },
 }
+
+local Sprite = rig.class()
+local RasterSplit = rig.class()
 
 local scene = {
    background_color = { 6, 8, 18, 255 },
@@ -68,11 +72,148 @@ local scene = {
    scroller_enabled = true,
    animate_enabled = true,
    animation_driver_task = nil,
+   animation_time = 0.0,
    animation_step_generation = 0,
    animation_step_count = 0,
    animation_step_tasks = {},
    animate_tasks = {},
 }
+
+function Sprite:init(index, character, glyph)
+   self.character = character
+   self.glyph = glyph
+   self.color = {
+      110 + ((index * 31) % 145),
+      120 + ((index * 47) % 120),
+      150 + ((index * 59) % 90),
+   }
+   self.lag = (index - 1) * 0.32
+   self.bob = (index - 1) * 0.21
+end
+
+function Sprite:draw(style, layout, snake_phase, outline_enabled)
+   local split_top = layout.split_top
+   local split_bottom = split_top + layout.split_height
+   local phase = snake_phase - self.lag
+   local orbit = 0.5 + 0.5 * math.sin(phase * 0.74)
+   local alpha = math.floor(145 + 110 * (0.5 + 0.5 * math.sin(phase * 2.2 + 0.4)))
+   local scale = 1.08 + 0.44 * (0.5 + 0.5 * math.sin(phase * 1.7 + 0.8))
+   local glyph_width = self.glyph.width * scale
+   local x = lerp(0, window_width - glyph_width, orbit)
+   local glyph_height = self.glyph.height * scale
+   local y_phase = 0.5 + 0.5 * math.sin(phase * 1.45 + self.bob)
+   local y = lerp(split_top, split_bottom - glyph_height, y_phase)
+   local outline_scale = scale * 1.03
+
+   if outline_enabled then
+      for i = 1, #sprite_outline_offsets do
+         local offset = sprite_outline_offsets[i]
+         style:draw_packed_glyph(
+            self.glyph,
+            x + offset[1],
+            y + offset[2],
+            outline_scale,
+            0,
+            0,
+            0,
+            128
+         )
+      end
+   end
+
+   style:draw_packed_glyph(
+      self.glyph,
+      x,
+      y,
+      scale,
+      self.color[1],
+      self.color[2],
+      self.color[3],
+      alpha
+   )
+end
+
+function RasterSplit:init(index)
+   self.index = index
+   self.offset = 0.0
+   self.speed = 0.0
+   self.base_offset = 0.0
+end
+
+function RasterSplit:apply_preset(preset_index, split_count, offset_step)
+   local split_index = self.index
+   if preset_index == 1 then -- Random (Original)
+      self.offset = math.random() * math.pi * 2.0
+      self.speed = 0.5 + math.random() * 0.4
+      self.base_offset = (split_index - 1) * offset_step
+   elseif preset_index == 2 then -- Smooth Sine
+      self.offset = (split_index - 1) * (math.pi * 2.0 / split_count)
+      self.speed = 0.7
+      self.base_offset = (split_index - 1) * offset_step * 0.5
+   elseif preset_index == 3 then -- Linear Slant
+      self.offset = (split_index - 1) * 0.4
+      self.speed = 0.8
+      self.base_offset = (split_index - 1) * offset_step * 0.2
+   elseif preset_index == 4 then -- Grouped Pairs
+      local group = math.floor((split_index - 1) / 2)
+      self.offset = group * 1.5
+      self.speed = 0.6 + (group % 2) * 0.3
+      self.base_offset = group * offset_step
+   end
+end
+
+function RasterSplit:draw(renderer, layout, split_width, split_gap, visible_height, line_height, texture_height, field_height)
+   local base_x = layout.left + (self.index - 1) * (split_width + split_gap)
+   local motion_range = math.floor(layout.split_height / line_height) * 2
+   local split_phase = scene.raster_phase * self.speed + self.offset
+   local center_offset = self.base_offset + math.sin(split_phase) * (motion_range * 0.5)
+   center_offset = math.floor(center_offset + 0.5)
+
+   local source_y = ((center_offset % field_height) + field_height) % field_height
+   local source_y_pixels = source_y * line_height
+
+   if source_y_pixels + visible_height <= texture_height then
+      src_rect[0].x = 0
+      src_rect[0].y = source_y_pixels
+      src_rect[0].w = 1
+      src_rect[0].h = visible_height
+      dst_rect[0].x = base_x
+      dst_rect[0].y = layout.split_top
+      dst_rect[0].w = split_width
+      dst_rect[0].h = visible_height
+      if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
+         rig.raise("failed to render raster texture: " .. ffi.string(sdl3.GetError()))
+      end
+      return
+   end
+
+   local first_height = texture_height - source_y_pixels
+   local second_height = visible_height - first_height
+
+   src_rect[0].x = 0
+   src_rect[0].y = source_y_pixels
+   src_rect[0].w = 1
+   src_rect[0].h = first_height
+   dst_rect[0].x = base_x
+   dst_rect[0].y = layout.split_top
+   dst_rect[0].w = split_width
+   dst_rect[0].h = first_height
+   if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
+      rig.raise("failed to render raster texture head: " .. ffi.string(sdl3.GetError()))
+   end
+
+   src_rect[0].x = 0
+   src_rect[0].y = 0
+   src_rect[0].w = 1
+   src_rect[0].h = second_height
+   dst_rect[0].x = base_x
+   dst_rect[0].y = layout.split_top + first_height
+   dst_rect[0].w = split_width
+   dst_rect[0].h = second_height
+   if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
+      rig.raise("failed to render raster texture tail: " .. ffi.string(sdl3.GetError()))
+   end
+end
 
 local scroll_text = table.concat({
    "+++ NEON PHANTOMS PROUDLY ROLL ACROSS YOUR PHOSPHOR SKY WITH THE MIDNIGHT MIRROR CRACK, THE CLEANEST LIBERATION TO EVER KICK OPEN A LOCKED LOADER. WE DID NOT COME HERE TO WHISPER, WE CAME TO FLOOD THE SCREEN WITH STATIC, BRAGGING RIGHTS, AND A CHORUS OF DISK DRIVES SURRENDERING IN FEAR. BYTEBARON TORE THE PROTECTION NET APART WHILE KID NOVA COUNTED CYCLES LIKE A CLOCKWORK PREDATOR, AND GLITCH WITCH STIRRED THE LAST OBFUSCATED BRANCH INTO A PERFECT LITTLE BONFIRE.",
@@ -123,7 +264,7 @@ local function clamp(value, low, high)
    return value
 end
 
-local function lerp(a, b, t)
+lerp = function(a, b, t)
    return a + (b - a) * t
 end
 
@@ -219,96 +360,36 @@ end
 
 local function apply_preset(index)
    local offset_step = scene.raster_split_count > 0 and (#scene.raster_field / scene.raster_split_count) or 0
-   for i = 1, scene.raster_split_count do
-      local split = scene.raster_splits[i]
-      if index == 1 then -- Random (Original)
-         split.offset = math.random() * math.pi * 2.0
-         split.speed = 0.5 + math.random() * 0.4
-         split.base_offset = (i - 1) * offset_step
-      elseif index == 2 then -- Smooth Sine
-         split.offset = (i - 1) * (math.pi * 2.0 / scene.raster_split_count)
-         split.speed = 0.7
-         split.base_offset = (i - 1) * offset_step * 0.5
-      elseif index == 3 then -- Linear Slant
-         split.offset = (i - 1) * 0.4
-         split.speed = 0.8
-         split.base_offset = (i - 1) * offset_step * 0.2
-      elseif index == 4 then -- Grouped Pairs
-         local group = math.floor((i - 1) / 2)
-         split.offset = group * 1.5
-         split.speed = 0.6 + (group % 2) * 0.3
-         split.base_offset = group * offset_step
-      end
+   for i = 1, #scene.raster_splits do
+      scene.raster_splits[i]:apply_preset(index, scene.raster_split_count, offset_step)
    end
 end
 
 local function draw_rasterbars(renderer, layout)
-   local split_top = layout.split_top
-   local split_height = layout.split_height
    local split_gap = 1
    local line_height = 2.0
    local total_width = window_width - layout.left * 2
    local split_width = (total_width - split_gap * (scene.raster_split_count - 1)) / scene.raster_split_count
    local field_height = #scene.raster_field
-   local visible_lines = math.floor(split_height / line_height)
+   local visible_lines = math.floor(layout.split_height / line_height)
    local visible_height = visible_lines * line_height
    local texture_height = scene.raster_texture_height
-   local motion_range = visible_lines * 2
-   local half_motion_range = motion_range * 0.5
 
    if not sdl3.SetTextureAlphaMod(scene.raster_texture, math.floor(scene.raster_alpha * 255 + 0.5)) then
       rig.raise("failed to set raster texture alpha modulation: " .. ffi.string(sdl3.GetError()))
    end
 
-   for split_index = 1, #scene.raster_splits do
-      local split = scene.raster_splits[split_index]
-      local base_x = layout.left + (split_index - 1) * (split_width + split_gap)
-      local split_phase = scene.raster_phase * split.speed + split.offset
-      local center_offset = split.base_offset + math.sin(split_phase) * half_motion_range
-      center_offset = math.floor(center_offset + 0.5)
-      local source_y = ((center_offset % field_height) + field_height) % field_height
-      local source_y_pixels = source_y * line_height
-
-      if source_y_pixels + visible_height <= texture_height then
-         src_rect[0].x = 0
-         src_rect[0].y = source_y_pixels
-         src_rect[0].w = 1
-         src_rect[0].h = visible_height
-         dst_rect[0].x = base_x
-         dst_rect[0].y = split_top
-         dst_rect[0].w = split_width
-         dst_rect[0].h = visible_height
-         if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
-            rig.raise("failed to render raster texture: " .. ffi.string(sdl3.GetError()))
-         end
-      else
-         local first_height = texture_height - source_y_pixels
-         local second_height = visible_height - first_height
-
-         src_rect[0].x = 0
-         src_rect[0].y = source_y_pixels
-         src_rect[0].w = 1
-         src_rect[0].h = first_height
-         dst_rect[0].x = base_x
-         dst_rect[0].y = split_top
-         dst_rect[0].w = split_width
-         dst_rect[0].h = first_height
-         if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
-            rig.raise("failed to render raster texture head: " .. ffi.string(sdl3.GetError()))
-         end
-
-         src_rect[0].x = 0
-         src_rect[0].y = 0
-         src_rect[0].w = 1
-         src_rect[0].h = second_height
-         dst_rect[0].x = base_x
-         dst_rect[0].y = split_top + first_height
-         dst_rect[0].w = split_width
-         dst_rect[0].h = second_height
-         if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
-            rig.raise("failed to render raster texture tail: " .. ffi.string(sdl3.GetError()))
-         end
-      end
+   for i = 1, #scene.raster_splits do
+      scene.raster_splits[i]:draw(
+         renderer,
+         layout,
+         split_width,
+         split_gap,
+         visible_height,
+         line_height,
+         texture_height,
+         field_height
+      )
    end
 end
 
@@ -511,20 +592,6 @@ local function draw_profiler(renderer)
    draw_label(profiler_style, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
 end
 
-local function make_sprite(i, character)
-   return {
-      glyph = scene.sprite_glyphs[character],
-      character = character,
-      color = {
-         110 + ((i * 31) % 145),
-         120 + ((i * 47) % 120),
-         150 + ((i * 59) % 90),
-      },
-      lag = (i - 1) * 0.32,
-      bob = (i - 1) * 0.21,
-   }
-end
-
 local function set_vsync(enabled)
    local renderer = sdl3.get_renderer()
    local interval = enabled and 1 or 0
@@ -581,52 +648,12 @@ local function on_key(key_info)
 end
 
 local function draw_sprites(renderer, layout)
-   local split_top = layout.split_top
-   local split_height = layout.split_height
-   local split_bottom = split_top + split_height
-
    for i = 1, #scene.sprites do
-      local sprite = scene.sprites[i]
-      local phase = scene.sprite_snake_phase - sprite.lag
-      local orbit = 0.5 + 0.5 * math.sin(phase * 0.74)
-      local alpha = math.floor(145 + 110 * (0.5 + 0.5 * math.sin(phase * 2.2 + 0.4)))
-      local scale = 1.08 + 0.44 * (0.5 + 0.5 * math.sin(phase * 1.7 + 0.8))
-      local glyph_width = sprite.glyph.width * scale
-      local min_x = 0
-      local max_x = window_width - glyph_width
-      local x = lerp(min_x, max_x, orbit)
-      local glyph_height = sprite.glyph.height * scale
-      local min_y = split_top
-      local max_y = split_bottom - glyph_height
-      local y_phase = 0.5 + 0.5 * math.sin(phase * 1.45 + sprite.bob)
-      local y = lerp(min_y, max_y, y_phase)
-      local outline_scale = scale * 1.03
-
-      if scene.sprite_outline_enabled then
-         for j = 1, #sprite_outline_offsets do
-            local offset = sprite_outline_offsets[j]
-            scene.sprite_style:draw_packed_glyph(
-               sprite.glyph,
-               x + offset[1],
-               y + offset[2],
-               outline_scale,
-               0,
-               0,
-               0,
-               128
-            )
-         end
-      end
-
-      scene.sprite_style:draw_packed_glyph(
-         sprite.glyph,
-         x,
-         y,
-         scale,
-         sprite.color[1],
-         sprite.color[2],
-         sprite.color[3],
-         alpha
+      scene.sprites[i]:draw(
+         scene.sprite_style,
+         layout,
+         scene.sprite_snake_phase,
+         scene.sprite_outline_enabled
       )
    end
 end
@@ -662,6 +689,7 @@ local function run_animation_driver()
       end
 
       if steps > 0 then
+         scene.animation_time = scene.animation_time + steps * fixed_animation_dt
          scene.animation_step_count = steps
          scene.animation_step_generation = scene.animation_step_generation + 1
 
@@ -701,19 +729,11 @@ local function run_object_animation(update_step)
 end
 
 local function sleep_scene_time(duration)
-   local deadline = time.monotonic() + duration
+   local deadline = scene.animation_time + duration
+   local generation = scene.animation_step_generation
 
-   while true do
-      if not scene.animate_enabled then
-         sched.park()
-      else
-         local remaining = deadline - time.monotonic()
-         if remaining <= 0.0 then
-            return
-         end
-         local slice = math.min(remaining, 0.05)
-         sched.sleep(slice)
-      end
+   while scene.animation_time < deadline do
+      generation = next_animation_steps(generation)
    end
 end
 
@@ -835,18 +855,19 @@ local function initialize_scene()
       upload_raster_texture(renderer, scene.raster_field, 2)
    scene.raster_splits = {}
    for i = 1, scene.raster_split_count do
-      scene.raster_splits[i] = {}
+      scene.raster_splits[i] = RasterSplit(i)
    end
    scene.raster_alpha = 1.0
    scene.raster_transition_state = "VISIBLE"
+   scene.animation_time = 0.0
    scene.animation_step_generation = 0
    scene.animation_step_count = 0
    apply_preset(1)
 
    scene.sprites = {}
    for i = 1, #scene.sprite_text do
-      local sprite = make_sprite(i, scene.sprite_text:sub(i, i))
-      scene.sprites[i] = sprite
+      local character = scene.sprite_text:sub(i, i)
+      scene.sprites[i] = Sprite(i, character, scene.sprite_glyphs[character])
    end
 
    scene.animation_driver_task = sched.spawn(run_animation_driver)
@@ -869,6 +890,7 @@ end
 local function release_scene()
    frame_profiler = nil
    scene.animation_driver_task = nil
+   scene.animation_time = 0.0
    scene.animation_step_generation = 0
    scene.animation_step_count = 0
    scene.animation_step_tasks = {}
