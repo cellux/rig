@@ -375,19 +375,6 @@ function M.ActiveRuntime:require_service(service_id)
    return provider
 end
 
-function M.ActiveRuntime:build_phase_set()
-   local phases = {}
-
-   for i = 1, #core_runtime_phase_names do
-      phases[core_runtime_phase_names[i]] = true
-   end
-   for i = 1, #self.driver.phases do
-      phases[self.driver.phases[i]] = true
-   end
-
-   return phases
-end
-
 local option_hooks_schema = schema.map(
    non_empty_string_schema,
    schema.func()
@@ -398,7 +385,14 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
       return nil
    end
 
-   local allowed_phases = self:build_phase_set()
+   local allowed_phases = {}
+   for i = 1, #core_runtime_phase_names do
+      allowed_phases[core_runtime_phase_names[i]] = true
+   end
+   for i = 1, #self.driver.phases do
+      allowed_phases[self.driver.phases[i]] = true
+   end
+
    local normalized = schema.assert(
       option_hooks_schema,
       hooks,
@@ -541,9 +535,6 @@ local function resolve_runtime(options)
    local driver = _runtime_drivers[driver_id]
    if driver == nil then
       raise("rig.run does not know runtime driver '%s'", driver_id)
-   end
-   if type(driver.loop) ~= "function" then
-      raise("runtime driver '%s' is missing loop()", driver_id)
    end
 
    local providers = {}
