@@ -18,6 +18,12 @@ Small 3D math helpers built on LuaJIT FFI arrays.
 - `mathx.vec3(x?, y?, z?)`
   - Allocates a `float[3]`.
 
+## Scalar API
+
+- `mathx.clamp(value, low, high)`
+- `mathx.clamp01(value)`
+- `mathx.lerp(a, b, t)`
+
 ## Matrix API
 
 - `mathx.mat4_identity(out)`

@@ -51,6 +51,24 @@ local function normalize_components(x, y, z, label)
    return x * inv, y * inv, z * inv
 end
 
+function M.clamp(value, low, high)
+   if value < low then
+      return low
+   end
+   if value > high then
+      return high
+   end
+   return value
+end
+
+function M.clamp01(value)
+   return M.clamp(value, 0.0, 1.0)
+end
+
+function M.lerp(a, b, t)
+   return a + (b - a) * t
+end
+
 function M.mat4()
    return ffi.new("rig_mathx_mat4")
 end

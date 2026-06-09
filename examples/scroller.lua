@@ -1,6 +1,7 @@
 local sdl3 = require("sdl3")
 local sched = require("sched")
 local font = require("font")
+local mathx = require("mathx")
 local profiler = require("profiler")
 local time = require("time")
 local ffi = require("ffi")
@@ -22,7 +23,7 @@ local full_alpha = 255
 local fixed_animation_dt = 1.0 / 120.0
 local max_animation_dt = 0.05
 local max_animation_steps_per_frame = 6
-local lerp
+local lerp = mathx.lerp
 local sprite_outline_offsets = {
    { -2, -2 },
    { 0, -2 },
@@ -252,20 +253,6 @@ local function find_font_path()
    end
 
    rig.raise("examples/scroller.lua could not find a system TTF font; install DejaVu Sans or edit the font candidates")
-end
-
-local function clamp(value, low, high)
-   if value < low then
-      return low
-   end
-   if value > high then
-      return high
-   end
-   return value
-end
-
-lerp = function(a, b, t)
-   return a + (b - a) * t
 end
 
 local function current_layout()

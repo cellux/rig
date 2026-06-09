@@ -1,5 +1,6 @@
 local sdl3 = require("sdl3")
 local sched = require("sched")
+local mathx = require("mathx")
 local profiler = require("profiler")
 local ffi = require("ffi")
 
@@ -16,22 +17,16 @@ local base_body_radius = 6.0
 local max_turn_step = 0.12
 local ant_scale = 1.0
 
+local Ant = rig.class()
+local Slider = rig.class()
+
 local ants = {}
 local rect = ffi.new("SDL_FRect[1]")
 local frame_profiler = profiler.FrameProfiler()
-local slider = {
-   x = nil,
-   y = 14,
-   w = 152,
-   h = 18,
-   dragging = false,
-   hover = false,
-   value = 0.4,
-   emphasis = 0.0,
-   target_emphasis = 0.0,
-   knob_size = 14,
-}
-ant_scale = 0.65 + slider.value * 1.55
+local slider
+local clamp = mathx.clamp
+local clamp01 = mathx.clamp01
+local lerp = mathx.lerp
 
 local palette = {
    { 0.92, 0.72, 0.29, 1.0 },
@@ -144,24 +139,6 @@ local glyphs = {
 
 math.randomseed(tonumber(sdl3.GetPerformanceCounter()))
 
-local function clamp(value, low, high)
-   if value < low then
-      return low
-   end
-   if value > high then
-      return high
-   end
-   return value
-end
-
-local function clamp01(value)
-   return clamp(value, 0.0, 1.0)
-end
-
-local function lerp(a, b, t)
-   return a + (b - a) * t
-end
-
 local function mix_color(dim, bright, amount)
    return {
       lerp(dim[1], bright[1], amount),
@@ -232,6 +209,10 @@ local function point_in_rect(x, y, rx, ry, rw, rh)
    return x >= rx and x <= rx + rw and y >= ry and y <= ry + rh
 end
 
+local function update_ant_scale_from_slider(value)
+   ant_scale = 0.65 + value * 1.55
+end
+
 local function fill_rect(renderer, x, y, w, h)
    rect[0].x = x
    rect[0].y = y
@@ -259,6 +240,85 @@ end
 local function sensor_half_width()
    return base_sensor_half_width * ant_scale
 end
+
+function Slider:init()
+   self.x = nil
+   self.y = 14
+   self.w = 152
+   self.h = 18
+   self.dragging = false
+   self.hover = false
+   self.value = 0.4
+   self.emphasis = 0.0
+   self.target_emphasis = 0.0
+   self.knob_size = 14
+   update_ant_scale_from_slider(self.value)
+end
+
+function Slider:update_value_from_mouse(x)
+   local knob_half = self.knob_size * 0.5
+   local usable_left = self.x + knob_half
+   local usable_right = self.x + self.w - knob_half
+   local value = (x - usable_left) / (usable_right - usable_left)
+   self.value = clamp01(value)
+   update_ant_scale_from_slider(self.value)
+end
+
+function Slider:update_hover(x, y)
+   local pad = 6
+   self.hover = point_in_rect(
+      x,
+      y,
+      self.x - pad,
+      self.y - pad,
+      self.w + pad * 2,
+      self.h + pad * 2
+   )
+   self.target_emphasis = (self.dragging or self.hover) and 1.0 or 0.0
+end
+
+function Slider:handle_mouse(mouse_info)
+   local x = mouse_info.x or 0
+   local y = mouse_info.y or 0
+
+   self:update_hover(x, y)
+
+   if mouse_info.action == "move" then
+      if self.dragging then
+         self:update_value_from_mouse(x)
+      end
+      return
+   end
+
+   if mouse_info.button ~= sdl3.BUTTON_LEFT then
+      return
+   end
+
+   if mouse_info.action == "down" then
+      if self.hover then
+         self.dragging = true
+         self.target_emphasis = 1.0
+         self:update_value_from_mouse(x)
+      end
+   elseif mouse_info.action == "up" then
+      if self.dragging then
+         self:update_value_from_mouse(x)
+      end
+      self.dragging = false
+      self:update_hover(x, y)
+   end
+end
+
+function Slider:tick()
+   self.emphasis = self.emphasis
+      + (self.target_emphasis - self.emphasis) * 0.35
+
+   if math.abs(self.target_emphasis - self.emphasis) < 0.002 then
+      self.emphasis = self.target_emphasis
+   end
+end
+
+slider = Slider()
 
 local function draw_glyph(renderer, glyph, x, y, scale)
    for row = 1, #glyph do
@@ -310,30 +370,8 @@ local function draw_fps_overlay(renderer)
    )
 end
 
-local function update_slider_value_from_mouse(x)
-   local knob_half = slider.knob_size * 0.5
-   local usable_left = slider.x + knob_half
-   local usable_right = slider.x + slider.w - knob_half
-   local value = (x - usable_left) / (usable_right - usable_left)
-   slider.value = clamp01(value)
-   ant_scale = 0.65 + slider.value * 1.55
-end
-
-local function update_slider_hover(x, y)
-   local pad = 6
-   slider.hover = point_in_rect(
-      x,
-      y,
-      slider.x - pad,
-      slider.y - pad,
-      slider.w + pad * 2,
-      slider.h + pad * 2
-   )
-   slider.target_emphasis = (slider.dragging or slider.hover) and 1.0 or 0.0
-end
-
-local function draw_slider(renderer)
-   local amount = clamp01(slider.emphasis)
+function Slider:draw(renderer)
+   local amount = clamp01(self.emphasis)
    local panel_color = mix_color(
       { 0.05, 0.06, 0.05, 0.35 },
       { 0.22, 0.24, 0.22, 0.92 },
@@ -356,11 +394,11 @@ local function draw_slider(renderer)
    )
    local panel_pad = 6
    local track_h = 4
-   local knob_half = slider.knob_size * 0.5
-   local track_y = slider.y + math.floor((slider.h - track_h) * 0.5)
-   local knob_x = slider.x + knob_half + slider.value * (slider.w - slider.knob_size)
-   local knob_y = slider.y + slider.h * 0.5
-   local fill_w = math.max(0, knob_x - slider.x)
+   local knob_half = self.knob_size * 0.5
+   local track_y = self.y + math.floor((self.h - track_h) * 0.5)
+   local knob_x = self.x + knob_half + self.value * (self.w - self.knob_size)
+   local knob_y = self.y + self.h * 0.5
+   local fill_w = math.max(0, knob_x - self.x)
    local outline_color = mix_color(
       { 0.18, 0.10, 0.04, 1.0 },
       { 1.00, 0.74, 0.24, 1.0 },
@@ -370,113 +408,127 @@ local function draw_slider(renderer)
    set_color(renderer, panel_color)
    fill_rect(
       renderer,
-      slider.x - panel_pad,
-      slider.y - panel_pad,
-      slider.w + panel_pad * 2,
-      slider.h + panel_pad * 2
+      self.x - panel_pad,
+      self.y - panel_pad,
+      self.w + panel_pad * 2,
+      self.h + panel_pad * 2
    )
 
    set_color(renderer, outline_color)
    draw_line(
       renderer,
-      slider.x - panel_pad - 1,
-      slider.y - panel_pad - 1,
-      slider.x + slider.w + panel_pad + 1,
-      slider.y - panel_pad - 1
+      self.x - panel_pad - 1,
+      self.y - panel_pad - 1,
+      self.x + self.w + panel_pad + 1,
+      self.y - panel_pad - 1
    )
    draw_line(
       renderer,
-      slider.x - panel_pad - 1,
-      slider.y + slider.h + panel_pad + 1,
-      slider.x + slider.w + panel_pad + 1,
-      slider.y + slider.h + panel_pad + 1
+      self.x - panel_pad - 1,
+      self.y + self.h + panel_pad + 1,
+      self.x + self.w + panel_pad + 1,
+      self.y + self.h + panel_pad + 1
    )
    draw_line(
       renderer,
-      slider.x - panel_pad - 1,
-      slider.y - panel_pad - 1,
-      slider.x - panel_pad - 1,
-      slider.y + slider.h + panel_pad + 1
+      self.x - panel_pad - 1,
+      self.y - panel_pad - 1,
+      self.x - panel_pad - 1,
+      self.y + self.h + panel_pad + 1
    )
    draw_line(
       renderer,
-      slider.x + slider.w + panel_pad + 1,
-      slider.y - panel_pad - 1,
-      slider.x + slider.w + panel_pad + 1,
-      slider.y + slider.h + panel_pad + 1
+      self.x + self.w + panel_pad + 1,
+      self.y - panel_pad - 1,
+      self.x + self.w + panel_pad + 1,
+      self.y + self.h + panel_pad + 1
    )
 
    set_color(renderer, track_color)
-   fill_rect(renderer, slider.x, track_y, slider.w, track_h)
+   fill_rect(renderer, self.x, track_y, self.w, track_h)
 
    set_color(renderer, fill_color)
-   fill_rect(renderer, slider.x, track_y, fill_w, track_h)
+   fill_rect(renderer, self.x, track_y, fill_w, track_h)
 
    set_color(renderer, knob_color)
    fill_rect(
       renderer,
       knob_x - knob_half,
       knob_y - knob_half,
-      slider.knob_size,
-      slider.knob_size
+      self.knob_size,
+      self.knob_size
    )
 end
 
-local function draw_ant(renderer, ant)
+function Ant:init(index, color)
+   self.id = index
+   self.x = math.random(ant_margin, window_width - ant_margin)
+   self.y = math.random(ant_margin, window_height - ant_margin)
+   self.angle = math.random() * math.pi * 2.0
+   self.desired_angle = self.angle
+   self.turn_speed = max_turn_step * (0.8 + math.random() * 0.5)
+   self.step_interval = 0.012 + math.random() * 0.020
+   self.pause_chance = 0.01 + math.random() * 0.04
+   self.walk_phase = math.random() * math.pi * 2.0
+   self.color = color
+   self.speed = ant_speed * self.step_interval * (0.85 + math.random() * 0.35)
+end
+
+function Ant:draw(renderer)
    local scale = ant_scale
-   local cos_angle = math.cos(ant.angle)
-   local sin_angle = math.sin(ant.angle)
-   local gait = math.sin(ant.walk_phase)
-   local gait_opposite = math.sin(ant.walk_phase + math.pi)
+   local cos_angle = math.cos(self.angle)
+   local sin_angle = math.sin(self.angle)
+   local gait = math.sin(self.walk_phase)
+   local gait_opposite = math.sin(self.walk_phase + math.pi)
    local front_leg_swing = gait * 1.8 * scale
    local back_leg_swing = gait_opposite * 1.6 * scale
    local antenna_swing = gait * 0.9 * scale
 
-   local head_x, head_y = to_world(ant, cos_angle, sin_angle, 5.0 * scale, 0.0)
-   local thorax_x, thorax_y = to_world(ant, cos_angle, sin_angle, 0.0, 0.0)
-   local abdomen_x, abdomen_y = to_world(ant, cos_angle, sin_angle, -5.0 * scale, 0.0)
+   local head_x, head_y = to_world(self, cos_angle, sin_angle, 5.0 * scale, 0.0)
+   local thorax_x, thorax_y = to_world(self, cos_angle, sin_angle, 0.0, 0.0)
+   local abdomen_x, abdomen_y = to_world(self, cos_angle, sin_angle, -5.0 * scale, 0.0)
 
-   local leg_1_x1, leg_1_y1 = to_world(ant, cos_angle, sin_angle, 1.0 * scale, -1.0 * scale)
+   local leg_1_x1, leg_1_y1 = to_world(self, cos_angle, sin_angle, 1.0 * scale, -1.0 * scale)
    local leg_1_x2, leg_1_y2 = to_world(
-      ant,
+      self,
       cos_angle,
       sin_angle,
       5.0 * scale + front_leg_swing,
       -4.0 * scale - front_leg_swing * 0.6
    )
-   local leg_2_x1, leg_2_y1 = to_world(ant, cos_angle, sin_angle, 1.0 * scale, 1.0 * scale)
+   local leg_2_x1, leg_2_y1 = to_world(self, cos_angle, sin_angle, 1.0 * scale, 1.0 * scale)
    local leg_2_x2, leg_2_y2 = to_world(
-      ant,
+      self,
       cos_angle,
       sin_angle,
       5.0 * scale - front_leg_swing,
       4.0 * scale + front_leg_swing * 0.6
    )
-   local leg_3_x1, leg_3_y1 = to_world(ant, cos_angle, sin_angle, -2.0 * scale, -1.0 * scale)
+   local leg_3_x1, leg_3_y1 = to_world(self, cos_angle, sin_angle, -2.0 * scale, -1.0 * scale)
    local leg_3_x2, leg_3_y2 = to_world(
-      ant,
+      self,
       cos_angle,
       sin_angle,
       -6.0 * scale - back_leg_swing,
       -4.0 * scale - back_leg_swing * 0.6
    )
-   local leg_4_x1, leg_4_y1 = to_world(ant, cos_angle, sin_angle, -2.0 * scale, 1.0 * scale)
+   local leg_4_x1, leg_4_y1 = to_world(self, cos_angle, sin_angle, -2.0 * scale, 1.0 * scale)
    local leg_4_x2, leg_4_y2 = to_world(
-      ant,
+      self,
       cos_angle,
       sin_angle,
       -6.0 * scale + back_leg_swing,
       4.0 * scale + back_leg_swing * 0.6
    )
    local antenna_1_x2, antenna_1_y2 = to_world(
-      ant,
+      self,
       cos_angle,
       sin_angle,
       8.0 * scale,
       -2.0 * scale - antenna_swing
    )
    local antenna_2_x2, antenna_2_y2 = to_world(
-      ant,
+      self,
       cos_angle,
       sin_angle,
       8.0 * scale,
@@ -486,7 +538,7 @@ local function draw_ant(renderer, ant)
    local thorax_radius = math.max(2.0, 2.0 * scale)
    local head_radius = math.max(1.0, 1.5 * scale)
 
-   set_color(renderer, ant.color)
+   set_color(renderer, self.color)
    fill_rect(
       renderer,
       abdomen_x - abdomen_radius,
@@ -517,19 +569,19 @@ local function draw_ant(renderer, ant)
    draw_line(renderer, head_x, head_y, antenna_2_x2, antenna_2_y2)
 end
 
-local function sense_forward_obstacle(ant)
-   local fx = math.cos(ant.angle)
-   local fy = math.sin(ant.angle)
+function Ant:sense_forward_obstacle(all_ants)
+   local fx = math.cos(self.angle)
+   local fy = math.sin(self.angle)
    local nearest_forward = nil
    local steer = 0
    local max_forward_distance = sensor_distance()
    local max_half_width = sensor_half_width()
 
-   for i = 1, #ants do
-      local other = ants[i]
-      if other ~= ant then
-         local dx = other.x - ant.x
-         local dy = other.y - ant.y
+   for i = 1, #all_ants do
+      local other = all_ants[i]
+      if other ~= self then
+         local dx = other.x - self.x
+         local dy = other.y - self.y
          local forward = dx * fx + dy * fy
 
          if forward > 0.0 and forward < max_forward_distance then
@@ -555,18 +607,18 @@ local function sense_forward_obstacle(ant)
    return steer, 1.0 - nearest_forward / max_forward_distance
 end
 
-local function resolve_overlap(ant)
+function Ant:resolve_overlap(all_ants)
    local min_distance = body_radius() * 2.0
    local min_distance_sq = min_distance * min_distance
    local collided = false
    local push_x = 0.0
    local push_y = 0.0
 
-   for i = 1, #ants do
-      local other = ants[i]
-      if other ~= ant then
-         local dx = ant.x - other.x
-         local dy = ant.y - other.y
+   for i = 1, #all_ants do
+      local other = all_ants[i]
+      if other ~= self then
+         local dx = self.x - other.x
+         local dy = self.y - other.y
          local distance_sq = dx * dx + dy * dy
 
          if distance_sq < min_distance_sq then
@@ -588,9 +640,9 @@ local function resolve_overlap(ant)
    end
 
    if collided then
-      ant.x = clamp(ant.x + push_x, ant_margin, window_width - ant_margin)
-      ant.y = clamp(ant.y + push_y, ant_margin, window_height - ant_margin)
-      ant.desired_angle = normalize_angle(
+      self.x = clamp(self.x + push_x, ant_margin, window_width - ant_margin)
+      self.y = clamp(self.y + push_y, ant_margin, window_height - ant_margin)
+      self.desired_angle = normalize_angle(
          math.atan2(push_y, push_x) + (math.random() - 0.5) * 0.4
       )
    end
@@ -598,58 +650,25 @@ local function resolve_overlap(ant)
    return collided
 end
 
-local function handle_mouse(mouse_info)
-   local x = mouse_info.x or 0
-   local y = mouse_info.y or 0
-
-   update_slider_hover(x, y)
-
-   if mouse_info.action == "move" then
-      if slider.dragging then
-         update_slider_value_from_mouse(x)
-      end
-      return
-   end
-
-   if mouse_info.button ~= sdl3.BUTTON_LEFT then
-      return
-   end
-
-   if mouse_info.action == "down" then
-      if slider.hover then
-         slider.dragging = true
-         slider.target_emphasis = 1.0
-         update_slider_value_from_mouse(x)
-      end
-   elseif mouse_info.action == "up" then
-      if slider.dragging then
-         update_slider_value_from_mouse(x)
-      end
-      slider.dragging = false
-      update_slider_hover(x, y)
-   end
+function Ant:clamp_to_window()
+   self.x = clamp(self.x, ant_margin, window_width - ant_margin)
+   self.y = clamp(self.y, ant_margin, window_height - ant_margin)
 end
 
 local function animate_slider()
    while true do
-      slider.emphasis = slider.emphasis
-         + (slider.target_emphasis - slider.emphasis) * 0.35
-
-      if math.abs(slider.target_emphasis - slider.emphasis) < 0.002 then
-         slider.emphasis = slider.target_emphasis
-      end
-
+      slider:tick()
       sched.yield()
    end
 end
 
-local function step_ant(ant)
-   ant.angle = turn_toward(ant.angle, ant.desired_angle, ant.turn_speed)
+function Ant:step(all_ants)
+   self.angle = turn_toward(self.angle, self.desired_angle, self.turn_speed)
 
-   local avoid_direction, avoid_strength = sense_forward_obstacle(ant)
+   local avoid_direction, avoid_strength = self:sense_forward_obstacle(all_ants)
    if avoid_direction ~= 0 then
-      ant.desired_angle = steer_angle(
-         ant.desired_angle,
+      self.desired_angle = steer_angle(
+         self.desired_angle,
          avoid_direction * (0.020 + avoid_strength * 0.060)
       )
    end
@@ -662,32 +681,32 @@ local function step_ant(ant)
       end
    end
 
-   ant.x = ant.x + math.cos(ant.angle) * ant.speed * move_scale
-   ant.y = ant.y + math.sin(ant.angle) * ant.speed * move_scale
-   ant.walk_phase = normalize_angle(ant.walk_phase + 0.55 + move_scale * 0.65)
+   self.x = self.x + math.cos(self.angle) * self.speed * move_scale
+   self.y = self.y + math.sin(self.angle) * self.speed * move_scale
+   self.walk_phase = normalize_angle(self.walk_phase + 0.55 + move_scale * 0.65)
 
    local bounced = false
 
-   if ant.x < ant_margin or ant.x > window_width - ant_margin then
-      ant.x = clamp(ant.x, ant_margin, window_width - ant_margin)
-      ant.desired_angle = normalize_angle(math.pi - ant.angle)
+   if self.x < ant_margin or self.x > window_width - ant_margin then
+      self.x = clamp(self.x, ant_margin, window_width - ant_margin)
+      self.desired_angle = normalize_angle(math.pi - self.angle)
       bounced = true
    end
-   if ant.y < ant_margin or ant.y > window_height - ant_margin then
-      ant.y = clamp(ant.y, ant_margin, window_height - ant_margin)
-      ant.desired_angle = normalize_angle(-ant.angle)
+   if self.y < ant_margin or self.y > window_height - ant_margin then
+      self.y = clamp(self.y, ant_margin, window_height - ant_margin)
+      self.desired_angle = normalize_angle(-self.angle)
       bounced = true
    end
 
    if bounced then
-      ant.desired_angle = steer_angle(
-         ant.desired_angle,
+      self.desired_angle = steer_angle(
+         self.desired_angle,
          (math.random() - 0.5) * 0.8
       )
       return
    end
 
-   local collided = resolve_overlap(ant)
+   local collided = self:resolve_overlap(all_ants)
    if collided then
       return
    end
@@ -695,22 +714,22 @@ local function step_ant(ant)
    if avoid_direction == 0 then
       local turn_choice = choose_turn()
       if turn_choice ~= 0 then
-         ant.desired_angle = steer_angle(
-            ant.desired_angle,
+         self.desired_angle = steer_angle(
+            self.desired_angle,
             turn_choice * (0.003 + math.random() * 0.006)
          )
       end
    end
 end
 
-local function run_ant(ant)
-   sched.sleep(math.random() * ant.step_interval)
+function Ant:run(all_ants)
+   sched.sleep(math.random() * self.step_interval)
 
    while true do
-      step_ant(ant)
+      self:step(all_ants)
 
-      local delay = ant.step_interval
-      if math.random() < ant.pause_chance then
+      local delay = self.step_interval
+      if math.random() < self.pause_chance then
          delay = delay + 0.06 + math.random() * 0.18
       end
 
@@ -723,22 +742,11 @@ local function initialize_ants()
 
    for i = 1, ant_count do
       local color = palette[((i - 1) % #palette) + 1]
-      local ant = {
-         x = math.random(ant_margin, window_width - ant_margin),
-         y = math.random(ant_margin, window_height - ant_margin),
-         angle = math.random() * math.pi * 2.0,
-         desired_angle = 0.0,
-         turn_speed = max_turn_step * (0.8 + math.random() * 0.5),
-         speed = 0.0,
-         step_interval = 0.012 + math.random() * 0.020,
-         pause_chance = 0.01 + math.random() * 0.04,
-         walk_phase = math.random() * math.pi * 2.0,
-         color = color,
-      }
-      ant.desired_angle = ant.angle
-      ant.speed = ant_speed * ant.step_interval * (0.85 + math.random() * 0.35)
+      local ant = Ant(i, color)
       ants[i] = ant
-      sched.spawn(run_ant, ant)
+      sched.spawn(function()
+         ant:run(ants)
+      end)
    end
 
    sched.spawn(animate_slider)
@@ -754,11 +762,11 @@ local function on_render()
    sdl3.clear(0.06, 0.08, 0.05, 1.0)
 
    for i = 1, #ants do
-      draw_ant(renderer, ants[i])
+      ants[i]:draw(renderer)
    end
 
    draw_fps_overlay(renderer)
-   draw_slider(renderer)
+   slider:draw(renderer)
    frame_profiler:end_cpu()
 end
 
@@ -768,16 +776,16 @@ local function handle_resize(info)
    slider.x = window_width - 184
 
    for i = 1, #ants do
-      local ant = ants[i]
-      ant.x = clamp(ant.x, ant_margin, window_width - ant_margin)
-      ant.y = clamp(ant.y, ant_margin, window_height - ant_margin)
+      ants[i]:clamp_to_window()
    end
 end
 
 rig.run {
    mode = "sdl3",
    event_handlers = {
-      mouse = handle_mouse,
+      mouse = function(mouse_info)
+         slider:handle_mouse(mouse_info)
+      end,
       resize = handle_resize,
    },
    driver_config = {
