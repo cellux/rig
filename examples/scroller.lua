@@ -542,7 +542,7 @@ local function set_animation_enabled(enabled)
    scene.animate_enabled = enabled
 
    if enabled then
-      local scheduler = sched._active_scheduler
+      local scheduler = sched.active_scheduler()
       if scheduler ~= nil then
          if scene.animation_driver_task ~= nil then
             scheduler:wake(scene.animation_driver_task)
@@ -665,7 +665,7 @@ local function run_animation_driver()
          scene.animation_step_count = steps
          scene.animation_step_generation = scene.animation_step_generation + 1
 
-         local scheduler = sched._active_scheduler
+         local scheduler = sched.active_scheduler()
          if scheduler ~= nil then
             for i = 1, #scene.animation_step_tasks do
                scheduler:wake(scene.animation_step_tasks[i])

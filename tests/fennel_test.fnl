@@ -10,7 +10,7 @@
 
 (test.case "scheduler can run a spawned task"
   (fn []
-    (local scheduler (sched.create "test scheduler"))
+    (local scheduler (sched.Scheduler "test scheduler"))
     (var ran false)
 
     (scheduler:activate)

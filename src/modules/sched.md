@@ -7,10 +7,11 @@ Generic coroutine scheduler primitives for runtime-owned async backends.
 - `sched.register_handler(kind, handler)`
   - Registers a handler for a yielded operation kind.
   - Handlers receive `(scheduler, task, payload)`.
-- `sched.create(label?)`
+  - Handlers that start external async work may use `scheduler:start_async(task)` to create a one-shot completion ticket.
+- `sched.Scheduler(label?)`
   - Creates a scheduler instance.
-- `sched.build_request(kind, payload)`
-  - Creates a generic scheduler request object.
+- `sched.active_scheduler()`
+  - Returns the currently active scheduler, or `nil` when no scheduler is active.
 - `sched.await(kind, payload)`
   - Yields a scheduler-managed operation from the current task.
   - Must be called from a scheduler-managed coroutine.
@@ -31,6 +32,7 @@ Generic coroutine scheduler primitives for runtime-owned async backends.
 
 - `sched` is intentionally generic.
 - Backend modules such as `uv` should register handlers and keep their callback/event-loop details internal.
+- `scheduler:start_async(task)` returns a ticket with `:wake(...)`, `:fail(err)`, and `:is_done()` helpers for balancing pending async work.
 - User code should usually not construct raw yieldables directly when a higher-level backend API already exists.
 - `sched.yield()` is for cooperative next-tick rescheduling.
 - `sched.sleep()` is for runtime-provided timed suspension.

@@ -2824,7 +2824,7 @@ rig.register_service_provider("shader.stage", "sdl3_gpu", shader_stage_service_s
 rig.register_service_provider("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
 
 local function setup_scheduler(label)
-   runtime_scheduler = sched.create(label)
+   runtime_scheduler = sched.Scheduler(label)
    runtime_scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
       scheduler:sleep_until(task, current_monotonic_seconds() + seconds)
    end)

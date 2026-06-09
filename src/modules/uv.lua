@@ -345,19 +345,17 @@ local function setup(options)
    end
 
    M._loop = loop
-   M._scheduler = sched.create("uv scheduler")
+   M._scheduler = sched.Scheduler("uv scheduler")
    M._scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
-      scheduler:begin_async()
+      local ticket = scheduler:start_async(task)
 
       local ok, err = pcall(sleep_internal, seconds, function()
-         scheduler:end_async()
-         scheduler:wake(task)
+         ticket:wake()
          ffi.C.rig_uv_stop(M._loop)
       end)
 
       if not ok then
-         scheduler:end_async()
-         rig.raise(err)
+         ticket:fail(err)
       end
    end)
 end
@@ -379,9 +377,9 @@ local function run_scheduler_loop(runtime_options, outer_options)
       scheduler:spawn(main, outer_options)
    end
 
-   while scheduler:has_live_tasks() do
+   while scheduler:has_active_tasks() do
       scheduler:drain()
-      if not scheduler:has_live_tasks() then
+      if not scheduler:has_active_tasks() then
          break
       end
 
@@ -432,36 +430,32 @@ local function shutdown()
 end
 
 sched.register_handler("uv.spawn", function(scheduler, task, spec)
-   scheduler:begin_async()
+   local ticket = scheduler:start_async(task)
 
    local ok, err = pcall(spawn_internal, spec, function(result)
-      scheduler:end_async()
-      scheduler:wake(task, result)
+      ticket:wake(result)
       ffi.C.rig_uv_stop(M._loop)
    end)
 
    if not ok then
-      scheduler:end_async()
-      rig.raise(err)
+      ticket:fail(err)
    end
 end)
 
 sched.register_handler("uv.scandir", function(scheduler, task, path)
-   scheduler:begin_async()
+   local ticket = scheduler:start_async(task)
 
    local ok, err = pcall(scandir_internal, path, function(entries, callback_err)
-      scheduler:end_async()
       if callback_err ~= nil then
-         scheduler:wake(task, nil, callback_err)
+         ticket:wake(nil, callback_err)
       else
-         scheduler:wake(task, entries)
+         ticket:wake(entries)
       end
       ffi.C.rig_uv_stop(M._loop)
    end)
 
    if not ok then
-      scheduler:end_async()
-      rig.raise(err)
+      ticket:fail(err)
    end
 end)
 

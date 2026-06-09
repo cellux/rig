@@ -1,8 +1,15 @@
 local test = require("test")
 local sched = require("sched")
 
+test.case("sched.Scheduler constructs scheduler instances", function()
+   local scheduler = sched.Scheduler("test scheduler")
+
+   test.truthy(sched.Scheduler:is_instance(scheduler))
+   test.equal(scheduler._label, "test scheduler")
+end)
+
 test.case("sched.yield resumes on the next scheduler drain", function()
-   local scheduler = sched.create("yield scheduler")
+   local scheduler = sched.Scheduler("yield scheduler")
    local events = {}
    local task_a
    local task_b
@@ -35,7 +42,7 @@ test.case("sched.yield resumes on the next scheduler drain", function()
 end)
 
 test.case("sched.yield is not starved by completions on the next drain", function()
-   local scheduler = sched.create("yield starvation scheduler")
+   local scheduler = sched.Scheduler("yield starvation scheduler")
    local events = {}
    local yielded_task
    local parked_task
@@ -69,7 +76,7 @@ test.case("sched.yield is not starved by completions on the next drain", functio
 end)
 
 test.case("sched.sleep can be implemented with deadline wakeups", function()
-   local scheduler = sched.create("sleep test scheduler")
+   local scheduler = sched.Scheduler("sleep test scheduler")
    local events = {}
 
    scheduler:set_handler("sched.sleep", function(local_scheduler, task, seconds)
@@ -99,8 +106,135 @@ test.case("sched.sleep can be implemented with deadline wakeups", function()
    test.equal(events[2], "after")
 end)
 
+test.case("async tickets wake tasks and balance pending async state", function()
+   local scheduler = sched.Scheduler("async ticket wake scheduler")
+   local events = {}
+
+   scheduler:set_handler("sched_test.async_ticket_wake", function(local_scheduler, task, payload)
+      local ticket = local_scheduler:start_async(task)
+      table.insert(events, { "handler", payload, ticket:is_done() })
+      test.equal(local_scheduler:pending_async(), 1)
+      ticket:wake("ok", payload + 1)
+      test.truthy(ticket:is_done())
+      test.equal(local_scheduler:pending_async(), 0)
+   end)
+
+   scheduler:activate()
+   sched.spawn(function()
+      table.insert(events, "before")
+      local status, value = sched.await("sched_test.async_ticket_wake", 41)
+      table.insert(events, { "after", status, value })
+   end)
+   scheduler:drain()
+   scheduler:deactivate()
+
+   test.equal(#events, 3)
+   test.equal(events[1], "before")
+   test.equal(events[2][1], "handler")
+   test.equal(events[2][2], 41)
+   test.falsey(events[2][3])
+   test.equal(events[3][1], "after")
+   test.equal(events[3][2], "ok")
+   test.equal(events[3][3], 42)
+end)
+
+test.case("async tickets surface failures and complete tasks", function()
+   local scheduler = sched.Scheduler("async ticket failure scheduler")
+   local task
+
+   scheduler:set_handler("sched_test.async_ticket_fail", function(local_scheduler, current_task)
+      local ticket = local_scheduler:start_async(current_task)
+      ticket:fail("async ticket failed")
+   end)
+
+   scheduler:activate()
+   task = sched.spawn(function()
+      sched.await("sched_test.async_ticket_fail")
+   end)
+
+   local ok, err = pcall(function()
+      scheduler:drain()
+   end)
+   scheduler:deactivate()
+
+   test.falsey(ok)
+   test.match(err, "async ticket failed")
+   test.truthy(task._done)
+   test.equal(scheduler:pending_async(), 0)
+   test.equal(scheduler:has_active_tasks(), false)
+end)
+
+test.case("async tickets reject double completion", function()
+   local scheduler = sched.Scheduler("async ticket double completion scheduler")
+   local task
+
+   scheduler:set_handler("sched_test.async_ticket_double_complete", function(local_scheduler, current_task)
+      local ticket = local_scheduler:start_async(current_task)
+      ticket:wake("ok")
+      ticket:wake("again")
+   end)
+
+   scheduler:activate()
+   task = sched.spawn(function()
+      sched.await("sched_test.async_ticket_double_complete")
+   end)
+
+   local ok, err = pcall(function()
+      scheduler:drain()
+   end)
+   scheduler:deactivate()
+
+   test.falsey(ok)
+   test.match(err, "async ticket already completed")
+   test.truthy(task._done)
+   test.equal(scheduler:pending_async(), 0)
+   test.equal(scheduler:has_active_tasks(), false)
+end)
+
+test.case("sched.sleep reports missing runtime support", function()
+   local scheduler = sched.Scheduler("sleep missing handler scheduler")
+   local task
+
+   scheduler:activate()
+   task = sched.spawn(function()
+      sched.sleep(0.1)
+   end)
+
+   local ok, err = pcall(function()
+      scheduler:drain()
+   end)
+   scheduler:deactivate()
+
+   test.falsey(ok)
+   test.match(err, "no scheduler handler is registered for 'sched%.sleep'")
+   test.truthy(task._done)
+   test.equal(scheduler:has_active_tasks(), false)
+end)
+
+test.case("register_handler registers fresh kinds", function()
+   local observed = nil
+
+   sched.register_handler("sched_test.auto_registered", function(scheduler, task, payload)
+      observed = payload
+      scheduler:wake(task, "ok")
+   end)
+
+   local scheduler = sched.Scheduler("auto-registered handler scheduler")
+   local result = nil
+
+   scheduler:activate()
+   sched.spawn(function()
+      result = sched.await("sched_test.auto_registered", 42)
+   end)
+   scheduler:drain()
+   scheduler:deactivate()
+
+   test.equal(observed, 42)
+   test.equal(result, "ok")
+end)
+
 test.case("sched.join resumes when a parked task is woken", function()
-   local scheduler = sched.create("join wake scheduler")
+   local scheduler = sched.Scheduler("join wake scheduler")
    local events = {}
 
    scheduler:activate()
@@ -136,7 +270,7 @@ test.case("sched.join resumes when a parked task is woken", function()
 end)
 
 test.case("sched.join returns immediately for already completed tasks", function()
-   local scheduler = sched.create("join immediate scheduler")
+   local scheduler = sched.Scheduler("join immediate scheduler")
    local events = {}
 
    scheduler:activate()
@@ -166,7 +300,7 @@ test.case("sched.join returns immediately for already completed tasks", function
 end)
 
 test.case("scheduler surfaces missing handler errors and still completes the task", function()
-   local scheduler = sched.create("missing handler scheduler")
+   local scheduler = sched.Scheduler("missing handler scheduler")
    local task
 
    scheduler:activate()
@@ -185,11 +319,11 @@ test.case("scheduler surfaces missing handler errors and still completes the tas
       "no scheduler handler is registered for 'missing%.handler'"
    )
    test.truthy(task._done)
-   test.equal(scheduler:has_live_tasks(), false)
+   test.equal(scheduler:has_active_tasks(), false)
 end)
 
 test.case("scheduler surfaces handler errors and completes the task", function()
-   local scheduler = sched.create("handler error scheduler")
+   local scheduler = sched.Scheduler("handler error scheduler")
    local task
 
    scheduler:set_handler("custom.fail", function()
@@ -209,11 +343,11 @@ test.case("scheduler surfaces handler errors and completes the task", function()
    test.falsey(ok)
    test.match(err, "handler failed")
    test.truthy(task._done)
-   test.equal(scheduler:has_live_tasks(), false)
+   test.equal(scheduler:has_active_tasks(), false)
 end)
 
 test.case("scheduler rejects non-request yields and completes the task", function()
-   local scheduler = sched.create("non-request scheduler")
+   local scheduler = sched.Scheduler("non-request scheduler")
    local task
 
    scheduler:activate()
@@ -229,11 +363,11 @@ test.case("scheduler rejects non-request yields and completes the task", functio
    test.falsey(ok)
    test.match(err, "scheduler task yielded a non%-request value")
    test.truthy(task._done)
-   test.equal(scheduler:has_live_tasks(), false)
+   test.equal(scheduler:has_active_tasks(), false)
 end)
 
 test.case("scheduler reports coroutine errors and completes the task", function()
-   local scheduler = sched.create("coroutine error scheduler")
+   local scheduler = sched.Scheduler("coroutine error scheduler")
    local task
 
    scheduler:activate()
@@ -249,5 +383,5 @@ test.case("scheduler reports coroutine errors and completes the task", function(
    test.falsey(ok)
    test.match(err, "task exploded")
    test.truthy(task._done)
-   test.equal(scheduler:has_live_tasks(), false)
+   test.equal(scheduler:has_active_tasks(), false)
 end)
