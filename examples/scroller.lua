@@ -25,6 +25,8 @@ local fixed_animation_dt = 1.0 / 120.0
 local max_animation_dt = 0.05
 local max_animation_steps_per_frame = 6
 local lerp = mathx.lerp
+local upload_raster_texture
+local build_raster_field
 local transparent = color.TRANSPARENT
 local sprite_outline_color = color.BLACK:with_alpha(128)
 local title_shadow_color = color.BLACK:with_alpha(220)
@@ -46,40 +48,17 @@ local sprite_outline_offsets = {
 
 local Sprite = rig.class()
 local RasterSplit = rig.class()
+local RasterSplits = rig.class()
+local Title = rig.class()
+local Scroller = rig.class()
+local SpriteSnake = rig.class()
 
 local scene = {
    background_color = color.rgb(6, 8, 18),
-   scroll_speed = 204.0,
-   scroll_wave_amplitude = 48.0,
-   scroll_wave_frequency = 0.001,
-   scroll_wave_speed = 2.8,
-   scroll_loop_gap = 240.0,
-   title_shadow_offset = 4,
-   raster_split_count = 8,
-   sprite_text = "NEON PHANTOMS",
-   title_style = nil,
-   scroll_style = nil,
-   sprite_style = nil,
-   raster_texture = nil,
-   raster_texture_height = nil,
-   title_run = nil,
-   scroll_run = nil,
-   sprite_glyphs = nil,
-   sprites = {},
-   raster_splits = {},
-   raster_field = {},
-   raster_alpha = 1.0,
-   raster_preset_index = 1,
-   raster_transition_state = "VISIBLE",
-   scroll_offset = 0.0,
-   scroll_wave_phase = 0.0,
-   raster_phase = 0.0,
-   sprite_snake_phase = 0.0,
-   title_phase = 0.0,
-   raster_enabled = true,
-   sprites_enabled = true,
-   sprite_outline_enabled = true,
-   scroller_enabled = true,
+   title = nil,
+   scroller = nil,
+   sprite_snake = nil,
+   raster_splits = nil,
    animate_enabled = true,
    animation_driver_task = nil,
    animation_time = 0.0,
@@ -167,10 +146,10 @@ function RasterSplit:apply_preset(preset_index, split_count, offset_step)
    end
 end
 
-function RasterSplit:draw(renderer, layout, split_width, split_gap, visible_height, line_height, texture_height, field_height)
+function RasterSplit:draw(renderer, raster_texture, raster_phase, layout, split_width, split_gap, visible_height, line_height, texture_height, field_height)
    local base_x = layout.left + (self.index - 1) * (split_width + split_gap)
    local motion_range = math.floor(layout.split_height / line_height) * 2
-   local split_phase = scene.raster_phase * self.speed + self.offset
+   local split_phase = raster_phase * self.speed + self.offset
    local center_offset = self.base_offset + math.sin(split_phase) * (motion_range * 0.5)
    center_offset = math.floor(center_offset + 0.5)
 
@@ -186,7 +165,7 @@ function RasterSplit:draw(renderer, layout, split_width, split_gap, visible_heig
       dst_rect[0].y = layout.split_top
       dst_rect[0].w = split_width
       dst_rect[0].h = visible_height
-      if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
+      if not sdl3.RenderTexture(renderer, raster_texture, src_rect, dst_rect) then
          rig.raise("failed to render raster texture: " .. ffi.string(sdl3.GetError()))
       end
       return
@@ -203,7 +182,7 @@ function RasterSplit:draw(renderer, layout, split_width, split_gap, visible_heig
    dst_rect[0].y = layout.split_top
    dst_rect[0].w = split_width
    dst_rect[0].h = first_height
-   if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
+   if not sdl3.RenderTexture(renderer, raster_texture, src_rect, dst_rect) then
       rig.raise("failed to render raster texture head: " .. ffi.string(sdl3.GetError()))
    end
 
@@ -215,9 +194,265 @@ function RasterSplit:draw(renderer, layout, split_width, split_gap, visible_heig
    dst_rect[0].y = layout.split_top + first_height
    dst_rect[0].w = split_width
    dst_rect[0].h = second_height
-   if not sdl3.RenderTexture(renderer, scene.raster_texture, src_rect, dst_rect) then
+   if not sdl3.RenderTexture(renderer, raster_texture, src_rect, dst_rect) then
       rig.raise("failed to render raster texture tail: " .. ffi.string(sdl3.GetError()))
    end
+end
+
+function RasterSplits:init(renderer, count)
+   self.enabled = true
+   self.count = count
+   self.items = {}
+   self.field = build_raster_field()
+   self.texture, self.texture_height = upload_raster_texture(renderer, self.field, 2)
+   self.alpha = 1.0
+   self.preset_index = 1
+   self.transition_state = "VISIBLE"
+   self.phase = 0.0
+
+   for i = 1, count do
+      self.items[i] = RasterSplit(i)
+   end
+
+   self:apply_preset(1)
+end
+
+function RasterSplits:release()
+   self.items = {}
+   self.field = nil
+   self.texture_height = nil
+   if self.texture ~= nil and self.texture ~= ffi.NULL then
+      sdl3.DestroyTexture(self.texture)
+      self.texture = nil
+   end
+end
+
+function RasterSplits:apply_preset(preset_index)
+   self.preset_index = preset_index
+   local offset_step = self.count > 0 and (#self.field / self.count) or 0
+   for i = 1, #self.items do
+      self.items[i]:apply_preset(preset_index, self.count, offset_step)
+   end
+end
+
+function RasterSplits:draw(renderer, layout)
+   local split_gap = 1
+   local line_height = 2.0
+   local total_width = window_width - layout.left * 2
+   local split_width = (total_width - split_gap * (self.count - 1)) / self.count
+   local visible_lines = math.floor(layout.split_height / line_height)
+   local visible_height = visible_lines * line_height
+
+   if not sdl3.SetTextureAlphaMod(self.texture, math.floor(self.alpha * 255 + 0.5)) then
+      rig.raise("failed to set raster texture alpha modulation: " .. ffi.string(sdl3.GetError()))
+   end
+
+   for i = 1, #self.items do
+      self.items[i]:draw(
+         renderer,
+         self.texture,
+         self.phase,
+         layout,
+         split_width,
+         split_gap,
+         visible_height,
+         line_height,
+         self.texture_height,
+         #self.field
+      )
+   end
+end
+
+function RasterSplits:update_phase(dt)
+   self.phase = self.phase + dt * 1.6
+end
+
+function Title:init(face, text)
+   self.enabled = false
+   self.shadow_offset = 4
+   self.phase = 0.0
+   self.style = font.create_style(face, {
+      pixel_size = 74,
+      page_width = 512,
+      page_height = 256,
+      padding = 2,
+   })
+   self.run = self.style:build_run(text)
+   self.draw_color = color.WHITE:copy()
+end
+
+function Title:release()
+   self.run = nil
+   self.draw_color = nil
+   if self.style ~= nil then
+      self.style:release()
+      self.style = nil
+   end
+end
+
+function Title:calc_color(out, index)
+   local phase = self.phase + index * 0.42
+   local r = math.floor(125 + 120 * (0.5 + 0.5 * math.sin(phase)))
+   local g = math.floor(130 + 110 * (0.5 + 0.5 * math.sin(phase + 2.1)))
+   local b = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase + 4.2)))
+   out:set(r, g, b, full_alpha)
+   return out
+end
+
+function Title:draw(layout)
+   local title_baseline_y = layout.title_y
+   local base_x = (window_width - self.run.width) * 0.5
+
+   draw_text_run(
+      self.style,
+      self.run,
+      base_x + self.shadow_offset,
+      title_baseline_y + self.shadow_offset,
+      function()
+         return title_shadow_color
+      end
+   )
+
+   draw_text_run(self.style, self.run, base_x, title_baseline_y, function(index)
+      return self:calc_color(self.draw_color, index)
+   end)
+end
+
+function Title:update(dt)
+   self.phase = self.phase + dt * 1.8
+end
+
+function Scroller:init(face, text)
+   self.enabled = true
+   self.speed = 204.0
+   self.wave_amplitude = 48.0
+   self.wave_frequency = 0.001
+   self.wave_speed = 2.8
+   self.loop_gap = 240.0
+   self.offset = 0.0
+   self.wave_phase = 0.0
+   self.style = font.create_style(face, {
+      pixel_size = 38,
+      page_width = 1024,
+      page_height = 512,
+      padding = 2,
+   })
+   self.run = self.style:build_run(text)
+   self.glyph_color = color.WHITE:copy()
+end
+
+function Scroller:release()
+   self.run = nil
+   self.glyph_color = nil
+   if self.style ~= nil then
+      self.style:release()
+      self.style = nil
+   end
+end
+
+function Scroller:calc_color(out, index, x, y)
+   local phase = scene.raster_splits.phase * 1.7 + index * 0.18 + x * 0.003
+   local r = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase)))
+   local g = math.floor(110 + 130 * (0.5 + 0.5 * math.sin(phase + 1.9)))
+   local b = math.floor(80 + 165 * (0.5 + 0.5 * math.sin(phase + 3.7)))
+   local a = math.floor(220 + 35 * (0.5 + 0.5 * math.sin(phase + y * 0.01)))
+   out:set(r, g, b, a)
+   return out
+end
+
+function Scroller:draw_copy(layout, base_x)
+   local scroll_baseline_y = layout.scroll_y
+   for i = 1, #self.run.entries do
+      local entry = self.run.entries[i]
+      local packed = entry.packed
+      local x = base_x + entry.layout_x
+      local y = scroll_baseline_y + entry.layout_y
+      local wave_phase = self.wave_phase
+         + entry.layout_x * self.wave_frequency
+         + i * 0.11
+      y = y + math.sin(wave_phase) * self.wave_amplitude
+
+      if x + packed.width >= -48 then
+         if x <= window_width + 48 then
+            self:calc_color(self.glyph_color, i, x, y)
+            self.style:draw_packed_glyph(packed, x, y, self.glyph_color, 1.0)
+         elseif x > window_width + 48 then
+            break
+         end
+      end
+   end
+end
+
+function Scroller:draw(layout)
+   local first_x = window_width - self.offset
+   self:draw_copy(layout, first_x)
+
+   local second_x = first_x + self.run.width + self.loop_gap
+   if second_x < window_width + 96 then
+      self:draw_copy(layout, second_x)
+   end
+end
+
+function Scroller:update(dt)
+   local period = self.run.width + self.loop_gap
+   self.offset = (self.offset + self.speed * dt) % period
+   self.wave_phase = self.wave_phase + dt * self.wave_speed
+end
+
+function SpriteSnake:init(face, text)
+   self.enabled = true
+   self.outline_enabled = true
+   self.text = text
+   self.phase = 0.0
+   self.style = font.create_style(face, {
+      pixel_size = 82,
+      page_width = 256,
+      page_height = 256,
+      padding = 2,
+   })
+   self.glyphs = self:create_glyphs(text)
+   self.sprites = {}
+
+   for i = 1, #text do
+      local character = text:sub(i, i)
+      self.sprites[i] = Sprite(i, character, self.glyphs[character])
+   end
+end
+
+function SpriteSnake:create_glyphs(text)
+   local glyphs = {}
+   for i = 1, #text do
+      local character = text:sub(i, i)
+      if glyphs[character] == nil then
+         local shaped = font.shape(self.style.sized_face, character)
+         glyphs[character] = self.style:get_glyph(shaped.glyphs[1].glyph_id)
+      end
+   end
+   return glyphs
+end
+
+function SpriteSnake:release()
+   self.sprites = {}
+   self.glyphs = nil
+   if self.style ~= nil then
+      self.style:release()
+      self.style = nil
+   end
+end
+
+function SpriteSnake:draw(layout)
+   for i = 1, #self.sprites do
+      self.sprites[i]:draw(
+         self.style,
+         layout,
+         self.phase,
+         self.outline_enabled
+      )
+   end
+end
+
+function SpriteSnake:update(dt)
+   self.phase = self.phase + dt * 2.35
 end
 
 local scroll_text = table.concat({
@@ -285,7 +520,7 @@ local function fill_rect(renderer, x, y, w, h)
    end
 end
 
-local function upload_raster_texture(renderer, field, line_height)
+upload_raster_texture = function(renderer, field, line_height)
    local texture_height = #field * line_height
    local rgba = ffi.new("uint8_t[?]", texture_height * 4)
 
@@ -347,42 +582,7 @@ local function draw_label(style, text, x, baseline_y, draw_color)
    end)
 end
 
-local function apply_preset(index)
-   local offset_step = scene.raster_split_count > 0 and (#scene.raster_field / scene.raster_split_count) or 0
-   for i = 1, #scene.raster_splits do
-      scene.raster_splits[i]:apply_preset(index, scene.raster_split_count, offset_step)
-   end
-end
-
-local function draw_rasterbars(renderer, layout)
-   local split_gap = 1
-   local line_height = 2.0
-   local total_width = window_width - layout.left * 2
-   local split_width = (total_width - split_gap * (scene.raster_split_count - 1)) / scene.raster_split_count
-   local field_height = #scene.raster_field
-   local visible_lines = math.floor(layout.split_height / line_height)
-   local visible_height = visible_lines * line_height
-   local texture_height = scene.raster_texture_height
-
-   if not sdl3.SetTextureAlphaMod(scene.raster_texture, math.floor(scene.raster_alpha * 255 + 0.5)) then
-      rig.raise("failed to set raster texture alpha modulation: " .. ffi.string(sdl3.GetError()))
-   end
-
-   for i = 1, #scene.raster_splits do
-      scene.raster_splits[i]:draw(
-         renderer,
-         layout,
-         split_width,
-         split_gap,
-         visible_height,
-         line_height,
-         texture_height,
-         field_height
-      )
-   end
-end
-
-local function build_raster_field()
+build_raster_field = function()
    local function add_color_line(field, r, g, b, a, repeat_count)
       repeat_count = repeat_count or 1
       for _ = 1, repeat_count do
@@ -473,76 +673,6 @@ local function build_raster_field()
    return field
 end
 
-local function calc_title_color(out, index)
-   local phase = scene.title_phase + index * 0.42
-   local r = math.floor(125 + 120 * (0.5 + 0.5 * math.sin(phase)))
-   local g = math.floor(130 + 110 * (0.5 + 0.5 * math.sin(phase + 2.1)))
-   local b = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase + 4.2)))
-   out:set(r, g, b, full_alpha)
-   return out
-end
-
-local function draw_title(renderer, layout)
-   local title_baseline_y = layout.title_y
-   local run = scene.title_run
-   local base_x = (window_width - run.width) * 0.5
-
-   draw_text_run(scene.title_style, run, base_x + scene.title_shadow_offset, title_baseline_y + scene.title_shadow_offset, function()
-      return title_shadow_color
-   end)
-
-   local draw_color = color.WHITE:copy()
-   draw_text_run(scene.title_style, run, base_x, title_baseline_y, function(index)
-      return calc_title_color(draw_color, index)
-   end)
-end
-
-local function calc_scroll_color(out, index, x, y)
-   local phase = scene.raster_phase * 1.7 + index * 0.18 + x * 0.003
-   local r = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase)))
-   local g = math.floor(110 + 130 * (0.5 + 0.5 * math.sin(phase + 1.9)))
-   local b = math.floor(80 + 165 * (0.5 + 0.5 * math.sin(phase + 3.7)))
-   local a = math.floor(220 + 35 * (0.5 + 0.5 * math.sin(phase + y * 0.01)))
-   out:set(r, g, b, a)
-   return out
-end
-
-local function draw_scroller_copy(renderer, layout, base_x)
-   local scroll_baseline_y = layout.scroll_y
-   local run = scene.scroll_run
-   local glyph_color = color.WHITE:copy()
-   for i = 1, #run.entries do
-      local entry = run.entries[i]
-      local packed = entry.packed
-      local x = base_x + entry.layout_x
-      local y = scroll_baseline_y + entry.layout_y
-      local wave_phase = scene.scroll_wave_phase
-         + entry.layout_x * scene.scroll_wave_frequency
-         + i * 0.11
-      y = y + math.sin(wave_phase) * scene.scroll_wave_amplitude
-
-      if x + packed.width >= -48 then
-         if x <= window_width + 48 then
-            calc_scroll_color(glyph_color, i, x, y)
-            scene.scroll_style:draw_packed_glyph(packed, x, y, glyph_color, 1.0)
-         elseif x > window_width + 48 then
-            break
-         end
-      end
-   end
-end
-
-local function draw_scroller(renderer, layout)
-   local run = scene.scroll_run
-   local first_x = window_width - scene.scroll_offset
-   draw_scroller_copy(renderer, layout, first_x)
-
-   local second_x = first_x + run.width + scene.scroll_loop_gap
-   if second_x < window_width + 96 then
-      draw_scroller_copy(renderer, layout, second_x)
-   end
-end
-
 local function draw_profiler(renderer)
    local profile = frame_profiler:snapshot()
    local panel_x = 18
@@ -562,10 +692,10 @@ local function draw_profiler(renderer)
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
-   local line_8 = scene.raster_enabled and "RASTER ON [1]" or "RASTER OFF [1]"
-   local line_9 = scene.sprites_enabled and "SPRITES ON [2]" or "SPRITES OFF [2]"
-   local line_10 = scene.sprite_outline_enabled and "OUTLINE ON [3]" or "OUTLINE OFF [3]"
-   local line_11 = scene.scroller_enabled and "SCROLLER ON [4]" or "SCROLLER OFF [4]"
+   local line_8 = scene.raster_splits.enabled and "RASTER ON [1]" or "RASTER OFF [1]"
+   local line_9 = scene.sprite_snake.enabled and "SPRITES ON [2]" or "SPRITES OFF [2]"
+   local line_10 = scene.sprite_snake.outline_enabled and "OUTLINE ON [3]" or "OUTLINE OFF [3]"
+   local line_11 = scene.scroller.enabled and "SCROLLER ON [4]" or "SCROLLER OFF [4]"
    local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
    local line_13 = "PROFILER ON [0]"
 
@@ -628,26 +758,15 @@ local function on_key(key_info)
    elseif key_info.key == "V" or key_info.key == "v" then
       toggle_vsync()
    elseif key_info.key == "1" then
-      scene.raster_enabled = not scene.raster_enabled
+      scene.raster_splits.enabled = not scene.raster_splits.enabled
    elseif key_info.key == "2" then
-      scene.sprites_enabled = not scene.sprites_enabled
+      scene.sprite_snake.enabled = not scene.sprite_snake.enabled
    elseif key_info.key == "3" then
-      scene.sprite_outline_enabled = not scene.sprite_outline_enabled
+      scene.sprite_snake.outline_enabled = not scene.sprite_snake.outline_enabled
    elseif key_info.key == "4" then
-      scene.scroller_enabled = not scene.scroller_enabled
+      scene.scroller.enabled = not scene.scroller.enabled
    elseif key_info.key == "5" then
       toggle_animation()
-   end
-end
-
-local function draw_sprites(renderer, layout)
-   for i = 1, #scene.sprites do
-      scene.sprites[i]:draw(
-         scene.sprite_style,
-         layout,
-         scene.sprite_snake_phase,
-         scene.sprite_outline_enabled
-      )
    end
 end
 
@@ -740,14 +859,14 @@ local function fade_raster_alpha(from_alpha, to_alpha, duration)
       for _ = 1, step_count do
          elapsed = math.min(duration, elapsed + fixed_animation_dt)
          local t = elapsed / duration
-         scene.raster_alpha = lerp(from_alpha, to_alpha, t)
+         scene.raster_splits.alpha = lerp(from_alpha, to_alpha, t)
       end
    end
 end
 
 local function animate_raster_phase()
    run_object_animation(function(dt)
-      scene.raster_phase = scene.raster_phase + dt * 1.6
+      scene.raster_splits:update_phase(dt)
    end)
 end
 
@@ -756,54 +875,39 @@ local function animate_raster_transition()
    local fade_duration = 0.5
 
    while true do
-      scene.raster_transition_state = "VISIBLE"
-      scene.raster_alpha = 1.0
+      scene.raster_splits.transition_state = "VISIBLE"
+      scene.raster_splits.alpha = 1.0
       sleep_scene_time(visible_duration)
 
-      scene.raster_transition_state = "FADING_OUT"
+      scene.raster_splits.transition_state = "FADING_OUT"
       fade_raster_alpha(1.0, 0.0, fade_duration)
-      scene.raster_alpha = 0.0
+      scene.raster_splits.alpha = 0.0
 
-      scene.raster_transition_state = "SWITCHING"
-      scene.raster_preset_index = (scene.raster_preset_index % 4) + 1
-      apply_preset(scene.raster_preset_index)
+      scene.raster_splits.transition_state = "SWITCHING"
+      scene.raster_splits:apply_preset((scene.raster_splits.preset_index % 4) + 1)
 
-      scene.raster_transition_state = "FADING_IN"
+      scene.raster_splits.transition_state = "FADING_IN"
       fade_raster_alpha(0.0, 1.0, fade_duration)
-      scene.raster_alpha = 1.0
+      scene.raster_splits.alpha = 1.0
    end
 end
 
 local function animate_scroller()
-   local period = scene.scroll_run.width + scene.scroll_loop_gap
    run_object_animation(function(dt)
-      scene.scroll_offset = (scene.scroll_offset + scene.scroll_speed * dt) % period
-      scene.scroll_wave_phase = scene.scroll_wave_phase + dt * scene.scroll_wave_speed
+      scene.scroller:update(dt)
    end)
 end
 
 local function animate_sprites()
    run_object_animation(function(dt)
-      scene.sprite_snake_phase = scene.sprite_snake_phase + dt * 2.35
+      scene.sprite_snake:update(dt)
    end)
 end
 
 local function animate_title()
    run_object_animation(function(dt)
-      scene.title_phase = scene.title_phase + dt * 1.8
+      scene.title:update(dt)
    end)
-end
-
-local function create_sprite_glyphs(sprite_style, text)
-   local glyphs = {}
-   for i = 1, #text do
-      local character = text:sub(i, i)
-      if glyphs[character] == nil then
-         local shaped = font.shape(sprite_style.sized_face, character)
-         glyphs[character] = sprite_style:get_glyph(shaped.glyphs[1].glyph_id)
-      end
-   end
-   return glyphs
 end
 
 local function initialize_scene()
@@ -811,24 +915,9 @@ local function initialize_scene()
    font_path = find_font_path()
    face = font.load_face(font_path)
    frame_profiler = profiler.FrameProfiler()
-   scene.title_style = font.create_style(face, {
-      pixel_size = 74,
-      page_width = 512,
-      page_height = 256,
-      padding = 2,
-   })
-   scene.scroll_style = font.create_style(face, {
-      pixel_size = 38,
-      page_width = 1024,
-      page_height = 512,
-      padding = 2,
-   })
-   scene.sprite_style = font.create_style(face, {
-      pixel_size = 82,
-      page_width = 256,
-      page_height = 256,
-      padding = 2,
-   })
+   scene.title = Title(face, "NEON PHANTOMS")
+   scene.scroller = Scroller(face, scroll_text)
+   scene.sprite_snake = SpriteSnake(face, "NEON PHANTOMS")
    profiler_style = font.create_style(face, {
       pixel_size = 14,
       page_width = 256,
@@ -836,32 +925,14 @@ local function initialize_scene()
       padding = 1,
    })
 
-   scene.title_run = scene.title_style:build_run("NEON PHANTOMS")
-   scene.scroll_run = scene.scroll_style:build_run(scroll_text)
-   scene.sprite_glyphs = create_sprite_glyphs(scene.sprite_style, scene.sprite_text)
    profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM PROFILER ON OFF [] 0123456789./-"
    )
 
-   scene.raster_field = build_raster_field()
-   scene.raster_texture, scene.raster_texture_height =
-      upload_raster_texture(renderer, scene.raster_field, 2)
-   scene.raster_splits = {}
-   for i = 1, scene.raster_split_count do
-      scene.raster_splits[i] = RasterSplit(i)
-   end
-   scene.raster_alpha = 1.0
-   scene.raster_transition_state = "VISIBLE"
+   scene.raster_splits = RasterSplits(renderer, 8)
    scene.animation_time = 0.0
    scene.animation_step_generation = 0
    scene.animation_step_count = 0
-   apply_preset(1)
-
-   scene.sprites = {}
-   for i = 1, #scene.sprite_text do
-      local character = scene.sprite_text:sub(i, i)
-      scene.sprites[i] = Sprite(i, character, scene.sprite_glyphs[character])
-   end
 
    scene.animation_driver_task = sched.spawn(run_animation_driver)
    scene.animation_step_tasks = {
@@ -888,23 +959,22 @@ local function release_scene()
    scene.animation_step_count = 0
    scene.animation_step_tasks = {}
    scene.animate_tasks = {}
-   if scene.raster_texture ~= nil and scene.raster_texture ~= ffi.NULL then
-      sdl3.DestroyTexture(scene.raster_texture)
-      scene.raster_texture = nil
+   if scene.raster_splits ~= nil then
+      scene.raster_splits:release()
+      scene.raster_splits = nil
    end
-   scene.raster_texture_height = nil
 
-   if scene.title_style ~= nil then
-      scene.title_style:release()
-      scene.title_style = nil
+   if scene.title ~= nil then
+      scene.title:release()
+      scene.title = nil
    end
-   if scene.scroll_style ~= nil then
-      scene.scroll_style:release()
-      scene.scroll_style = nil
+   if scene.scroller ~= nil then
+      scene.scroller:release()
+      scene.scroller = nil
    end
-   if scene.sprite_style ~= nil then
-      scene.sprite_style:release()
-      scene.sprite_style = nil
+   if scene.sprite_snake ~= nil then
+      scene.sprite_snake:release()
+      scene.sprite_snake = nil
    end
    if profiler_style ~= nil then
       profiler_style:release()
@@ -929,15 +999,17 @@ local function render_frame()
       rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
    end
 
-   if scene.raster_enabled then
-      draw_rasterbars(renderer, layout)
+   if scene.raster_splits.enabled then
+      scene.raster_splits:draw(renderer, layout)
    end
-   if scene.sprites_enabled then
-      draw_sprites(renderer, layout)
+   if scene.sprite_snake.enabled then
+      scene.sprite_snake:draw(layout)
    end
-   --draw_title(renderer, layout)
-   if scene.scroller_enabled then
-      draw_scroller(renderer, layout)
+   if scene.title.enabled then
+      scene.title:draw(layout)
+   end
+   if scene.scroller.enabled then
+      scene.scroller:draw(layout)
    end
    if profiler_enabled then
       draw_profiler(renderer)
