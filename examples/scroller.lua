@@ -2,6 +2,7 @@ local sdl3 = require("sdl3")
 local sched = require("sched")
 local font = require("font")
 local mathx = require("mathx")
+local color = require("color")
 local profiler = require("profiler")
 local time = require("time")
 local ffi = require("ffi")
@@ -24,6 +25,14 @@ local fixed_animation_dt = 1.0 / 120.0
 local max_animation_dt = 0.05
 local max_animation_steps_per_frame = 6
 local lerp = mathx.lerp
+local transparent = color.TRANSPARENT
+local sprite_outline_color = color.BLACK:with_alpha(128)
+local title_shadow_color = color.BLACK:with_alpha(220)
+local profiler_panel_color = color.BLACK:with_alpha(150)
+local profiler_header_color = color.rgb(255, 184, 150)
+local profiler_body_color = color.rgb(255, 248, 224)
+local profiler_warn_color = color.rgb(255, 214, 160)
+local profiler_toggle_color = color.rgb(196, 220, 255)
 local sprite_outline_offsets = {
    { -2, -2 },
    { 0, -2 },
@@ -39,7 +48,7 @@ local Sprite = rig.class()
 local RasterSplit = rig.class()
 
 local scene = {
-   background_color = { 6, 8, 18, 255 },
+   background_color = color.rgb(6, 8, 18),
    scroll_speed = 204.0,
    scroll_wave_amplitude = 48.0,
    scroll_wave_frequency = 0.001,
@@ -83,11 +92,11 @@ local scene = {
 function Sprite:init(index, character, glyph)
    self.character = character
    self.glyph = glyph
-   self.color = {
+   self.color = color.rgb(
       110 + ((index * 31) % 145),
       120 + ((index * 47) % 120),
-      150 + ((index * 59) % 90),
-   }
+      150 + ((index * 59) % 90)
+   )
    self.lag = (index - 1) * 0.32
    self.bob = (index - 1) * 0.21
 end
@@ -113,24 +122,19 @@ function Sprite:draw(style, layout, snake_phase, outline_enabled)
             self.glyph,
             x + offset[1],
             y + offset[2],
-            outline_scale,
-            0,
-            0,
-            0,
-            128
+            sprite_outline_color,
+            outline_scale
          )
       end
    end
 
+   self.color.a = alpha
    style:draw_packed_glyph(
       self.glyph,
       x,
       y,
-      scale,
-      self.color[1],
-      self.color[2],
-      self.color[3],
-      alpha
+      self.color,
+      scale
    )
 end
 
@@ -289,10 +293,7 @@ local function upload_raster_texture(renderer, field, line_height)
       local color = field[i]
       for line = 0, line_height - 1 do
          local pixel_index = ((i - 1) * line_height + line) * 4
-         rgba[pixel_index] = color[1]
-         rgba[pixel_index + 1] = color[2]
-         rgba[pixel_index + 2] = color[3]
-         rgba[pixel_index + 3] = color[4]
+         color:write_rgba8(rgba, pixel_index)
       end
    end
 
@@ -321,6 +322,7 @@ local function upload_raster_texture(renderer, field, line_height)
 end
 
 local function draw_text_run(style, run, base_x, baseline_y, color_fn)
+   local glyph_color = color.WHITE:copy()
    for i = 1, #run.entries do
       local entry = run.entries[i]
       local packed = entry.packed
@@ -329,8 +331,8 @@ local function draw_text_run(style, run, base_x, baseline_y, color_fn)
 
       if draw_x + packed.width >= -32 then
          if draw_x <= window_width + 32 then
-            local r, g, b, a = color_fn(i, entry, draw_x, draw_y)
-            style:draw_packed_glyph(packed, draw_x, draw_y, 1.0, r, g, b, a)
+            glyph_color:set(color_fn(i, entry, draw_x, draw_y))
+            style:draw_packed_glyph(packed, draw_x, draw_y, glyph_color, 1.0)
          elseif draw_x > window_width + 32 then
             break
          end
@@ -338,10 +340,10 @@ local function draw_text_run(style, run, base_x, baseline_y, color_fn)
    end
 end
 
-local function draw_label(style, text, x, baseline_y, r, g, b, a)
+local function draw_label(style, text, x, baseline_y, draw_color)
    local run = style:build_run(text)
    draw_text_run(style, run, x, baseline_y, function()
-      return r, g, b, a
+      return draw_color
    end)
 end
 
@@ -384,13 +386,13 @@ local function build_raster_field()
    local function add_color_line(field, r, g, b, a, repeat_count)
       repeat_count = repeat_count or 1
       for _ = 1, repeat_count do
-         field[#field + 1] = { r, g, b, a }
+         field[#field + 1] = color.rgba(r, g, b, a)
       end
    end
 
    local function add_spacer(field, line_count)
       for _ = 1, line_count do
-         field[#field + 1] = { 0, 0, 0, 0 }
+         field[#field + 1] = transparent:copy()
       end
    end
 
@@ -442,9 +444,9 @@ local function build_raster_field()
          -- Keep the warm highlight mix but slightly tighter
          local center_mix = intensity * intensity * 0.92
          local hr, hg, hb = 255, 255, 210
-         local r = math.floor((tint[1] * intensity * (1.0 - center_mix) + hr * center_mix) + 0.5)
-         local g = math.floor((tint[2] * intensity * (1.0 - center_mix) + hg * center_mix) + 0.5)
-         local b = math.floor((tint[3] * intensity * (1.0 - center_mix) + hb * center_mix) + 0.5)
+         local r = math.floor((tint.r * intensity * (1.0 - center_mix) + hr * center_mix) + 0.5)
+         local g = math.floor((tint.g * intensity * (1.0 - center_mix) + hg * center_mix) + 0.5)
+         local b = math.floor((tint.b * intensity * (1.0 - center_mix) + hb * center_mix) + 0.5)
          -- Use square root for alpha so it stays opaque much longer at the edges
          local a = math.floor(255 * math.sqrt(intensity) + 0.5)
          add_color_line(field, r, g, b, a, 1)
@@ -454,14 +456,14 @@ local function build_raster_field()
    local field = {}
    local profile = build_bar_intensity_profile()
    local tints = {
-      { 255, 0, 0 },    -- Red
-      { 255, 127, 0 },  -- Orange
-      { 255, 255, 0 },  -- Yellow
-      { 0, 255, 0 },    -- Green
-      { 0, 255, 255 },  -- Cyan
-      { 0, 100, 255 },  -- Blue
-      { 139, 0, 255 },  -- Violet
-      { 255, 0, 127 },  -- Rose
+      color.rgb(255, 0, 0),    -- Red
+      color.rgb(255, 127, 0),  -- Orange
+      color.rgb(255, 255, 0),  -- Yellow
+      color.rgb(0, 255, 0),    -- Green
+      color.rgb(0, 255, 255),  -- Cyan
+      color.rgb(0, 100, 255),  -- Blue
+      color.rgb(139, 0, 255),  -- Violet
+      color.rgb(255, 0, 127),  -- Rose
    }
 
    for i = 1, #tints do
@@ -471,12 +473,13 @@ local function build_raster_field()
    return field
 end
 
-local function title_color(index)
+local function calc_title_color(out, index)
    local phase = scene.title_phase + index * 0.42
    local r = math.floor(125 + 120 * (0.5 + 0.5 * math.sin(phase)))
    local g = math.floor(130 + 110 * (0.5 + 0.5 * math.sin(phase + 2.1)))
    local b = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase + 4.2)))
-   return r, g, b, full_alpha
+   out:set(r, g, b, full_alpha)
+   return out
 end
 
 local function draw_title(renderer, layout)
@@ -485,26 +488,29 @@ local function draw_title(renderer, layout)
    local base_x = (window_width - run.width) * 0.5
 
    draw_text_run(scene.title_style, run, base_x + scene.title_shadow_offset, title_baseline_y + scene.title_shadow_offset, function()
-      return 0, 0, 0, 220
+      return title_shadow_color
    end)
 
+   local draw_color = color.WHITE:copy()
    draw_text_run(scene.title_style, run, base_x, title_baseline_y, function(index)
-      return title_color(index)
+      return calc_title_color(draw_color, index)
    end)
 end
 
-local function scroll_color(index, x, y)
+local function calc_scroll_color(out, index, x, y)
    local phase = scene.raster_phase * 1.7 + index * 0.18 + x * 0.003
    local r = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase)))
    local g = math.floor(110 + 130 * (0.5 + 0.5 * math.sin(phase + 1.9)))
    local b = math.floor(80 + 165 * (0.5 + 0.5 * math.sin(phase + 3.7)))
    local a = math.floor(220 + 35 * (0.5 + 0.5 * math.sin(phase + y * 0.01)))
-   return r, g, b, a
+   out:set(r, g, b, a)
+   return out
 end
 
 local function draw_scroller_copy(renderer, layout, base_x)
    local scroll_baseline_y = layout.scroll_y
    local run = scene.scroll_run
+   local glyph_color = color.WHITE:copy()
    for i = 1, #run.entries do
       local entry = run.entries[i]
       local packed = entry.packed
@@ -517,8 +523,8 @@ local function draw_scroller_copy(renderer, layout, base_x)
 
       if x + packed.width >= -48 then
          if x <= window_width + 48 then
-            local r, g, b, a = scroll_color(i, x, y)
-            scene.scroll_style:draw_packed_glyph(packed, x, y, 1.0, r, g, b, a)
+            calc_scroll_color(glyph_color, i, x, y)
+            scene.scroll_style:draw_packed_glyph(packed, x, y, glyph_color, 1.0)
          elseif x > window_width + 48 then
             break
          end
@@ -544,7 +550,7 @@ local function draw_profiler(renderer)
    local panel_w = 378
    local panel_h = 194
 
-   set_draw_color(renderer, 0, 0, 0, 150)
+   set_draw_color(renderer, profiler_panel_color:unpack())
    fill_rect(renderer, panel_x, panel_y, panel_w, panel_h)
 
    local text_x = panel_x + 10
@@ -563,20 +569,20 @@ local function draw_profiler(renderer)
    local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
    local line_13 = "PROFILER ON [0]"
 
-   draw_label(profiler_style, header, text_x, panel_y + 16, 255, 184, 150, 255)
-   draw_label(profiler_style, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
-   draw_label(profiler_style, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
-   draw_label(profiler_style, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
-   draw_label(profiler_style, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
-   draw_label(profiler_style, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
-   draw_label(profiler_style, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
-   draw_label(profiler_style, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
-   draw_label(profiler_style, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
-   draw_label(profiler_style, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
-   draw_label(profiler_style, line_10, text_x, panel_y + 160, 196, 220, 255, 255)
-   draw_label(profiler_style, line_11, text_x + 150, panel_y + 160, 196, 220, 255, 255)
-   draw_label(profiler_style, line_12, text_x, panel_y + 176, 196, 220, 255, 255)
-   draw_label(profiler_style, line_13, text_x + 150, panel_y + 176, 196, 220, 255, 255)
+   draw_label(profiler_style, header, text_x, panel_y + 16, profiler_header_color)
+   draw_label(profiler_style, line_1, text_x, panel_y + 32, profiler_body_color)
+   draw_label(profiler_style, line_2, text_x, panel_y + 48, profiler_body_color)
+   draw_label(profiler_style, line_3, text_x, panel_y + 64, profiler_body_color)
+   draw_label(profiler_style, line_4, text_x, panel_y + 80, profiler_body_color)
+   draw_label(profiler_style, line_5, text_x, panel_y + 96, profiler_body_color)
+   draw_label(profiler_style, line_6, text_x, panel_y + 112, profiler_warn_color)
+   draw_label(profiler_style, line_7, text_x, panel_y + 128, profiler_toggle_color)
+   draw_label(profiler_style, line_8, text_x, panel_y + 144, profiler_toggle_color)
+   draw_label(profiler_style, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
+   draw_label(profiler_style, line_10, text_x, panel_y + 160, profiler_toggle_color)
+   draw_label(profiler_style, line_11, text_x + 150, panel_y + 160, profiler_toggle_color)
+   draw_label(profiler_style, line_12, text_x, panel_y + 176, profiler_toggle_color)
+   draw_label(profiler_style, line_13, text_x + 150, panel_y + 176, profiler_toggle_color)
 end
 
 local function set_vsync(enabled)
@@ -917,10 +923,7 @@ local function render_frame()
    local layout = current_layout()
    set_draw_color(
       renderer,
-      scene.background_color[1],
-      scene.background_color[2],
-      scene.background_color[3],
-      scene.background_color[4]
+      scene.background_color:unpack()
    )
    if not sdl3.RenderClear(renderer) then
       rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))

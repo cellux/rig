@@ -100,11 +100,11 @@ Backend-specific atlas upload and drawing are provided through the `"font.render
 - `font.create_text_renderer(atlas)`
   - Requires an active runtime that implements the `"font.renderer"` service.
   - Returns a text-renderer object tied to that atlas.
-- `font.draw_packed_glyph(text_renderer, packed, x, y[, scale, r, g, b, a])`
+- `font.draw_packed_glyph(text_renderer, packed, x, y[, color[, scale]])`
   - Draws one packed glyph through the active provider.
 - `font.draw_text_run(text_renderer, run, base_x, baseline_y[, color_fn])`
   - Draws a text run through the active provider.
-  - `color_fn(index, entry, run)` may return `r, g, b, a`.
+  - `color_fn(index, entry, run)` may return a `color.Color`.
 
 ## Face Object
 
@@ -133,7 +133,7 @@ Styles returned by `font.create_style(...)` provide:
 - `style:get_glyph(glyph_id)`
 - `style:build_run(text[, options])`
 - `style:warm_text(text[, options])`
-- `style:draw_packed_glyph(packed, x, y[, scale, r, g, b, a])`
+- `style:draw_packed_glyph(packed, x, y[, color[, scale]])`
 - `style:draw_run(run, base_x, baseline_y[, color_fn])`
 - `style:draw_text(text, base_x, baseline_y[, color_fn[, options]])`
 - `style:release()`
@@ -170,7 +170,7 @@ Atlas objects returned by `font.create_atlas(...)` provide:
 
 Text renderers returned by `font.create_text_renderer(...)` provide:
 
-- `text_renderer:draw_packed_glyph(packed, x, y[, scale, r, g, b, a])`
+- `text_renderer:draw_packed_glyph(packed, x, y[, color[, scale]])`
 - `text_renderer:draw_text_run(run, base_x, baseline_y[, color_fn])`
 - `text_renderer:release()`
 

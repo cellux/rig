@@ -1,4 +1,5 @@
 local M = ... or {}
+local color = require("color")
 local freetype = require("freetype")
 local harfbuzz = require("harfbuzz")
 local rig = require("rig")
@@ -21,6 +22,7 @@ local style_mt = {}
 style_mt.__index = style_mt
 
 local freetype_library = M._freetype_library or nil
+local default_draw_color = color.WHITE
 
 local function normalize_face_index(face_index)
    if face_index == nil then
@@ -275,8 +277,8 @@ function text_renderer_mt:release()
    return M.release_text_renderer(self)
 end
 
-function text_renderer_mt:draw_packed_glyph(packed, x, y, scale, r, g, b, a)
-   return M.draw_packed_glyph(self, packed, x, y, scale, r, g, b, a)
+function text_renderer_mt:draw_packed_glyph(packed, x, y, draw_color, scale)
+   return M.draw_packed_glyph(self, packed, x, y, draw_color, scale)
 end
 
 function text_renderer_mt:draw_text_run(run, base_x, baseline_y, color_fn)
@@ -302,9 +304,9 @@ function style_mt:warm_text(text, options)
    return self.atlas:warm_text(text, options)
 end
 
-function style_mt:draw_packed_glyph(packed, x, y, scale, r, g, b, a)
+function style_mt:draw_packed_glyph(packed, x, y, draw_color, scale)
    ensure_style(self)
-   return self.text_renderer:draw_packed_glyph(packed, x, y, scale, r, g, b, a)
+   return self.text_renderer:draw_packed_glyph(packed, x, y, draw_color, scale)
 end
 
 function style_mt:draw_run(run, base_x, baseline_y, color_fn)
@@ -852,7 +854,7 @@ function M.release_style(style)
    style._released = true
 end
 
-function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+function M.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
    ensure_text_renderer(text_renderer)
    if type(packed) ~= "table" then
       rig.raise("font.draw_packed_glyph expects packed to be a table")
@@ -872,21 +874,12 @@ function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
       rig.raise("font.draw_packed_glyph expects scale to be a number if provided")
    end
 
-   local draw_r = r
-   local draw_g = g
-   local draw_b = b
-   local draw_a = a
-   if draw_r == nil then
-      draw_r = 255
+   local normalized_color = draw_color
+   if normalized_color == nil then
+      normalized_color = default_draw_color
    end
-   if draw_g == nil then
-      draw_g = 255
-   end
-   if draw_b == nil then
-      draw_b = 255
-   end
-   if draw_a == nil then
-      draw_a = 255
+   if not color.is(normalized_color) then
+      rig.raise("font.draw_packed_glyph expects color to be a color.Color if provided")
    end
 
    text_renderer._provider.draw_packed_glyph(
@@ -894,11 +887,8 @@ function M.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
       packed,
       x,
       y,
-      draw_scale,
-      draw_r,
-      draw_g,
-      draw_b,
-      draw_a
+      normalized_color,
+      draw_scale
    )
 end
 

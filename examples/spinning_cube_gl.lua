@@ -1,5 +1,6 @@
 local ffi = require("ffi")
 
+local color = require("color")
 local gl = require("gl")
 local mathx = require("mathx")
 local mesh = require("mesh")
@@ -49,6 +50,15 @@ local mvp = mathx.mat4()
 local eye = mathx.vec3(0.0, 0.0, -4.5)
 local target = mathx.vec3(0.0, 0.0, 0.0)
 local up = mathx.vec3(0.0, 1.0, 0.0)
+local background_color = color.rgbaf(0.07, 0.08, 0.11, 1.0)
+local cube_face_colors = {
+   color.rgb(255, 96, 96),
+   color.rgb(96, 224, 128),
+   color.rgb(96, 144, 255),
+   color.rgb(255, 220, 96),
+   color.rgb(240, 112, 255),
+   color.rgb(112, 232, 255),
+}
 
 local function build_mvp(out, aspect, time_seconds)
    mathx.mat4_rotation_x(rotation_x, time_seconds * 0.7)
@@ -62,7 +72,7 @@ end
 
 local cube_mesh = mesh.make_cube {
    size = 2.0,
-   colors = "face",
+   colors = cube_face_colors,
 }
 
 local program = 0
@@ -101,7 +111,7 @@ local function on_render()
    build_mvp(mvp, viewport_width / viewport_height, time.monotonic())
 
    gl.Viewport(0, 0, viewport_width, viewport_height)
-   gl.ClearColor(0.07, 0.08, 0.11, 1.0)
+   gl.ClearColor(background_color:unpackf())
    gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
 
    gl.UseProgram(program)

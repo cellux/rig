@@ -24,7 +24,8 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
   - Full cube size.
   - Defaults to `2.0`, matching coordinates in the `[-1, 1]` range.
 - `colors`
-  - Either `"face"` for the builtin six-face color set, or a table of six `{r, g, b}` colors.
+  - Either `"face"` for the builtin six-face color set, or a table of six `color.Color` face colors.
+  - Face colors are written into the mesh as normalized RGB floats; alpha is ignored.
 
 ## Notes
 

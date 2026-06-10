@@ -1,4 +1,5 @@
 local test = require("test")
+local color = require("color")
 local font = require("font")
 local freetype = require("freetype")
 
@@ -217,4 +218,71 @@ test.case("font text renderer requires an active runtime service", function()
    atlas:release()
    sized:release()
    face:release()
+end)
+
+test.case("font draw_packed_glyph accepts a color.Color", function()
+   local font_path = find_font_path()
+   if font_path == nil then
+      return
+   end
+
+   local observed = nil
+
+   rig.register_service_provider("font.renderer", "font_test_draw_color_provider", {
+      create_text_renderer = function()
+         return {}
+      end,
+      release_text_renderer = function() end,
+      draw_packed_glyph = function(_, packed, x, y, draw_color, scale)
+         observed = {
+            packed = packed,
+            x = x,
+            y = y,
+            scale = scale,
+            is_color = color.is(draw_color),
+            r = draw_color.r,
+            g = draw_color.g,
+            b = draw_color.b,
+            a = draw_color.a,
+         }
+      end,
+      draw_text_run = function() end,
+   })
+
+   rig.register_runtime_driver("font_test_draw_color_driver", {
+      loop = function()
+         local face = font.load_face(font_path)
+         local sized = face:create_sized_face(18)
+         local atlas = sized:create_atlas()
+         local shaped = font.shape(sized, "A")
+         local packed = atlas:get_glyph(shaped.glyphs[1].glyph_id)
+         local renderer = font.create_text_renderer(atlas)
+         local draw_color = color.rgba(12, 34, 56, 78)
+
+         renderer:draw_packed_glyph(packed, 10, 20, draw_color, 1.5)
+
+         renderer:release()
+         atlas:release()
+         sized:release()
+         face:release()
+      end,
+   })
+
+   rig.run {
+      driver = "font_test_draw_color_driver",
+      providers = {
+         ["font.renderer"] = "font_test_draw_color_provider",
+      },
+   }
+
+   test.truthy(observed ~= nil)
+   test.equal(observed.x, 10)
+   test.equal(observed.y, 20)
+   test.equal(observed.scale, 1.5)
+   test.truthy(observed.is_color)
+   test.equal(observed.r, 12)
+   test.equal(observed.g, 34)
+   test.equal(observed.b, 56)
+   test.equal(observed.a, 78)
+   test.truthy(type(observed.packed) == "table")
 end)

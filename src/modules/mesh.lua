@@ -1,15 +1,37 @@
 local M = ... or {}
 local ffi = require("ffi")
+local color = require("color")
 local rig = require("rig")
 
 local DEFAULT_FACE_COLORS = {
-   { 1, 0, 0 },
-   { 0, 1, 0 },
-   { 0, 0, 1 },
-   { 1, 1, 0 },
-   { 1, 0, 1 },
-   { 0, 1, 1 },
+   color.rgbf(1, 0, 0),
+   color.rgbf(0, 1, 0),
+   color.rgbf(0, 0, 1),
+   color.rgbf(1, 1, 0),
+   color.rgbf(1, 0, 1),
+   color.rgbf(0, 1, 1),
 }
+
+local function resolve_face_colors(options)
+   if options.colors == nil or options.colors == "face" then
+      return DEFAULT_FACE_COLORS
+   end
+
+   if type(options.colors) ~= "table" then
+      rig.raise("mesh.make_cube colors must be 'face' or a table of Color values")
+   end
+   if #options.colors ~= 6 then
+      rig.raise("mesh.make_cube colors table must contain 6 face colors")
+   end
+
+   for i = 1, 6 do
+      local face_color = options.colors[i]
+      if not color.is(face_color) then
+         rig.raise("mesh.make_cube face colors must be Color values")
+      end
+   end
+   return options.colors
+end
 
 local FACE_CORNERS = {
    { -- front
@@ -50,48 +72,14 @@ local FACE_CORNERS = {
    },
 }
 
-local function clone_color(color)
-   return {
-      tonumber(color[1]) or 0.0,
-      tonumber(color[2]) or 0.0,
-      tonumber(color[3]) or 0.0,
-   }
-end
-
-local function resolve_face_colors(options)
-   if options.colors == nil or options.colors == "face" then
-      local colors = {}
-      for i = 1, #DEFAULT_FACE_COLORS do
-         colors[i] = clone_color(DEFAULT_FACE_COLORS[i])
-      end
-      return colors
-   end
-
-   if type(options.colors) ~= "table" then
-      rig.raise("mesh.make_cube colors must be 'face' or a table")
-   end
-   if #options.colors ~= 6 then
-      rig.raise("mesh.make_cube colors table must contain 6 face colors")
-   end
-
-   local colors = {}
-   for i = 1, 6 do
-      local color = options.colors[i]
-      if type(color) ~= "table" then
-         rig.raise("mesh.make_cube face colors must be tables")
-      end
-      colors[i] = clone_color(color)
-   end
-   return colors
-end
-
-local function append_vertex(values, corner, scale, color)
+local function append_vertex(values, corner, scale, face_color)
+   local r, g, b = face_color:to_rgbf()
    values[#values + 1] = corner[1] * scale
    values[#values + 1] = corner[2] * scale
    values[#values + 1] = corner[3] * scale
-   values[#values + 1] = color[1]
-   values[#values + 1] = color[2]
-   values[#values + 1] = color[3]
+   values[#values + 1] = r
+   values[#values + 1] = g
+   values[#values + 1] = b
 end
 
 rig.create_service("mesh.vertex_input", {

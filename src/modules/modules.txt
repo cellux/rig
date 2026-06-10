@@ -3,6 +3,7 @@ fennel
 prelude
 repr
 rig
+color
 schema
 dl
 freetype

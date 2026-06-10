@@ -2,6 +2,7 @@ local sdl3 = require("sdl3")
 local sched = require("sched")
 local mathx = require("mathx")
 local profiler = require("profiler")
+local color = require("color")
 local ffi = require("ffi")
 
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
@@ -26,14 +27,39 @@ local frame_profiler = profiler.FrameProfiler()
 local slider
 local clamp = mathx.clamp
 local clamp01 = mathx.clamp01
-local lerp = mathx.lerp
+local background_color = color.rgbaf(0.06, 0.08, 0.05, 1.0)
+local fps_panel_color = color.rgbaf(0.08, 0.09, 0.07, 1.0)
+local fps_text_color = color.rgbaf(0.96, 0.96, 0.88, 1.0)
+local slider_panel_dim_color = color.rgbaf(0.05, 0.06, 0.05, 0.35)
+local slider_panel_bright_color = color.rgbaf(0.22, 0.24, 0.22, 0.92)
+local slider_track_dim_color = color.rgbaf(0.18, 0.20, 0.18, 0.45)
+local slider_track_bright_color = color.rgbaf(0.84, 0.86, 0.80, 1.0)
+local slider_fill_dim_color = color.rgbaf(0.28, 0.20, 0.10, 0.45)
+local slider_fill_bright_color = color.rgbaf(0.98, 0.72, 0.26, 1.0)
+local slider_knob_dim_color = color.rgbaf(0.42, 0.42, 0.40, 0.55)
+local slider_knob_bright_color = color.rgbaf(1.00, 0.99, 0.92, 1.0)
+local slider_outline_dim_color = color.rgbaf(0.18, 0.10, 0.04, 1.0)
+local slider_outline_bright_color = color.rgbaf(1.00, 0.74, 0.24, 1.0)
+local slider_panel_color = color.WHITE:copy()
+local slider_track_color = color.WHITE:copy()
+local slider_fill_color = color.WHITE:copy()
+local slider_knob_color = color.WHITE:copy()
+local slider_outline_color = color.WHITE:copy()
 
 local palette = {
-   { 0.92, 0.72, 0.29, 1.0 },
-   { 0.93, 0.46, 0.34, 1.0 },
-   { 0.36, 0.77, 0.55, 1.0 },
-   { 0.38, 0.66, 0.91, 1.0 },
-   { 0.84, 0.49, 0.83, 1.0 },
+   honey_gold = color.rgbaf(0.92, 0.72, 0.29, 1.0),
+   coral_red = color.rgbaf(0.93, 0.46, 0.34, 1.0),
+   jade_green = color.rgbaf(0.36, 0.77, 0.55, 1.0),
+   sky_blue = color.rgbaf(0.38, 0.66, 0.91, 1.0),
+   orchid_purple = color.rgbaf(0.84, 0.49, 0.83, 1.0),
+}
+
+local palette_cycle = {
+   palette.honey_gold,
+   palette.coral_red,
+   palette.jade_green,
+   palette.sky_blue,
+   palette.orchid_purple,
 }
 
 local glyphs = {
@@ -139,15 +165,6 @@ local glyphs = {
 
 math.randomseed(tonumber(sdl3.GetPerformanceCounter()))
 
-local function mix_color(dim, bright, amount)
-   return {
-      lerp(dim[1], bright[1], amount),
-      lerp(dim[2], bright[2], amount),
-      lerp(dim[3], bright[3], amount),
-      lerp(dim[4], bright[4], amount),
-   }
-end
-
 local function choose_turn()
    local roll = math.random()
    if roll < 0.10 then
@@ -195,12 +212,14 @@ local function to_world(ant, cos_angle, sin_angle, x, y)
    return ant.x + rx, ant.y + ry
 end
 
-local function set_color(renderer, color)
-   local r = math.floor(color[1] * 255 + 0.5)
-   local g = math.floor(color[2] * 255 + 0.5)
-   local b = math.floor(color[3] * 255 + 0.5)
-   local a = math.floor(color[4] * 255 + 0.5)
-   if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
+local function set_color(renderer, draw_color)
+   if not sdl3.SetRenderDrawColor(
+      renderer,
+      draw_color.r,
+      draw_color.g,
+      draw_color.b,
+      draw_color.a
+   ) then
       rig.raise("failed to set renderer color: " .. ffi.string(sdl3.GetError()))
    end
 end
@@ -337,7 +356,7 @@ local function draw_glyph(renderer, glyph, x, y, scale)
    end
 end
 
-local function draw_text(renderer, text, x, y, scale, color)
+local function draw_text(renderer, text, x, y, color, scale)
    set_color(renderer, color)
 
    local cursor_x = x
@@ -357,7 +376,7 @@ local function draw_fps_overlay(renderer)
    local panel_x = 12
    local panel_y = 12
 
-   set_color(renderer, { 0.08, 0.09, 0.07, 1.0 })
+   set_color(renderer, fps_panel_color)
    fill_rect(renderer, panel_x, panel_y, panel_w, panel_h)
 
    draw_text(
@@ -365,31 +384,31 @@ local function draw_fps_overlay(renderer)
       label,
       panel_x + 4,
       panel_y + 4,
-      font_scale,
-      { 0.96, 0.96, 0.88, 1.0 }
+      fps_text_color,
+      font_scale
    )
 end
 
 function Slider:draw(renderer)
    local amount = clamp01(self.emphasis)
-   local panel_color = mix_color(
-      { 0.05, 0.06, 0.05, 0.35 },
-      { 0.22, 0.24, 0.22, 0.92 },
+   slider_panel_color:set_mix(
+      slider_panel_dim_color,
+      slider_panel_bright_color,
       amount
    )
-   local track_color = mix_color(
-      { 0.18, 0.20, 0.18, 0.45 },
-      { 0.84, 0.86, 0.80, 1.0 },
+   slider_track_color:set_mix(
+      slider_track_dim_color,
+      slider_track_bright_color,
       amount
    )
-   local fill_color = mix_color(
-      { 0.28, 0.20, 0.10, 0.45 },
-      { 0.98, 0.72, 0.26, 1.0 },
+   slider_fill_color:set_mix(
+      slider_fill_dim_color,
+      slider_fill_bright_color,
       amount
    )
-   local knob_color = mix_color(
-      { 0.42, 0.42, 0.40, 0.55 },
-      { 1.00, 0.99, 0.92, 1.0 },
+   slider_knob_color:set_mix(
+      slider_knob_dim_color,
+      slider_knob_bright_color,
       amount
    )
    local panel_pad = 6
@@ -399,13 +418,13 @@ function Slider:draw(renderer)
    local knob_x = self.x + knob_half + self.value * (self.w - self.knob_size)
    local knob_y = self.y + self.h * 0.5
    local fill_w = math.max(0, knob_x - self.x)
-   local outline_color = mix_color(
-      { 0.18, 0.10, 0.04, 1.0 },
-      { 1.00, 0.74, 0.24, 1.0 },
+   slider_outline_color:set_mix(
+      slider_outline_dim_color,
+      slider_outline_bright_color,
       amount
    )
 
-   set_color(renderer, panel_color)
+   set_color(renderer, slider_panel_color)
    fill_rect(
       renderer,
       self.x - panel_pad,
@@ -414,7 +433,7 @@ function Slider:draw(renderer)
       self.h + panel_pad * 2
    )
 
-   set_color(renderer, outline_color)
+   set_color(renderer, slider_outline_color)
    draw_line(
       renderer,
       self.x - panel_pad - 1,
@@ -444,13 +463,13 @@ function Slider:draw(renderer)
       self.y + self.h + panel_pad + 1
    )
 
-   set_color(renderer, track_color)
+   set_color(renderer, slider_track_color)
    fill_rect(renderer, self.x, track_y, self.w, track_h)
 
-   set_color(renderer, fill_color)
+   set_color(renderer, slider_fill_color)
    fill_rect(renderer, self.x, track_y, fill_w, track_h)
 
-   set_color(renderer, knob_color)
+   set_color(renderer, slider_knob_color)
    fill_rect(
       renderer,
       knob_x - knob_half,
@@ -460,7 +479,7 @@ function Slider:draw(renderer)
    )
 end
 
-function Ant:init(index, color)
+function Ant:init(index, ant_color)
    self.id = index
    self.x = math.random(ant_margin, window_width - ant_margin)
    self.y = math.random(ant_margin, window_height - ant_margin)
@@ -470,7 +489,7 @@ function Ant:init(index, color)
    self.step_interval = 0.012 + math.random() * 0.020
    self.pause_chance = 0.01 + math.random() * 0.04
    self.walk_phase = math.random() * math.pi * 2.0
-   self.color = color
+   self.color = ant_color
    self.speed = ant_speed * self.step_interval * (0.85 + math.random() * 0.35)
 end
 
@@ -741,8 +760,8 @@ local function initialize_ants()
    ants = {}
 
    for i = 1, ant_count do
-      local color = palette[((i - 1) % #palette) + 1]
-      local ant = Ant(i, color)
+      local ant_color = palette_cycle[((i - 1) % #palette_cycle) + 1]
+      local ant = Ant(i, ant_color)
       ants[i] = ant
       sched.spawn(function()
          ant:run(ants)
@@ -759,7 +778,7 @@ local function on_render()
       rig.raise("sdl3 runtime did not provide a renderer")
    end
 
-   sdl3.clear(0.06, 0.08, 0.05, 1.0)
+   sdl3.clear(background_color:unpackf())
 
    for i = 1, #ants do
       ants[i]:draw(renderer)

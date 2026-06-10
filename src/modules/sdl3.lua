@@ -1,4 +1,5 @@
 local M = ... or {}
+local color = require("color")
 local ffi = require("ffi")
 local bit = bit
 local rig = require("rig")
@@ -8,6 +9,19 @@ require("font")
 require("mesh")
 local shader = require("shader")
 require("time")
+
+local default_font_draw_color = color.WHITE
+
+local function resolve_font_draw_color(value)
+   if value == nil then
+      return default_font_draw_color
+   end
+   if color.is(value) then
+      return value
+   end
+
+   rig.raise("font draw color must be a color.Color if provided")
+end
 
 ffi.cdef[[
 typedef struct SDL_Window SDL_Window;
@@ -2210,16 +2224,17 @@ function sdl3_font_provider.release_text_renderer(text_renderer)
    end
 end
 
-function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
    if packed.width <= 0 or packed.height <= 0 then
       return
    end
 
+   local glyph_color = resolve_font_draw_color(draw_color)
    local texture = ensure_font_page_texture(text_renderer, packed.page_index)
-   if not M.SetTextureColorMod(texture, r, g, b) then
+   if not M.SetTextureColorMod(texture, glyph_color.r, glyph_color.g, glyph_color.b) then
       rig.raise("failed to set texture color modulation: " .. ffi.string(M.GetError()))
    end
-   if not M.SetTextureAlphaMod(texture, a) then
+   if not M.SetTextureAlphaMod(texture, glyph_color.a) then
       rig.raise("failed to set texture alpha modulation: " .. ffi.string(M.GetError()))
    end
 
@@ -2241,16 +2256,10 @@ end
 function sdl3_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
    for i = 1, #run.entries do
       local entry = run.entries[i]
-      local r = 255
-      local g = 255
-      local b = 255
-      local a = 255
+      local draw_color = default_font_draw_color
 
       if color_fn ~= nil then
-         r, g, b, a = color_fn(i, entry, run)
-      end
-      if a == nil then
-         a = 255
+         draw_color = color_fn(i, entry, run)
       end
 
       sdl3_font_provider.draw_packed_glyph(
@@ -2258,11 +2267,8 @@ function sdl3_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y
          entry.packed,
          base_x + entry.layout_x,
          baseline_y + entry.layout_y,
-         1.0,
-         r,
-         g,
-         b,
-         a
+         resolve_font_draw_color(draw_color),
+         1.0
       )
    end
 end
@@ -2297,11 +2303,12 @@ function sdl3_gl_font_provider.release_text_renderer(text_renderer)
    end
 end
 
-function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, scale, r, g, b, a)
+function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
    if packed.width <= 0 or packed.height <= 0 then
       return
    end
 
+   local glyph_color = resolve_font_draw_color(draw_color)
    local backend_state = ensure_gl_font_backend_state()
    local gl = backend_state.gl
    local texture = ensure_gl_font_page_texture(text_renderer, packed.page_index)
@@ -2318,10 +2325,10 @@ function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, sc
    gl.Uniform2f(backend_state.view_size_location, window_width, window_height)
    gl.Uniform4f(
       backend_state.color_location,
-      r / 255.0,
-      g / 255.0,
-      b / 255.0,
-      a / 255.0
+      glyph_color.r / 255.0,
+      glyph_color.g / 255.0,
+      glyph_color.b / 255.0,
+      glyph_color.a / 255.0
    )
    gl.ActiveTexture(gl.TEXTURE0)
    gl.BindTexture(gl.TEXTURE_2D, texture)
@@ -2339,16 +2346,10 @@ end
 function sdl3_gl_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
    for i = 1, #run.entries do
       local entry = run.entries[i]
-      local r = 255
-      local g = 255
-      local b = 255
-      local a = 255
+      local draw_color = default_font_draw_color
 
       if color_fn ~= nil then
-         r, g, b, a = color_fn(i, entry, run)
-      end
-      if a == nil then
-         a = 255
+         draw_color = color_fn(i, entry, run)
       end
 
       sdl3_gl_font_provider.draw_packed_glyph(
@@ -2356,11 +2357,8 @@ function sdl3_gl_font_provider.draw_text_run(text_renderer, run, base_x, baselin
          entry.packed,
          base_x + entry.layout_x,
          baseline_y + entry.layout_y,
-         1.0,
-         r,
-         g,
-         b,
-         a
+         resolve_font_draw_color(draw_color),
+         1.0
       )
    end
 end

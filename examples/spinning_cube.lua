@@ -1,5 +1,6 @@
 local ffi = require("ffi")
 
+local color = require("color")
 local mathx = require("mathx")
 local mesh = require("mesh")
 local sdl3 = require("sdl3")
@@ -50,6 +51,15 @@ local mvp = mathx.mat4()
 local eye = mathx.vec3(0.0, 0.0, -4.5)
 local target = mathx.vec3(0.0, 0.0, 0.0)
 local up = mathx.vec3(0.0, 1.0, 0.0)
+local background_color = color.rgbaf(0.07, 0.08, 0.11, 1.0)
+local cube_face_colors = {
+   color.rgb(255, 96, 96),
+   color.rgb(96, 224, 128),
+   color.rgb(96, 144, 255),
+   color.rgb(255, 220, 96),
+   color.rgb(240, 112, 255),
+   color.rgb(112, 232, 255),
+}
 
 local function build_mvp(out, aspect, time_seconds)
    mathx.mat4_rotation_x(rotation_x, time_seconds * 0.7)
@@ -77,7 +87,7 @@ local fragment_compiled = shader.compile {
 
 local cube_mesh = mesh.make_cube {
    size = 2.0,
-   colors = "face",
+   colors = cube_face_colors,
 }
 
 local vertex_uniform_data = mathx.mat4()
@@ -128,10 +138,10 @@ local function on_render(command_buffer, swapchain_texture, width, height)
    color_target_info[0].texture = swapchain_texture
    color_target_info[0].mip_level = 0
    color_target_info[0].layer_or_depth_plane = 0
-   color_target_info[0].clear_color.r = 0.07
-   color_target_info[0].clear_color.g = 0.08
-   color_target_info[0].clear_color.b = 0.11
-   color_target_info[0].clear_color.a = 1.0
+   color_target_info[0].clear_color.r = background_color.r / 255.0
+   color_target_info[0].clear_color.g = background_color.g / 255.0
+   color_target_info[0].clear_color.b = background_color.b / 255.0
+   color_target_info[0].clear_color.a = background_color.a / 255.0
    color_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
    color_target_info[0].store_op = sdl3.GPU_STOREOP_STORE
    color_target_info[0].resolve_texture = nil
