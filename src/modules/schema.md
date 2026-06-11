@@ -42,6 +42,7 @@ Schemas decode input values into validated, normalized output values.
 - `schema.integer(options?)`
 - `schema.non_negative_number(options?)`
 - `schema.positive_number(options?)`
+- `schema.positive_integer(options?)`
 - `schema.boolean()`
 - `schema.func()`
 - `schema.table()`
@@ -79,6 +80,10 @@ local jobs_schema = schema.positive_number {
    coerce = true,
 }
 
+local history_schema = schema.positive_integer {
+   coerce = true,
+}
+
 local roots_schema = schema.array(schema.non_empty_string())
 
 local run_options_schema = schema.record({
@@ -92,6 +97,7 @@ local opts = schema.assert(run_options_schema, {
 
 assert(opts.jobs == 4)
 assert(opts.roots[1] == ".")
+assert(schema.assert(history_schema, "8", "history") == 8)
 ```
 
 Injected normalization:

@@ -14,6 +14,22 @@ test.case("schema number can coerce and constrain values", function()
    test.match(err, "jobs expects a positive number")
 end)
 
+test.case("schema positive_integer coerces integers and rejects non-positive or fractional values", function()
+   local history_schema = schema.positive_integer {
+      coerce = true,
+   }
+
+   test.equal(schema.assert(history_schema, "4", "history"), 4)
+
+   local zero_ok, zero_err = schema.check(history_schema, "0", "history")
+   test.falsey(zero_ok)
+   test.match(zero_err, "history expects a positive integer")
+
+   local fractional_ok, fractional_err = schema.check(history_schema, "1.5", "history")
+   test.falsey(fractional_ok)
+   test.match(fractional_err, "history expects a positive integer")
+end)
+
 test.case("schema record supports optional defaults and extra-field control", function()
    local point_schema = schema.record({
       x = schema.number(),

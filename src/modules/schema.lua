@@ -412,6 +412,13 @@ function M.positive_number(options)
    end)
 end
 
+function M.positive_integer(options)
+   local opts = options or {}
+   return M.number(opts):where("a positive integer", function(value)
+      return value == math.floor(value) and value > 0
+   end)
+end
+
 function M.boolean()
    return M.DecodeSchema("a boolean", function(value, path)
       if type(value) ~= "boolean" then
