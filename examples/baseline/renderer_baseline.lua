@@ -1,11 +1,17 @@
+local animator = require("animator")
 local color = require("color")
-local sdl3 = require("sdl3")
-local time = require("time")
 local font = require("font")
 local profiler = require("profiler")
+local scenegraph = require("scenegraph")
+local sdl3 = require("sdl3")
 local ffi = require("ffi")
 
--- Populated by the initial sdl3 on_resize callback before after_setup runs.
+local Object = scenegraph.Object
+local Animator = animator.Animator
+local MovingSquare = rig.class(Object)
+local ProfilerOverlay = rig.class(Object)
+local Scene = rig.class(Object)
+
 local window_width
 local window_height
 local font_path
@@ -20,11 +26,7 @@ local profiler_warn_color = color.rgb(255, 214, 160)
 local profiler_toggle_color = color.rgb(196, 220, 255)
 
 local draw_rect = ffi.new("SDL_FRect[1]")
-
-local scene = {
-   start_time = nil,
-   animation_enabled = true,
-}
+local scene = nil
 
 local function file_exists(path)
    local file = io.open(path, "rb")
@@ -87,21 +89,33 @@ local function toggle_vsync()
    set_vsync(not vsync_enabled)
 end
 
-local function on_key(key_info)
-   if key_info.action ~= "down" or key_info["repeat"] then
-      return
-   end
-
-   if key_info.key == "0" then
-      profiler_enabled = not profiler_enabled
-   elseif key_info.key == "1" then
-      scene.animation_enabled = not scene.animation_enabled
-   elseif key_info.key == "V" or key_info.key == "v" then
-      toggle_vsync()
-   end
+function MovingSquare:init()
+   Object.init(self)
+   self.elapsed = 0.0
 end
 
-local function draw_profiler(renderer)
+function MovingSquare:update(dt)
+   self.elapsed = self.elapsed + dt
+end
+
+function MovingSquare:draw(context)
+   local renderer = context.renderer
+   local orbit = 0.5 + 0.5 * math.sin(self.elapsed * 1.15)
+   local bob = 0.5 + 0.5 * math.sin(self.elapsed * 2.4)
+   local size = 92 + 28 * math.sin(self.elapsed * 1.8 + 0.6)
+   local x = orbit * (window_width - size)
+   local y = (window_height * 0.5 - size * 0.5) + (bob - 0.5) * 180
+
+   set_draw_color(renderer, 240, 246, 255, 255)
+   fill_rect(renderer, x, y, size, size)
+end
+
+function ProfilerOverlay:init()
+   Object.init(self)
+end
+
+function ProfilerOverlay:draw(context)
+   local renderer = context.renderer
    local profile = frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
@@ -120,7 +134,7 @@ local function draw_profiler(renderer)
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_window_max_ms, profile.gap_peak_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
-   local line_8 = scene.animation_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
+   local line_8 = scene.animator.animate_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
 
    draw_label(renderer, header, text_x, panel_y + 16, profiler_header_color)
@@ -135,13 +149,63 @@ local function draw_profiler(renderer)
    draw_label(renderer, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
 end
 
+function Scene:init()
+   Object.init(self)
+   self.animator = nil
+   self.moving_square = self:add_child(MovingSquare())
+   self.profiler_overlay = self:add_child(ProfilerOverlay())
+end
+
+function Scene:draw(context)
+   local renderer = context.renderer
+
+   set_draw_color(renderer, 6, 8, 18, 255)
+   if not sdl3.RenderClear(renderer) then
+      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
+   end
+
+   set_draw_color(renderer, 24, 28, 44, 255)
+   fill_rect(renderer, 0, window_height * 0.5 - 1, window_width, 2)
+end
+
+function Scene:set_animation_enabled(enabled)
+   self.moving_square.enabled = enabled
+   self.animator:set_enabled(enabled)
+end
+
+function Scene:on_key(key_info)
+   if key_info.action ~= "down" or key_info["repeat"] then
+      return
+   end
+
+   if key_info.key == "0" then
+      profiler_enabled = not profiler_enabled
+      self.profiler_overlay.enabled = profiler_enabled
+   elseif key_info.key == "1" then
+      self:set_animation_enabled(not self.animator.animate_enabled)
+   elseif key_info.key == "V" or key_info.key == "v" then
+      toggle_vsync()
+   end
+end
+
+function Scene:release()
+   self.animator = nil
+   self.moving_square = nil
+   self.profiler_overlay = nil
+end
+
+local function on_key(key_info)
+   if scene ~= nil then
+      scene:on_key(key_info)
+   end
+end
+
 local function on_resize(info)
    window_width = math.max(1, info.width)
    window_height = math.max(1, info.height)
 end
 
 local function initialize_scene()
-   scene.start_time = time.monotonic()
    font_path = find_font_path()
    face = font.load_face(font_path)
    frame_profiler = profiler.FrameProfiler {
@@ -156,10 +220,18 @@ local function initialize_scene()
    profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )
+
+   scene = Scene()
+   scene.animator = Animator(scene)
+   scene.animator:start()
 end
 
 local function release_scene()
    frame_profiler = nil
+   if scene ~= nil then
+      scene:release_tree()
+      scene = nil
+   end
    if profiler_style ~= nil then
       profiler_style:release()
       profiler_style = nil
@@ -171,32 +243,19 @@ local function release_scene()
    font_path = nil
 end
 
+local function tick_animation()
+   if scene ~= nil and scene.animator ~= nil then
+      scene.animator:tick()
+   end
+end
+
 local function render_frame()
    frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
-
-   set_draw_color(renderer, 6, 8, 18, 255)
-   if not sdl3.RenderClear(renderer) then
-      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
-   end
-
-   set_draw_color(renderer, 24, 28, 44, 255)
-   fill_rect(renderer, 0, window_height * 0.5 - 1, window_width, 2)
-
-   if scene.animation_enabled then
-      local t = time.monotonic() - scene.start_time
-      local orbit = 0.5 + 0.5 * math.sin(t * 1.15)
-      local bob = 0.5 + 0.5 * math.sin(t * 2.4)
-      local size = 92 + 28 * math.sin(t * 1.8 + 0.6)
-      local x = orbit * (window_width - size)
-      local y = (window_height * 0.5 - size * 0.5) + (bob - 0.5) * 180
-
-      set_draw_color(renderer, 240, 246, 255, 255)
-      fill_rect(renderer, x, y, size, size)
-   end
-
-   if profiler_enabled then
-      draw_profiler(renderer)
+   if scene ~= nil then
+      scene:draw_tree({
+         renderer = renderer,
+      })
    end
    frame_profiler:end_cpu()
 end
@@ -218,6 +277,7 @@ rig.run {
    },
    hooks = {
       after_setup = initialize_scene,
+      before_drain = tick_animation,
       before_frame = function()
          frame_profiler:begin_frame()
       end,
