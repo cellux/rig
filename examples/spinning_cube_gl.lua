@@ -68,6 +68,20 @@ local cube_mesh = mesh.make_cube {
 }
 
 local scene = nil
+local animation_runtime = animator.make_hooks {
+   create_root = function()
+      scene = Scene()
+      return scene
+   end,
+
+   setup = function(root)
+      root:initialize_resources()
+   end,
+
+   release = function()
+      scene = nil
+   end,
+}
 local viewport_width
 local viewport_height
 local gl_vertex_arrays = ffi.new("GLuint[1]")
@@ -221,26 +235,6 @@ function Scene:release()
    self.cube = nil
 end
 
-local function initialize_scene()
-   scene = Scene()
-   scene.animator = Animator(scene)
-   scene:initialize_resources()
-   scene.animator:start()
-end
-
-local function release_scene()
-   if scene ~= nil then
-      scene:release_tree()
-      scene = nil
-   end
-end
-
-local function tick_animation()
-   if scene ~= nil and scene.animator ~= nil then
-      scene.animator:tick()
-   end
-end
-
 local function on_resize(info)
    if scene == nil then
       viewport_width = math.max(1, info.pixel_width)
@@ -282,8 +276,8 @@ rig.run {
       },
    },
    hooks = {
-      after_setup = initialize_scene,
-      before_drain = tick_animation,
-      before_shutdown = release_scene,
+      after_setup = animation_runtime.hooks.after_setup,
+      before_drain = animation_runtime.hooks.before_drain,
+      before_shutdown = animation_runtime.hooks.before_shutdown,
    },
 }

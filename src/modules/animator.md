@@ -8,6 +8,7 @@
 - `animator.DEFAULT_FIXED_DT`
 - `animator.DEFAULT_MAX_DT`
 - `animator.DEFAULT_MAX_STEPS_PER_FRAME`
+- `animator.make_hooks(options)`
 
 ## Usage
 
@@ -24,3 +25,35 @@ local scene_animator = animator.Animator(root, {
 ```
 
 Call `scene_animator:start()` once the object tree is ready, `scene_animator:tick()` once per frame, and `scene_animator:sleep(seconds)` from `drive()` coroutines that should wait in scene time.
+
+## `make_hooks`
+
+`animator.make_hooks(...)` builds the common `rig.run(...)` hook trio for scene creation, ticking, and teardown.
+
+```lua
+local animator = require("animator")
+
+local runtime = animator.make_hooks {
+   create_root = function()
+      return Scene()
+   end,
+   setup = function(root, scene_animator)
+      root:initialize_resources()
+   end,
+   release = function(root, scene_animator)
+      -- Optional extra cleanup after root:release_tree().
+   end,
+}
+
+rig.run {
+   hooks = runtime.hooks,
+}
+```
+
+The returned table exposes:
+
+- `runtime.root`
+- `runtime.animator`
+- `runtime.hooks.after_setup`
+- `runtime.hooks.before_drain`
+- `runtime.hooks.before_shutdown`

@@ -27,6 +27,42 @@ local profiler_toggle_color = color.rgb(196, 220, 255)
 
 local draw_rect = ffi.new("SDL_FRect[1]")
 local scene = nil
+local find_font_path
+local animation_runtime = animator.make_hooks {
+   create_root = function()
+      font_path = find_font_path()
+      face = font.load_face(font_path)
+      frame_profiler = profiler.FrameProfiler {
+         fps = 60,
+      }
+      profiler_style = font.create_style(face, {
+         pixel_size = 14,
+         page_width = 256,
+         page_height = 128,
+         padding = 1,
+      })
+      profiler_style:warm_text(
+         "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
+      )
+
+      scene = Scene()
+      return scene
+   end,
+
+   release = function()
+      frame_profiler = nil
+      scene = nil
+      if profiler_style ~= nil then
+         profiler_style:release()
+         profiler_style = nil
+      end
+      if face ~= nil then
+         face:release()
+         face = nil
+      end
+      font_path = nil
+   end,
+}
 
 local function file_exists(path)
    local file = io.open(path, "rb")
@@ -37,7 +73,7 @@ local function file_exists(path)
    return true
 end
 
-local function find_font_path()
+find_font_path = function()
    local candidates = {
       "/usr/share/fonts/TTF/DejaVuSans.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -205,50 +241,6 @@ local function on_resize(info)
    window_height = math.max(1, info.height)
 end
 
-local function initialize_scene()
-   font_path = find_font_path()
-   face = font.load_face(font_path)
-   frame_profiler = profiler.FrameProfiler {
-      fps = 60,
-   }
-   profiler_style = font.create_style(face, {
-      pixel_size = 14,
-      page_width = 256,
-      page_height = 128,
-      padding = 1,
-   })
-   profiler_style:warm_text(
-      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
-   )
-
-   scene = Scene()
-   scene.animator = Animator(scene)
-   scene.animator:start()
-end
-
-local function release_scene()
-   frame_profiler = nil
-   if scene ~= nil then
-      scene:release_tree()
-      scene = nil
-   end
-   if profiler_style ~= nil then
-      profiler_style:release()
-      profiler_style = nil
-   end
-   if face ~= nil then
-      face:release()
-      face = nil
-   end
-   font_path = nil
-end
-
-local function tick_animation()
-   if scene ~= nil and scene.animator ~= nil then
-      scene.animator:tick()
-   end
-end
-
 local function render_frame()
    frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
@@ -276,14 +268,14 @@ rig.run {
       },
    },
    hooks = {
-      after_setup = initialize_scene,
-      before_drain = tick_animation,
+      after_setup = animation_runtime.hooks.after_setup,
+      before_drain = animation_runtime.hooks.before_drain,
       before_frame = function()
          frame_profiler:begin_frame()
       end,
       after_frame = function()
          frame_profiler:end_frame()
       end,
-      before_shutdown = release_scene,
+      before_shutdown = animation_runtime.hooks.before_shutdown,
    },
 }

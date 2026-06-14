@@ -11,6 +11,95 @@ local Animator = rig.class()
 
 M.Animator = Animator
 
+function M.make_hooks(options)
+   if type(options) ~= "table" then
+      rig.raise("animator.make_hooks expects an options table")
+   end
+
+   if type(options.create_root) ~= "function" then
+      rig.raise("animator.make_hooks requires create_root")
+   end
+
+   if options.setup ~= nil and type(options.setup) ~= "function" then
+      rig.raise("animator.make_hooks expects setup to be a function if provided")
+   end
+
+   if options.release ~= nil and type(options.release) ~= "function" then
+      rig.raise("animator.make_hooks expects release to be a function if provided")
+   end
+
+   if options.create_animator ~= nil and type(options.create_animator) ~= "function" then
+      rig.raise("animator.make_hooks expects create_animator to be a function if provided")
+   end
+
+   local state = {
+      root = nil,
+      animator = nil,
+   }
+
+   local create_root = options.create_root
+   local create_animator = options.create_animator
+   local setup = options.setup
+   local release = options.release
+   local start = options.start ~= false
+   local animator_field = options.animator_field or "animator"
+
+   state.hooks = {
+      after_setup = function()
+         local root = create_root()
+         if root == nil then
+            rig.raise("animator.make_hooks create_root must return a root object")
+         end
+
+         local scene_animator
+         if create_animator ~= nil then
+            scene_animator = create_animator(root)
+         else
+            scene_animator = Animator(root, options.animator_options)
+         end
+         if scene_animator == nil then
+            rig.raise("animator.make_hooks failed to create an animator")
+         end
+
+         state.root = root
+         state.animator = scene_animator
+         root[animator_field] = scene_animator
+
+         if setup ~= nil then
+            setup(root, scene_animator)
+         end
+
+         if start then
+            scene_animator:start()
+         end
+      end,
+
+      before_drain = function()
+         if state.animator ~= nil then
+            state.animator:tick()
+         end
+      end,
+
+      before_shutdown = function()
+         local root = state.root
+         local scene_animator = state.animator
+
+         if root ~= nil then
+            root:release_tree()
+         end
+
+         state.root = nil
+         state.animator = nil
+
+         if release ~= nil then
+            release(root, scene_animator)
+         end
+      end,
+   }
+
+   return state
+end
+
 function Animator:init(root, options)
    options = options or {}
 

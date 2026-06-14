@@ -82,6 +82,20 @@ local cube_mesh = mesh.make_cube {
 }
 
 local scene = nil
+local animation_runtime = animator.make_hooks {
+   create_root = function()
+      scene = Scene()
+      return scene
+   end,
+
+   setup = function(root)
+      root:initialize_resources()
+   end,
+
+   release = function()
+      scene = nil
+   end,
+}
 local vertex_uniform_data = mathx.mat4()
 local vertex_binding = ffi.new("SDL_GPUBufferBinding[1]")
 
@@ -287,26 +301,6 @@ function Scene:release()
    self.cube = nil
 end
 
-local function initialize_scene()
-   scene = Scene()
-   scene.animator = Animator(scene)
-   scene:initialize_resources()
-   scene.animator:start()
-end
-
-local function release_scene()
-   if scene ~= nil then
-      scene:release_tree()
-      scene = nil
-   end
-end
-
-local function tick_animation()
-   if scene ~= nil and scene.animator ~= nil then
-      scene.animator:tick()
-   end
-end
-
 local function on_render(command_buffer, swapchain_texture, width, height)
    if scene ~= nil then
       scene:draw_tree({
@@ -331,8 +325,8 @@ rig.run {
       },
    },
    hooks = {
-      after_setup = initialize_scene,
-      before_drain = tick_animation,
-      before_shutdown = release_scene,
+      after_setup = animation_runtime.hooks.after_setup,
+      before_drain = animation_runtime.hooks.before_drain,
+      before_shutdown = animation_runtime.hooks.before_shutdown,
    },
 }

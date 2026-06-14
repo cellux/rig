@@ -61,6 +61,45 @@ local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
 
 local scene = nil
+local find_font_path
+local scroll_text
+local animation_runtime = animator.make_hooks {
+   create_root = function()
+      local renderer = sdl3.get_renderer()
+      font_path = find_font_path()
+      face = font.load_face(font_path)
+      frame_profiler = profiler.FrameProfiler {
+         fps = 60,
+      }
+      profiler_style = font.create_style(face, {
+         pixel_size = 14,
+         page_width = 256,
+         page_height = 128,
+         padding = 1,
+      })
+
+      profiler_style:warm_text(
+         "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
+      )
+
+      scene = Scene(renderer, face, scroll_text)
+      return scene
+   end,
+
+   release = function()
+      frame_profiler = nil
+      scene = nil
+      if profiler_style ~= nil then
+         profiler_style:release()
+         profiler_style = nil
+      end
+      if face ~= nil then
+         face:release()
+         face = nil
+      end
+      font_path = nil
+   end,
+}
 
 function Sprite:init(index, character, glyph)
    self.character = character
@@ -576,7 +615,7 @@ function Scene:release()
    self.profiler_overlay = nil
 end
 
-local scroll_text = table.concat({
+scroll_text = table.concat({
    "+++ NEON PHANTOMS PROUDLY ROLL ACROSS YOUR PHOSPHOR SKY WITH THE MIDNIGHT MIRROR CRACK, THE CLEANEST LIBERATION TO EVER KICK OPEN A LOCKED LOADER. WE DID NOT COME HERE TO WHISPER, WE CAME TO FLOOD THE SCREEN WITH STATIC, BRAGGING RIGHTS, AND A CHORUS OF DISK DRIVES SURRENDERING IN FEAR. BYTEBARON TORE THE PROTECTION NET APART WHILE KID NOVA COUNTED CYCLES LIKE A CLOCKWORK PREDATOR, AND GLITCH WITCH STIRRED THE LAST OBFUSCATED BRANCH INTO A PERFECT LITTLE BONFIRE.",
    "THE PUBLISHER WRAPPED THIS THING IN CHECKSUMS, TIMERS, ANTI DEBUG TRAPS, STUB LOADERS, GARBLED JUMP TABLES, FAKE FAIL PATHS, AND A SAD LITTLE NOTE TO SAY DO NOT COPY. WE READ THAT NOTE, FRAMED IT, LAUGHED AT IT, AND THEN USED IT AS SCRAP PAPER WHILE VECTOR JACK PATCHED THE FINAL GUARD PAGE IN REAL TIME. IRON MUSE TOOK THE TELEMETRY OUT BACK, PACKET JANE CUT THE PHONE HOME ROUTINE INTO DECORATIVE RIBBONS, AND NOISE LORD TURNED THEIR PRECIOUS VM LAYER INTO A SCHOOL LESSON FOR TRAINEES.",
    "THIS RELEASE IS NOT A DIRT QUICK HACK, NOT A HALF ALIVE TRAINER, NOT A MAYBE CRASH MAYBE WORK EXPERIMENT. THIS IS A FULL BLOODED NEON PHANTOMS CRACK WITH THE SCALPEL SHARPENED, THE BINDERY CLEAN, THE STARTUP QUIET, AND THE USER LEFT ALONE WITH NOTHING BUT THE PROGRAM THEY PAID FOR TRYING TO ACT LIKE IT OWNS THE MACHINE. WE REMOVED THE NAG, THE WATCHDOG, THE EXPIRY, THE BACKGROUND NOISE, THE PETTY LITTLE SHACKLES, AND WE LEFT THE ENGINE RUNNING SMOOTHER THAN THE ORIGINAL BUILD.",
@@ -596,7 +635,7 @@ local function file_exists(path)
    return true
 end
 
-local function find_font_path()
+find_font_path = function()
    local candidates = {
       "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -868,53 +907,6 @@ local function on_key(key_info)
    scene:on_key(key_info)
 end
 
-local function tick_animation()
-   if scene == nil or scene.animator == nil then
-      return
-   end
-   scene.animator:tick()
-end
-
-local function initialize_scene()
-   local renderer = sdl3.get_renderer()
-   font_path = find_font_path()
-   face = font.load_face(font_path)
-   frame_profiler = profiler.FrameProfiler {
-      fps = 60,
-   }
-   profiler_style = font.create_style(face, {
-      pixel_size = 14,
-      page_width = 256,
-      page_height = 128,
-      padding = 1,
-   })
-
-   profiler_style:warm_text(
-      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
-   )
-
-   scene = Scene(renderer, face, scroll_text)
-   scene.animator = Animator(scene)
-   scene.animator:start()
-end
-
-local function release_scene()
-   frame_profiler = nil
-   if scene ~= nil then
-      scene:release_tree()
-      scene = nil
-   end
-   if profiler_style ~= nil then
-      profiler_style:release()
-      profiler_style = nil
-   end
-   if face ~= nil then
-      face:release()
-      face = nil
-   end
-   font_path = nil
-end
-
 local function render_frame()
    frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
@@ -949,16 +941,14 @@ rig.run {
       },
    },
    hooks = {
-      after_setup = initialize_scene,
-      before_drain = function()
-         tick_animation()
-      end,
+      after_setup = animation_runtime.hooks.after_setup,
+      before_drain = animation_runtime.hooks.before_drain,
       before_frame = function()
          frame_profiler:begin_frame()
       end,
       after_frame = function()
          frame_profiler:end_frame()
       end,
-      before_shutdown = release_scene,
+      before_shutdown = animation_runtime.hooks.before_shutdown,
    },
 }

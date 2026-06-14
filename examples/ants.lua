@@ -27,6 +27,20 @@ local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
 
 local scene = nil
+local animation_runtime = animator.make_hooks {
+   create_root = function()
+      scene = Scene()
+      scene:on_resize({
+         width = window_width or 1280,
+         height = window_height or 720,
+      })
+      return scene
+   end,
+
+   release = function()
+      scene = nil
+   end,
+}
 local rect = ffi.new("SDL_FRect[1]")
 local frame_profiler = profiler.FrameProfiler {
    fps = 60,
@@ -812,23 +826,6 @@ function Scene:release()
    self.ants = {}
 end
 
-local function initialize_scene()
-   scene = Scene()
-   scene.animator = Animator(scene)
-   scene:on_resize({
-      width = window_width or 1280,
-      height = window_height or 720,
-   })
-   scene.animator:start()
-end
-
-local function release_scene()
-   if scene ~= nil then
-      scene:release_tree()
-      scene = nil
-   end
-end
-
 local function on_render()
    frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
@@ -842,13 +839,6 @@ local function on_render()
       })
    end
    frame_profiler:end_cpu()
-end
-
-local function tick_animation()
-   if scene == nil or scene.animator == nil then
-      return
-   end
-   scene.animator:tick()
 end
 
 local function handle_resize(info)
@@ -880,16 +870,14 @@ rig.run {
       },
    },
    hooks = {
-      after_setup = initialize_scene,
-      before_drain = function()
-         tick_animation()
-      end,
+      after_setup = animation_runtime.hooks.after_setup,
+      before_drain = animation_runtime.hooks.before_drain,
       before_frame = function()
          frame_profiler:begin_frame()
       end,
       after_frame = function()
          frame_profiler:end_frame()
       end,
-      before_shutdown = release_scene,
+      before_shutdown = animation_runtime.hooks.before_shutdown,
    },
 }
