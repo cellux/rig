@@ -25,9 +25,14 @@ local full_alpha = 255
 local fixed_animation_dt = 1.0 / 120.0
 local max_animation_dt = 0.05
 local max_animation_steps_per_frame = 6
+local tau = math.pi * 2.0
 local lerp = mathx.lerp
 local upload_raster_texture
 local build_raster_field
+local set_draw_color
+local draw_profiler
+local toggle_vsync
+local toggle_fullscreen
 local transparent = color.TRANSPARENT
 local sprite_outline_color = color.BLACK:with_alpha(128)
 local title_shadow_color = color.BLACK:with_alpha(220)
@@ -47,27 +52,212 @@ local sprite_outline_offsets = {
    { 2, 2 },
 }
 
+local Object = rig.class()
+local Animator = rig.class()
 local Sprite = rig.class()
 local RasterSplit = rig.class()
-local RasterSplits = rig.class()
-local Title = rig.class()
-local Scroller = rig.class()
-local SpriteSnake = rig.class()
+local RasterSplits = rig.class(Object)
+local Title = rig.class(Object)
+local Scroller = rig.class(Object)
+local SpriteSnake = rig.class(Object)
+local ProfilerOverlay = rig.class(Object)
+local Scene = rig.class(Object)
 
-local scene = {
-   background_color = color.rgb(6, 8, 18),
-   title = nil,
-   scroller = nil,
-   sprite_snake = nil,
-   raster_splits = nil,
-   animate_enabled = true,
-   animation_driver_task = nil,
-   animation_time = 0.0,
-   animation_step_generation = 0,
-   animation_step_count = 0,
-   animation_step_tasks = {},
-   animate_tasks = {},
-}
+local scene = nil
+
+function Object:init()
+   self.children = {}
+   self.enabled = true
+   self.running = true
+   self.parent = nil
+   self.animator = nil
+end
+
+function Object:add_child(child)
+   if child == nil then
+      rig.raise("Object:add_child requires a child object")
+   end
+
+   child.parent = self
+   table.insert(self.children, child)
+   if self.animator ~= nil then
+      child:set_animator(self.animator)
+   end
+   return child
+end
+
+function Object:set_animator(animator)
+   self.animator = animator
+   for i = 1, #self.children do
+      self.children[i]:set_animator(animator)
+   end
+end
+
+function Object:update_tree(dt)
+   if type(self.update) == "function" then
+      self:update(dt)
+   end
+   for i = 1, #self.children do
+      self.children[i]:update_tree(dt)
+   end
+end
+
+function Object:draw_tree(context)
+   if self.enabled == false then
+      return
+   end
+
+   if type(self.draw) == "function" then
+      self:draw(context)
+   end
+   for i = 1, #self.children do
+      self.children[i]:draw_tree(context)
+   end
+end
+
+function Object:spawn_drive_tasks(tasks)
+   if self.running ~= false and type(self.drive) == "function" then
+      tasks[#tasks + 1] = sched.spawn(function()
+         self:drive()
+      end)
+   end
+   for i = 1, #self.children do
+      self.children[i]:spawn_drive_tasks(tasks)
+   end
+end
+
+function Object:release_tree()
+   for i = #self.children, 1, -1 do
+      self.children[i]:release_tree()
+   end
+   if type(self.release) == "function" then
+      self:release()
+   end
+   self.children = {}
+end
+
+function Animator:init(root)
+   self.root = nil
+   self.animate_enabled = true
+   self.animation_time = 0.0
+   self.animation_last_monotonic = 0.0
+   self.animation_accumulator = 0.0
+   self.animation_step_generation = 0
+   self.animation_step_count = 0
+   self.drive_tasks = {}
+
+   if root ~= nil then
+      self:register_root(root)
+   end
+end
+
+function Animator:register_root(root)
+   if root == nil then
+      rig.raise("Animator:register_root requires a root object")
+   end
+
+   self.root = root
+   root:set_animator(self)
+end
+
+function Animator:start()
+   self.animation_time = 0.0
+   self.animation_last_monotonic = time.monotonic()
+   self.animation_accumulator = 0.0
+   self.animation_step_generation = 0
+   self.animation_step_count = 0
+   self.drive_tasks = {}
+
+   if self.root ~= nil then
+      self.root:spawn_drive_tasks(self.drive_tasks)
+   end
+end
+
+function Animator:set_enabled(enabled)
+   self.animate_enabled = enabled
+
+   if enabled then
+      self.animation_last_monotonic = time.monotonic()
+      local scheduler = sched.active_scheduler()
+      if scheduler ~= nil then
+         for i = 1, #self.drive_tasks do
+            scheduler:wake(self.drive_tasks[i])
+         end
+      end
+   end
+end
+
+function Animator:update_scene(dt)
+   if self.root ~= nil then
+      self.root:update_tree(dt)
+   end
+end
+
+function Animator:next_steps(last_generation)
+   while true do
+      if not self.animate_enabled then
+         sched.park()
+      elseif self.animation_step_generation ~= last_generation then
+         return self.animation_step_generation, self.animation_step_count
+      else
+         sched.park()
+      end
+   end
+end
+
+function Animator:sleep(duration)
+   local deadline = self.animation_time + duration
+   local generation = self.animation_step_generation
+
+   while self.animation_time < deadline do
+      generation = self:next_steps(generation)
+   end
+end
+
+function Animator:tick()
+   if not self.animate_enabled then
+      self.animation_last_monotonic = time.monotonic()
+      return
+   end
+
+   local now = time.monotonic()
+   local dt = now - self.animation_last_monotonic
+   self.animation_last_monotonic = now
+   if dt < 0.0 then
+      dt = 0.0
+   elseif dt > max_animation_dt then
+      dt = max_animation_dt
+   end
+
+   self.animation_accumulator = self.animation_accumulator + dt
+   local steps = 0
+   while self.animation_accumulator >= fixed_animation_dt and steps < max_animation_steps_per_frame do
+      self.animation_accumulator = self.animation_accumulator - fixed_animation_dt
+      steps = steps + 1
+   end
+
+   if steps == max_animation_steps_per_frame and self.animation_accumulator > fixed_animation_dt then
+      self.animation_accumulator = fixed_animation_dt
+   end
+
+   if steps == 0 then
+      return
+   end
+
+   for _ = 1, steps do
+      self:update_scene(fixed_animation_dt)
+      self.animation_time = self.animation_time + fixed_animation_dt
+   end
+   self.animation_step_count = steps
+   self.animation_step_generation = self.animation_step_generation + 1
+
+   local scheduler = sched.active_scheduler()
+   if scheduler ~= nil then
+      for i = 1, #self.drive_tasks do
+         scheduler:wake(self.drive_tasks[i])
+      end
+   end
+end
 
 function Sprite:init(index, character, glyph)
    self.character = character
@@ -128,11 +318,11 @@ end
 function RasterSplit:apply_preset(preset_index, split_count, offset_step)
    local split_index = self.index
    if preset_index == 1 then -- Random (Original)
-      self.offset = math.random() * math.pi * 2.0
+      self.offset = math.random() * tau
       self.speed = 0.5 + math.random() * 0.4
       self.base_offset = (split_index - 1) * offset_step
    elseif preset_index == 2 then -- Smooth Sine
-      self.offset = (split_index - 1) * (math.pi * 2.0 / split_count)
+      self.offset = (split_index - 1) * (tau / split_count)
       self.speed = 0.7
       self.base_offset = (split_index - 1) * offset_step * 0.5
    elseif preset_index == 3 then -- Linear Slant
@@ -201,24 +391,29 @@ function RasterSplit:draw(renderer, raster_texture, raster_phase, layout, split_
 end
 
 function RasterSplits:init(renderer, count)
-   self.enabled = true
+   Object.init(self)
    self.count = count
    self.items = {}
    self.field = build_raster_field()
    self.texture, self.texture_height = upload_raster_texture(renderer, self.field, 2)
    self.alpha = 1.0
    self.preset_index = 1
+   self.target_preset_index = 1
    self.transition_state = "VISIBLE"
    self.phase = 0.0
+   self.phase_speed = 1.6
+   self.preset_hold_duration = 4.0
+   self.fade_duration = 0.5
 
    for i = 1, count do
       self.items[i] = RasterSplit(i)
    end
 
-   self:apply_preset(1)
+   self:set_preset(1, true)
 end
 
 function RasterSplits:release()
+   self.running = false
    self.items = {}
    self.field = nil
    self.texture_height = nil
@@ -236,7 +431,18 @@ function RasterSplits:apply_preset(preset_index)
    end
 end
 
-function RasterSplits:draw(renderer, layout)
+function RasterSplits:set_preset(preset_index, snap)
+   self.target_preset_index = preset_index
+   if snap then
+      self:apply_preset(preset_index)
+      self.alpha = 1.0
+      self.transition_state = "VISIBLE"
+   end
+end
+
+function RasterSplits:draw(context)
+   local renderer = context.renderer
+   local layout = context.layout
    local split_gap = 1
    local line_height = 2.0
    local total_width = window_width - layout.left * 2
@@ -264,11 +470,46 @@ function RasterSplits:draw(renderer, layout)
    end
 end
 
-function RasterSplits:update_phase(dt)
-   self.phase = self.phase + dt * 1.6
+function RasterSplits:update(dt)
+   self.phase = self.phase + dt * self.phase_speed
+
+   if self.transition_state == "VISIBLE" then
+      if self.target_preset_index ~= self.preset_index then
+         self.transition_state = "FADING_OUT"
+      end
+      return
+   end
+
+   if self.transition_state == "FADING_OUT" then
+      self.alpha = math.max(0.0, self.alpha - (dt / self.fade_duration))
+      if self.alpha == 0.0 then
+         self:apply_preset(self.target_preset_index)
+         self.transition_state = "FADING_IN"
+      end
+      return
+   end
+
+   if self.transition_state == "FADING_IN" then
+      self.alpha = math.min(1.0, self.alpha + (dt / self.fade_duration))
+      if self.alpha == 1.0 then
+         self.transition_state = "VISIBLE"
+      end
+   end
+end
+
+function RasterSplits:drive()
+   while self.running do
+      self.animator:sleep(self.preset_hold_duration)
+      if not self.running then
+         break
+      end
+
+      self.target_preset_index = (self.target_preset_index % 4) + 1
+   end
 end
 
 function Title:init(face, text)
+   Object.init(self)
    self.enabled = false
    self.shadow_offset = 4
    self.phase = 0.0
@@ -300,7 +541,8 @@ function Title:calc_color(out, index)
    return out
 end
 
-function Title:draw(layout)
+function Title:draw(context)
+   local layout = context.layout
    local title_baseline_y = layout.title_y
    local base_x = (window_width - self.run.width) * 0.5
 
@@ -324,7 +566,7 @@ function Title:update(dt)
 end
 
 function Scroller:init(face, text)
-   self.enabled = true
+   Object.init(self)
    self.speed = 204.0
    self.wave_amplitude = 48.0
    self.wave_frequency = 0.001
@@ -384,7 +626,8 @@ function Scroller:draw_copy(layout, base_x)
    end
 end
 
-function Scroller:draw(layout)
+function Scroller:draw(context)
+   local layout = context.layout
    local first_x = window_width - self.offset
    self:draw_copy(layout, first_x)
 
@@ -401,7 +644,7 @@ function Scroller:update(dt)
 end
 
 function SpriteSnake:init(face, text)
-   self.enabled = true
+   Object.init(self)
    self.outline_enabled = true
    self.text = text
    self.phase = 0.0
@@ -441,7 +684,8 @@ function SpriteSnake:release()
    end
 end
 
-function SpriteSnake:draw(layout)
+function SpriteSnake:draw(context)
+   local layout = context.layout
    for i = 1, #self.sprites do
       self.sprites[i]:draw(
          self.style,
@@ -454,6 +698,79 @@ end
 
 function SpriteSnake:update(dt)
    self.phase = self.phase + dt * 2.35
+end
+
+function ProfilerOverlay:init()
+   Object.init(self)
+end
+
+function ProfilerOverlay:draw(context)
+   if profiler_enabled then
+      draw_profiler(context.renderer)
+   end
+end
+
+function Scene:init(renderer, face, scroll_text_value)
+   Object.init(self)
+   self.background_color = color.rgb(6, 8, 18)
+   self.raster_splits = self:add_child(RasterSplits(renderer, 8))
+   self.sprite_snake = self:add_child(SpriteSnake(face, "NEON PHANTOMS"))
+   self.title = self:add_child(Title(face, "NEON PHANTOMS"))
+   self.scroller = self:add_child(Scroller(face, scroll_text_value))
+   self.profiler_overlay = self:add_child(ProfilerOverlay())
+   self.animator = nil
+end
+
+function Scene:draw(context)
+   local renderer = context.renderer
+   set_draw_color(
+      renderer,
+      self.background_color:unpack()
+   )
+   if not sdl3.RenderClear(renderer) then
+      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
+   end
+end
+
+function Scene:set_animation_enabled(enabled)
+   self.animator:set_enabled(enabled)
+end
+
+function Scene:toggle_animation()
+   self:set_animation_enabled(not self.animator.animate_enabled)
+end
+
+function Scene:on_key(key_info)
+   if key_info.action ~= "down" or key_info["repeat"] then
+      return
+   end
+
+   if key_info.key == "0" then
+      profiler_enabled = not profiler_enabled
+   elseif key_info.key == "V" or key_info.key == "v" then
+      toggle_vsync()
+   elseif key_info.key == "1" then
+      self.raster_splits.enabled = not self.raster_splits.enabled
+   elseif key_info.key == "2" then
+      self.sprite_snake.enabled = not self.sprite_snake.enabled
+   elseif key_info.key == "3" then
+      self.sprite_snake.outline_enabled = not self.sprite_snake.outline_enabled
+   elseif key_info.key == "4" then
+      self.scroller.enabled = not self.scroller.enabled
+   elseif key_info.key == "5" then
+      self:toggle_animation()
+   elseif key_info.key == "F" or key_info.key == "f" then
+      toggle_fullscreen()
+   end
+end
+
+function Scene:release()
+   self.animator = nil
+   self.raster_splits = nil
+   self.sprite_snake = nil
+   self.title = nil
+   self.scroller = nil
+   self.profiler_overlay = nil
 end
 
 local scroll_text = table.concat({
@@ -505,7 +822,7 @@ local function current_layout()
    }
 end
 
-local function set_draw_color(renderer, r, g, b, a)
+set_draw_color = function(renderer, r, g, b, a)
    if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
       rig.raise("failed to set renderer color: " .. ffi.string(sdl3.GetError()))
    end
@@ -526,10 +843,10 @@ upload_raster_texture = function(renderer, field, line_height)
    local rgba = ffi.new("uint8_t[?]", texture_height * 4)
 
    for i = 1, #field do
-      local color = field[i]
+      local line_color = field[i]
       for line = 0, line_height - 1 do
          local pixel_index = ((i - 1) * line_height + line) * 4
-         color:write_rgba8(rgba, pixel_index)
+         line_color:write_rgba8(rgba, pixel_index)
       end
    end
 
@@ -591,12 +908,6 @@ build_raster_field = function()
       end
    end
 
-   local function add_spacer(field, line_count)
-      for _ = 1, line_count do
-         field[#field + 1] = transparent:copy()
-      end
-   end
-
    local function build_bar_intensity_profile()
       local profile = {}
       local radius = 18
@@ -642,13 +953,11 @@ build_raster_field = function()
    local function append_bar(field, profile, tint)
       for i = 1, #profile do
          local intensity = profile[i] / 100.0
-         -- Keep the warm highlight mix but slightly tighter
          local center_mix = intensity * intensity * 0.92
          local hr, hg, hb = 255, 255, 210
          local r = math.floor((tint.r * intensity * (1.0 - center_mix) + hr * center_mix) + 0.5)
          local g = math.floor((tint.g * intensity * (1.0 - center_mix) + hg * center_mix) + 0.5)
          local b = math.floor((tint.b * intensity * (1.0 - center_mix) + hb * center_mix) + 0.5)
-         -- Use square root for alpha so it stays opaque much longer at the edges
          local a = math.floor(255 * math.sqrt(intensity) + 0.5)
          add_color_line(field, r, g, b, a, 1)
       end
@@ -657,14 +966,14 @@ build_raster_field = function()
    local field = {}
    local profile = build_bar_intensity_profile()
    local tints = {
-      color.rgb(255, 0, 0),    -- Red
-      color.rgb(255, 127, 0),  -- Orange
-      color.rgb(255, 255, 0),  -- Yellow
-      color.rgb(0, 255, 0),    -- Green
-      color.rgb(0, 255, 255),  -- Cyan
-      color.rgb(0, 100, 255),  -- Blue
-      color.rgb(139, 0, 255),  -- Violet
-      color.rgb(255, 0, 127),  -- Rose
+      color.rgb(255, 0, 0),
+      color.rgb(255, 127, 0),
+      color.rgb(255, 255, 0),
+      color.rgb(0, 255, 0),
+      color.rgb(0, 255, 255),
+      color.rgb(0, 100, 255),
+      color.rgb(139, 0, 255),
+      color.rgb(255, 0, 127),
    }
 
    for i = 1, #tints do
@@ -674,7 +983,7 @@ build_raster_field = function()
    return field
 end
 
-local function draw_profiler(renderer)
+draw_profiler = function(renderer)
    local profile = frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
@@ -697,7 +1006,7 @@ local function draw_profiler(renderer)
    local line_9 = scene.sprite_snake.enabled and "SPRITES ON [2]" or "SPRITES OFF [2]"
    local line_10 = scene.sprite_snake.outline_enabled and "OUTLINE ON [3]" or "OUTLINE OFF [3]"
    local line_11 = scene.scroller.enabled and "SCROLLER ON [4]" or "SCROLLER OFF [4]"
-   local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
+   local line_12 = scene.animator.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
    local line_13 = fullscreen_enabled and "FULLSCREEN ON [F]" or "FULLSCREEN OFF [F]"
    local line_14 = "PROFILER ON [0]"
 
@@ -727,28 +1036,8 @@ local function set_vsync(enabled)
    vsync_enabled = enabled
 end
 
-local function toggle_vsync()
+toggle_vsync = function()
    set_vsync(not vsync_enabled)
-end
-
-local function set_animation_enabled(enabled)
-   scene.animate_enabled = enabled
-
-   if enabled then
-      local scheduler = sched.active_scheduler()
-      if scheduler ~= nil then
-         if scene.animation_driver_task ~= nil then
-            scheduler:wake(scene.animation_driver_task)
-         end
-         for i = 1, #scene.animate_tasks do
-            scheduler:wake(scene.animate_tasks[i])
-         end
-      end
-   end
-end
-
-local function toggle_animation()
-   set_animation_enabled(not scene.animate_enabled)
 end
 
 local function set_fullscreen_enabled(enabled)
@@ -765,172 +1054,22 @@ local function set_fullscreen_enabled(enabled)
    fullscreen_enabled = enabled
 end
 
-local function toggle_fullscreen()
+toggle_fullscreen = function()
    set_fullscreen_enabled(not fullscreen_enabled)
 end
 
 local function on_key(key_info)
-   if key_info.action ~= "down" or key_info["repeat"] then
+   if scene == nil then
       return
    end
+   scene:on_key(key_info)
+end
 
-   if key_info.key == "0" then
-      profiler_enabled = not profiler_enabled
-   elseif key_info.key == "V" or key_info.key == "v" then
-      toggle_vsync()
-   elseif key_info.key == "1" then
-      scene.raster_splits.enabled = not scene.raster_splits.enabled
-   elseif key_info.key == "2" then
-      scene.sprite_snake.enabled = not scene.sprite_snake.enabled
-   elseif key_info.key == "3" then
-      scene.sprite_snake.outline_enabled = not scene.sprite_snake.outline_enabled
-   elseif key_info.key == "4" then
-      scene.scroller.enabled = not scene.scroller.enabled
-   elseif key_info.key == "5" then
-      toggle_animation()
-   elseif key_info.key == "F" or key_info.key == "f" then
-      toggle_fullscreen()
+local function tick_animation()
+   if scene == nil or scene.animator == nil then
+      return
    end
-end
-
-local function run_animation_driver()
-   local last = time.monotonic()
-   local accumulator = 0.0
-
-   while true do
-      if not scene.animate_enabled then
-         sched.park()
-         last = time.monotonic()
-      end
-
-      local now = time.monotonic()
-      local dt = now - last
-      last = now
-      if dt < 0.0 then
-         dt = 0.0
-      elseif dt > max_animation_dt then
-         dt = max_animation_dt
-      end
-
-      accumulator = accumulator + dt
-      local steps = 0
-      while accumulator >= fixed_animation_dt and steps < max_animation_steps_per_frame do
-         accumulator = accumulator - fixed_animation_dt
-         steps = steps + 1
-      end
-
-      if steps == max_animation_steps_per_frame and accumulator > fixed_animation_dt then
-         accumulator = fixed_animation_dt
-      end
-
-      if steps > 0 then
-         scene.animation_time = scene.animation_time + steps * fixed_animation_dt
-         scene.animation_step_count = steps
-         scene.animation_step_generation = scene.animation_step_generation + 1
-
-         local scheduler = sched.active_scheduler()
-         if scheduler ~= nil then
-            for i = 1, #scene.animation_step_tasks do
-               scheduler:wake(scene.animation_step_tasks[i])
-            end
-         end
-      end
-
-      sched.yield()
-   end
-end
-
-local function next_animation_steps(last_generation)
-   while true do
-      if not scene.animate_enabled then
-         sched.park()
-      elseif scene.animation_step_generation ~= last_generation then
-         return scene.animation_step_generation, scene.animation_step_count
-      else
-         sched.park()
-      end
-   end
-end
-
-local function run_object_animation(update_step)
-   local generation = scene.animation_step_generation
-   while true do
-      local step_count
-      generation, step_count = next_animation_steps(generation)
-      for _ = 1, step_count do
-         update_step(fixed_animation_dt)
-      end
-   end
-end
-
-local function sleep_scene_time(duration)
-   local deadline = scene.animation_time + duration
-   local generation = scene.animation_step_generation
-
-   while scene.animation_time < deadline do
-      generation = next_animation_steps(generation)
-   end
-end
-
-local function fade_raster_alpha(from_alpha, to_alpha, duration)
-   local generation = scene.animation_step_generation
-   local elapsed = 0.0
-
-   while elapsed < duration do
-      local step_count
-      generation, step_count = next_animation_steps(generation)
-      for _ = 1, step_count do
-         elapsed = math.min(duration, elapsed + fixed_animation_dt)
-         local t = elapsed / duration
-         scene.raster_splits.alpha = lerp(from_alpha, to_alpha, t)
-      end
-   end
-end
-
-local function animate_raster_phase()
-   run_object_animation(function(dt)
-      scene.raster_splits:update_phase(dt)
-   end)
-end
-
-local function animate_raster_transition()
-   local visible_duration = 4.0
-   local fade_duration = 0.5
-
-   while true do
-      scene.raster_splits.transition_state = "VISIBLE"
-      scene.raster_splits.alpha = 1.0
-      sleep_scene_time(visible_duration)
-
-      scene.raster_splits.transition_state = "FADING_OUT"
-      fade_raster_alpha(1.0, 0.0, fade_duration)
-      scene.raster_splits.alpha = 0.0
-
-      scene.raster_splits.transition_state = "SWITCHING"
-      scene.raster_splits:apply_preset((scene.raster_splits.preset_index % 4) + 1)
-
-      scene.raster_splits.transition_state = "FADING_IN"
-      fade_raster_alpha(0.0, 1.0, fade_duration)
-      scene.raster_splits.alpha = 1.0
-   end
-end
-
-local function animate_scroller()
-   run_object_animation(function(dt)
-      scene.scroller:update(dt)
-   end)
-end
-
-local function animate_sprites()
-   run_object_animation(function(dt)
-      scene.sprite_snake:update(dt)
-   end)
-end
-
-local function animate_title()
-   run_object_animation(function(dt)
-      scene.title:update(dt)
-   end)
+   scene.animator:tick()
 end
 
 local function initialize_scene()
@@ -940,9 +1079,6 @@ local function initialize_scene()
    frame_profiler = profiler.FrameProfiler {
       fps = 60,
    }
-   scene.title = Title(face, "NEON PHANTOMS")
-   scene.scroller = Scroller(face, scroll_text)
-   scene.sprite_snake = SpriteSnake(face, "NEON PHANTOMS")
    profiler_style = font.create_style(face, {
       pixel_size = 14,
       page_width = 256,
@@ -954,52 +1090,16 @@ local function initialize_scene()
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
    )
 
-   scene.raster_splits = RasterSplits(renderer, 8)
-   scene.animation_time = 0.0
-   scene.animation_step_generation = 0
-   scene.animation_step_count = 0
-
-   scene.animation_driver_task = sched.spawn(run_animation_driver)
-   scene.animation_step_tasks = {
-      sched.spawn(animate_raster_phase),
-      sched.spawn(animate_raster_transition),
-      sched.spawn(animate_scroller),
-      sched.spawn(animate_sprites),
-      sched.spawn(animate_title),
-   }
-   scene.animate_tasks = {
-      scene.animation_step_tasks[1],
-      scene.animation_step_tasks[2],
-      scene.animation_step_tasks[3],
-      scene.animation_step_tasks[4],
-      scene.animation_step_tasks[5],
-   }
+   scene = Scene(renderer, face, scroll_text)
+   scene.animator = Animator(scene)
+   scene.animator:start()
 end
 
 local function release_scene()
    frame_profiler = nil
-   scene.animation_driver_task = nil
-   scene.animation_time = 0.0
-   scene.animation_step_generation = 0
-   scene.animation_step_count = 0
-   scene.animation_step_tasks = {}
-   scene.animate_tasks = {}
-   if scene.raster_splits ~= nil then
-      scene.raster_splits:release()
-      scene.raster_splits = nil
-   end
-
-   if scene.title ~= nil then
-      scene.title:release()
-      scene.title = nil
-   end
-   if scene.scroller ~= nil then
-      scene.scroller:release()
-      scene.scroller = nil
-   end
-   if scene.sprite_snake ~= nil then
-      scene.sprite_snake:release()
-      scene.sprite_snake = nil
+   if scene ~= nil then
+      scene:release_tree()
+      scene = nil
    end
    if profiler_style ~= nil then
       profiler_style:release()
@@ -1016,28 +1116,11 @@ local function render_frame()
    frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
    local layout = current_layout()
-   set_draw_color(
-      renderer,
-      scene.background_color:unpack()
-   )
-   if not sdl3.RenderClear(renderer) then
-      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
-   end
-
-   if scene.raster_splits.enabled then
-      scene.raster_splits:draw(renderer, layout)
-   end
-   if scene.sprite_snake.enabled then
-      scene.sprite_snake:draw(layout)
-   end
-   if scene.title.enabled then
-      scene.title:draw(layout)
-   end
-   if scene.scroller.enabled then
-      scene.scroller:draw(layout)
-   end
-   if profiler_enabled then
-      draw_profiler(renderer)
+   if scene ~= nil then
+      scene:draw_tree({
+         renderer = renderer,
+         layout = layout,
+      })
    end
    frame_profiler:end_cpu()
 end
@@ -1064,6 +1147,9 @@ rig.run {
    },
    hooks = {
       after_setup = initialize_scene,
+      before_drain = function()
+         tick_animation()
+      end,
       before_frame = function()
          frame_profiler:begin_frame()
       end,

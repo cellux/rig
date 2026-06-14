@@ -2858,6 +2858,8 @@ rig.register_runtime_driver("sdl3", {
    phases = {
       "before_poll",
       "after_poll",
+      "before_drain",
+      "after_drain",
       "before_frame",
       "after_frame",
    },
@@ -2882,7 +2884,9 @@ rig.register_runtime_driver("sdl3", {
             break
          end
          run_hooks("after_poll", options)
+         run_hooks("before_drain", options)
          drain_scheduler()
+         run_hooks("after_drain", options)
          run_hooks("before_frame", options)
          render_frame(on_render)
          run_hooks("after_frame", options)
@@ -2906,6 +2910,8 @@ rig.register_runtime_driver("sdl3_gpu", {
    phases = {
       "before_poll",
       "after_poll",
+      "before_drain",
+      "after_drain",
       "before_frame",
       "after_frame",
    },
@@ -2937,7 +2943,9 @@ rig.register_runtime_driver("sdl3_gpu", {
             break
          end
          run_hooks("after_poll", options)
+         run_hooks("before_drain", options)
          drain_scheduler()
+         run_hooks("after_drain", options)
          run_hooks("before_frame", options)
          render_gpu_frame(on_render)
          run_hooks("after_frame", options)
@@ -2962,6 +2970,8 @@ rig.register_runtime_driver("sdl3_gl", {
    phases = {
       "before_poll",
       "after_poll",
+      "before_drain",
+      "after_drain",
       "before_frame",
       "after_frame",
    },
@@ -2986,7 +2996,9 @@ rig.register_runtime_driver("sdl3_gl", {
             break
          end
          run_hooks("after_poll", options)
+         run_hooks("before_drain", options)
          drain_scheduler()
+         run_hooks("after_drain", options)
          run_hooks("before_frame", options)
          render_gl_frame(on_render)
          run_hooks("after_frame", options)

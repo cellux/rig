@@ -56,6 +56,8 @@ Core runtime helpers that are always loaded at interpreter startup.
   - The built-in `sdl3` drivers declare:
     - `before_poll`
     - `after_poll`
+    - `before_drain`
+    - `after_drain`
     - `before_frame`
     - `after_frame`
 - `rig.run(options?)`
