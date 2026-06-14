@@ -1,3 +1,4 @@
+local color = require("color")
 local sdl3 = require("sdl3")
 local time = require("time")
 local font = require("font")
@@ -13,6 +14,10 @@ local profiler_style
 local frame_profiler
 local profiler_enabled = true
 local vsync_enabled = true
+local profiler_header_color = color.rgb(255, 184, 150)
+local profiler_body_color = color.rgb(255, 248, 224)
+local profiler_warn_color = color.rgb(255, 214, 160)
+local profiler_toggle_color = color.rgb(196, 220, 255)
 
 local draw_rect = ffi.new("SDL_FRect[1]")
 
@@ -62,10 +67,10 @@ local function fill_rect(renderer, x, y, w, h)
    end
 end
 
-local function draw_label(renderer, text, x, baseline_y, r, g, b, a)
+local function draw_label(renderer, text, x, baseline_y, draw_color)
    local run = profiler_style:build_run(text)
    profiler_style:draw_run(run, x, baseline_y, function()
-      return r, g, b, a
+      return draw_color
    end)
 end
 
@@ -108,26 +113,26 @@ local function draw_profiler(renderer)
 
    local text_x = panel_x + 10
    local header = "      CUR / 1S / MAX"
-   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(profile.cpu_ms, profile.cpu_max_1s_ms, profile.cpu_max_ms)
-   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(profile.present_ms, profile.present_max_1s_ms, profile.present_max_ms)
-   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(profile.total_ms, profile.total_max_1s_ms, profile.total_max_ms)
-   local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_max_1s_ms, profile.interval_max_ms)
-   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
+   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(profile.cpu_ms, profile.cpu_window_max_ms, profile.cpu_peak_ms)
+   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(profile.present_ms, profile.present_window_max_ms, profile.present_peak_ms)
+   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(profile.total_ms, profile.total_window_max_ms, profile.total_peak_ms)
+   local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_window_max_ms, profile.interval_peak_ms)
+   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_window_max_ms, profile.gap_peak_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
    local line_8 = scene.animation_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
 
-   draw_label(renderer, header, text_x, panel_y + 16, 255, 184, 150, 255)
-   draw_label(renderer, line_1, text_x, panel_y + 32, 255, 248, 224, 255)
-   draw_label(renderer, line_2, text_x, panel_y + 48, 255, 248, 224, 255)
-   draw_label(renderer, line_3, text_x, panel_y + 64, 255, 248, 224, 255)
-   draw_label(renderer, line_4, text_x, panel_y + 80, 255, 248, 224, 255)
-   draw_label(renderer, line_5, text_x, panel_y + 96, 255, 248, 224, 255)
-   draw_label(renderer, line_6, text_x, panel_y + 112, 255, 214, 160, 255)
-   draw_label(renderer, line_7, text_x, panel_y + 128, 196, 220, 255, 255)
-   draw_label(renderer, line_8, text_x, panel_y + 144, 196, 220, 255, 255)
-   draw_label(renderer, line_9, text_x + 150, panel_y + 144, 196, 220, 255, 255)
+   draw_label(renderer, header, text_x, panel_y + 16, profiler_header_color)
+   draw_label(renderer, line_1, text_x, panel_y + 32, profiler_body_color)
+   draw_label(renderer, line_2, text_x, panel_y + 48, profiler_body_color)
+   draw_label(renderer, line_3, text_x, panel_y + 64, profiler_body_color)
+   draw_label(renderer, line_4, text_x, panel_y + 80, profiler_body_color)
+   draw_label(renderer, line_5, text_x, panel_y + 96, profiler_body_color)
+   draw_label(renderer, line_6, text_x, panel_y + 112, profiler_warn_color)
+   draw_label(renderer, line_7, text_x, panel_y + 128, profiler_toggle_color)
+   draw_label(renderer, line_8, text_x, panel_y + 144, profiler_toggle_color)
+   draw_label(renderer, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
 end
 
 local function on_resize(info)
@@ -140,8 +145,7 @@ local function initialize_scene()
    font_path = find_font_path()
    face = font.load_face(font_path)
    frame_profiler = profiler.FrameProfiler {
-      budget_fps = 60,
-      fps_smoothing_seconds = 1.0,
+      fps = 60,
    }
    profiler_style = font.create_style(face, {
       pixel_size = 14,

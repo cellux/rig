@@ -1952,7 +1952,7 @@ local function ensure_gl_font_backend_state()
    )
 
    gl.EnableVertexAttribArray(0)
-   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *"))
+   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 0))
    gl.EnableVertexAttribArray(1)
    gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 8))
 

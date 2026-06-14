@@ -1,145 +1,129 @@
 local M = ... or {}
-local ffi = require("ffi")
 local rig = require("rig")
 local schema = require("schema")
+local stat = require("stat")
 local time = require("time")
 
 local positive_number_schema = schema.positive_number {
    coerce = true,
 }
-local positive_integer_schema = schema.positive_integer {
-   coerce = true,
-}
-local DEFAULT_HISTORY_FRAMES = 300
-local DEFAULT_FPS_SMOOTHING_SECONDS = 0.5
-
-ffi.cdef[[
-typedef struct rig_profiler_past_frames {
-   int capacity;
-   int count;
-   int next_index;
-   double *frame_start_seconds;
-   double *frame_end_seconds;
-   double *cpu_ms;
-   double *present_ms;
-   double *total_ms;
-   double *interval_ms;
-   double *gap_ms;
-} rig_profiler_past_frames;
-]]
 
 local frame_profiler_options_schema = schema.record({
-   budget_ms = positive_number_schema:optional(),
-   budget_fps = positive_number_schema:optional(),
-   history_frames = positive_integer_schema:optional(DEFAULT_HISTORY_FRAMES),
-   history_window_seconds = positive_number_schema:optional(1.0),
-   fps_smoothing_seconds = positive_number_schema:optional(DEFAULT_FPS_SMOOTHING_SECONDS),
+   fps = positive_number_schema,
+   history_seconds = positive_number_schema:optional(1.0),
 })
 
 M.FrameProfiler = rig.class()
 
-local function resolve_budget_ms(settings)
-   if settings.budget_fps ~= nil then
-      if settings.budget_ms ~= nil then
-         rig.raise(
-            "profiler.FrameProfiler options.budget_ms and options.budget_fps are mutually exclusive"
-         )
-      end
-      return 1000.0 / settings.budget_fps
-   end
-
-   return settings.budget_ms
-end
-
-local function create_past_frames(capacity)
-   local storage = {
-      frame_start_seconds = ffi.new("double[?]", capacity),
-      frame_end_seconds = ffi.new("double[?]", capacity),
-      cpu_ms = ffi.new("double[?]", capacity),
-      present_ms = ffi.new("double[?]", capacity),
-      total_ms = ffi.new("double[?]", capacity),
-      interval_ms = ffi.new("double[?]", capacity),
-      gap_ms = ffi.new("double[?]", capacity),
+local function create_past_frames(capacity, window_seconds)
+   return stat.MetricBundle {
+      capacity = capacity,
+      stored_metrics = {
+         "frame_start_seconds",
+         "frame_end_seconds",
+         { name = "cpu_ms", time = "frame_start_seconds" },
+         { name = "total_ms", time = "frame_start_seconds" },
+         { name = "interval_ms", time = "frame_start_seconds" },
+         { name = "gap_ms", time = "frame_start_seconds" },
+      },
+      derived_metrics = {
+         {
+            name = "present_ms",
+            deps = { "total_ms", "cpu_ms" },
+            calc = function(total_ms, cpu_ms) return math.max(total_ms - cpu_ms, 0.0) end,
+         },
+      },
+      window_metrics = {
+         {
+            name = "cpu_window_max_ms",
+            source = "cpu_ms",
+            window_seconds = window_seconds,
+            reduce = "max",
+         },
+         {
+            name = "present_window_max_ms",
+            source = "present_ms",
+            window_seconds = window_seconds,
+            reduce = "max",
+         },
+         {
+            name = "total_window_max_ms",
+            source = "total_ms",
+            window_seconds = window_seconds,
+            reduce = "max",
+         },
+         {
+            name = "interval_window_max_ms",
+            source = "interval_ms",
+            window_seconds = window_seconds,
+            reduce = "max",
+         },
+         {
+            name = "gap_window_max_ms",
+            source = "gap_ms",
+            window_seconds = window_seconds,
+            reduce = "max",
+         },
+      },
    }
-
-   local past_frames = ffi.new("rig_profiler_past_frames")
-   past_frames.capacity = capacity
-   past_frames.count = 0
-   past_frames.next_index = 0
-   past_frames.frame_start_seconds = storage.frame_start_seconds
-   past_frames.frame_end_seconds = storage.frame_end_seconds
-   past_frames.cpu_ms = storage.cpu_ms
-   past_frames.present_ms = storage.present_ms
-   past_frames.total_ms = storage.total_ms
-   past_frames.interval_ms = storage.interval_ms
-   past_frames.gap_ms = storage.gap_ms
-   return past_frames, storage
 end
 
-local function clear_past_frames(past_frames)
-   if past_frames == nil then
-      return
-   end
-
-   past_frames.count = 0
-   past_frames.next_index = 0
-
-   local capacity = past_frames.capacity
-   for i = 0, capacity - 1 do
-      past_frames.frame_start_seconds[i] = 0.0
-      past_frames.frame_end_seconds[i] = 0.0
-      past_frames.cpu_ms[i] = 0.0
-      past_frames.present_ms[i] = 0.0
-      past_frames.total_ms[i] = 0.0
-      past_frames.interval_ms[i] = 0.0
-      past_frames.gap_ms[i] = 0.0
-   end
+local function latest_or_zero(bundle, name)
+   return bundle:latest(name) or 0.0
 end
 
-local function compute_window_max(past_frames, values, timestamps, now_seconds, window_seconds, current_value)
-   local max_window = current_value or 0.0
-   local cutoff = now_seconds - window_seconds
-   local capacity = past_frames.capacity
-   local next_index = past_frames.next_index
-
-   for offset = 0, past_frames.count - 1 do
-      local index = next_index - offset - 1
-      if index < 0 then
-         index = index + capacity
-      end
-
-      local timestamp = timestamps[index]
-      if timestamp < cutoff then
-         break
-      end
-
-      local value = values[index]
-      if value > max_window then
-         max_window = value
-      end
-   end
-
-   return max_window
+local function new_frame_metrics()
+   return {
+      overruns = 0,
+      fps = 0.0,
+      fps_instant = 0.0,
+      cpu_ms = 0.0,
+      cpu_window_max_ms = 0.0,
+      cpu_peak_ms = 0.0,
+      present_ms = 0.0,
+      present_window_max_ms = 0.0,
+      present_peak_ms = 0.0,
+      total_ms = 0.0,
+      total_window_max_ms = 0.0,
+      total_peak_ms = 0.0,
+      interval_ms = 0.0,
+      interval_window_max_ms = 0.0,
+      interval_peak_ms = 0.0,
+      gap_ms = 0.0,
+      gap_window_max_ms = 0.0,
+      gap_peak_ms = 0.0,
+   }
 end
 
-local function record_past_frame(past_frames, profiler, frame_start_seconds, frame_end_seconds)
-   local slot = past_frames.next_index
-   past_frames.frame_start_seconds[slot] = frame_start_seconds
-   past_frames.frame_end_seconds[slot] = frame_end_seconds
-   past_frames.cpu_ms[slot] = profiler.cpu_ms
-   past_frames.present_ms[slot] = profiler.present_ms
-   past_frames.total_ms[slot] = profiler.total_ms
-   past_frames.interval_ms[slot] = profiler.interval_ms
-   past_frames.gap_ms[slot] = profiler.gap_ms
+local function new_pending_frame()
+   return {
+      frame_start_seconds = 0.0,
+      frame_end_seconds = 0.0,
+      cpu_ms = 0.0,
+      present_ms = 0.0,
+      total_ms = 0.0,
+   }
+end
 
-   slot = slot + 1
-   if slot >= past_frames.capacity then
-      slot = 0
-   end
-   past_frames.next_index = slot
-   if past_frames.count < past_frames.capacity then
-      past_frames.count = past_frames.count + 1
-   end
+local function reset_frame_metrics(metrics)
+   metrics.overruns = 0
+   metrics.fps = 0.0
+   metrics.fps_instant = 0.0
+   metrics.cpu_ms = 0.0
+   metrics.cpu_window_max_ms = 0.0
+   metrics.cpu_peak_ms = 0.0
+   metrics.present_ms = 0.0
+   metrics.present_window_max_ms = 0.0
+   metrics.present_peak_ms = 0.0
+   metrics.total_ms = 0.0
+   metrics.total_window_max_ms = 0.0
+   metrics.total_peak_ms = 0.0
+   metrics.interval_ms = 0.0
+   metrics.interval_window_max_ms = 0.0
+   metrics.interval_peak_ms = 0.0
+   metrics.gap_ms = 0.0
+   metrics.gap_window_max_ms = 0.0
+   metrics.gap_peak_ms = 0.0
 end
 
 function M.FrameProfiler:init(options)
@@ -149,94 +133,104 @@ function M.FrameProfiler:init(options)
       "profiler.FrameProfiler options"
    )
 
-   self.budget_ms = resolve_budget_ms(settings)
-   self.history_frames = settings.history_frames
-   self.history_window_seconds = settings.history_window_seconds
-   self.fps_smoothing_seconds = settings.fps_smoothing_seconds
-   self.past_frames, self._past_frames_storage = create_past_frames(settings.history_frames)
+   self.expected_fps = settings.fps
+   self.history_seconds = settings.history_seconds
+   self.budget_ms = 1000.0 / settings.fps
+   self.history_frames = math.max(1, math.ceil(settings.fps * settings.history_seconds))
+   self.history_window_seconds = settings.history_seconds
+   self.fps_smoothing_seconds = settings.history_seconds
+   self.past_frames = create_past_frames(self.history_frames, self.history_window_seconds)
    self:reset()
 end
 
 function M.FrameProfiler:reset()
-   self.fps = 0.0
-   self.fps_instant = 0.0
-   self.cpu_ms = 0.0
-   self.cpu_max_1s_ms = 0.0
-   self.cpu_max_ms = 0.0
-   self.present_ms = 0.0
-   self.present_max_1s_ms = 0.0
-   self.present_max_ms = 0.0
-   self.total_ms = 0.0
-   self.total_max_1s_ms = 0.0
-   self.total_max_ms = 0.0
-   self.interval_ms = 0.0
-   self.interval_max_1s_ms = 0.0
-   self.interval_max_ms = 0.0
-   self.gap_ms = 0.0
-   self.gap_max_1s_ms = 0.0
-   self.gap_max_ms = 0.0
    self.overruns = 0
+   self._last_completed_frame = self._last_completed_frame or new_frame_metrics()
+   self._next_completed_frame = self._next_completed_frame or new_frame_metrics()
+   self._pending_frame = self._pending_frame or new_pending_frame()
+   reset_frame_metrics(self._last_completed_frame)
+   reset_frame_metrics(self._next_completed_frame)
+   self.pending_frame = nil
 
-   self._last_frame_seconds = nil
    self._frame_start_seconds = nil
    self._cpu_section_start_seconds = nil
    self._cpu_accumulator_ms = 0.0
    self._smoothed_interval_ms = nil
-   clear_past_frames(self.past_frames)
+   self.past_frames:reset()
 end
 
 function M.FrameProfiler:begin_frame()
    local frame_start_seconds = time.monotonic()
-   local last_frame_seconds = self._last_frame_seconds
+   local last_completed_frame = self._last_completed_frame
+   local pending_frame = self.pending_frame
 
-   if last_frame_seconds ~= nil then
-      local interval_seconds = frame_start_seconds - last_frame_seconds
-      self.interval_ms = interval_seconds * 1000.0
-      self.fps_instant = 1000.0 / self.interval_ms
-      if self.interval_ms > self.interval_max_ms then
-         self.interval_max_ms = self.interval_ms
-      end
-      self.interval_max_1s_ms = compute_window_max(
-         self.past_frames,
-         self.past_frames.interval_ms,
-         self.past_frames.frame_start_seconds,
-         frame_start_seconds,
-         self.history_window_seconds,
-         self.interval_ms
-      )
+   if pending_frame ~= nil then
+      local interval_seconds = frame_start_seconds - pending_frame.frame_start_seconds
+      local interval_ms = interval_seconds * 1000.0
+      local fps_instant = 1000.0 / interval_ms
 
       if self._smoothed_interval_ms == nil then
-         self._smoothed_interval_ms = self.interval_ms
+         self._smoothed_interval_ms = interval_ms
       else
          local alpha = 1.0 - math.exp(-interval_seconds / self.fps_smoothing_seconds)
          self._smoothed_interval_ms = self._smoothed_interval_ms
-            + (self.interval_ms - self._smoothed_interval_ms) * alpha
+            + (interval_ms - self._smoothed_interval_ms) * alpha
       end
-      self.fps = 1000.0 / self._smoothed_interval_ms
+      local fps = 1000.0 / self._smoothed_interval_ms
+      local gap_ms = math.max(interval_ms - pending_frame.total_ms, 0.0)
 
-      local gap_ms = self.interval_ms - self.total_ms
-      if gap_ms < 0.0 then
-         gap_ms = 0.0
-      end
-      self.gap_ms = gap_ms
-      if self.gap_ms > self.gap_max_ms then
-         self.gap_max_ms = self.gap_ms
-      end
-      self.gap_max_1s_ms = compute_window_max(
+      self.past_frames:begin_sample()
+      self.past_frames:set("frame_start_seconds", pending_frame.frame_start_seconds)
+      self.past_frames:set("frame_end_seconds", pending_frame.frame_end_seconds)
+      self.past_frames:set("cpu_ms", pending_frame.cpu_ms)
+      self.past_frames:set("total_ms", pending_frame.total_ms)
+      self.past_frames:set("interval_ms", interval_ms)
+      self.past_frames:set("gap_ms", gap_ms)
+      self.past_frames:commit()
+
+      local completed_frame = self._next_completed_frame
+      completed_frame.overruns = self.overruns
+      completed_frame.fps = fps
+      completed_frame.fps_instant = fps_instant
+      completed_frame.cpu_ms = pending_frame.cpu_ms
+      completed_frame.cpu_window_max_ms = latest_or_zero(self.past_frames, "cpu_window_max_ms")
+      completed_frame.cpu_peak_ms = math.max(last_completed_frame.cpu_peak_ms, pending_frame.cpu_ms)
+      completed_frame.present_ms = latest_or_zero(self.past_frames, "present_ms")
+      completed_frame.present_window_max_ms = latest_or_zero(
          self.past_frames,
-         self.past_frames.gap_ms,
-         self.past_frames.frame_start_seconds,
-         frame_start_seconds,
-         self.history_window_seconds,
-         self.gap_ms
+         "present_window_max_ms"
       )
+      completed_frame.present_peak_ms = math.max(
+         last_completed_frame.present_peak_ms,
+         pending_frame.present_ms
+      )
+      completed_frame.total_ms = pending_frame.total_ms
+      completed_frame.total_window_max_ms = latest_or_zero(self.past_frames, "total_window_max_ms")
+      completed_frame.total_peak_ms = math.max(
+         last_completed_frame.total_peak_ms,
+         pending_frame.total_ms
+      )
+      completed_frame.interval_ms = interval_ms
+      completed_frame.interval_window_max_ms = latest_or_zero(
+         self.past_frames,
+         "interval_window_max_ms"
+      )
+      completed_frame.interval_peak_ms = math.max(
+         last_completed_frame.interval_peak_ms,
+         interval_ms
+      )
+      completed_frame.gap_ms = latest_or_zero(self.past_frames, "gap_ms")
+      completed_frame.gap_window_max_ms = latest_or_zero(self.past_frames, "gap_window_max_ms")
+      completed_frame.gap_peak_ms = math.max(last_completed_frame.gap_peak_ms, gap_ms)
+
+      self._next_completed_frame = self._last_completed_frame
+      self._last_completed_frame = completed_frame
+      self.pending_frame = nil
    end
 
-   self._last_frame_seconds = frame_start_seconds
    self._frame_start_seconds = frame_start_seconds
    self._cpu_section_start_seconds = nil
    self._cpu_accumulator_ms = 0.0
-   self.cpu_ms = 0.0
 end
 
 function M.FrameProfiler:end_frame()
@@ -248,56 +242,23 @@ function M.FrameProfiler:end_frame()
       rig.raise("frame profiler end_frame called while a CPU section is still open")
    end
 
-   self.cpu_ms = self._cpu_accumulator_ms
+   local cpu_ms = self._cpu_accumulator_ms
    local frame_end_seconds = time.monotonic()
+   local total_ms = (frame_end_seconds - frame_start_seconds) * 1000.0
+   local present_ms = math.max(total_ms - cpu_ms, 0.0)
 
-   if self.cpu_ms > self.cpu_max_ms then
-      self.cpu_max_ms = self.cpu_ms
-   end
-   self.cpu_max_1s_ms = compute_window_max(
-      self.past_frames,
-      self.past_frames.cpu_ms,
-      self.past_frames.frame_end_seconds,
-      frame_end_seconds,
-      self.history_window_seconds,
-      self.cpu_ms
-   )
-
-   self.total_ms = (frame_end_seconds - frame_start_seconds) * 1000.0
-   if self.total_ms > self.total_max_ms then
-      self.total_max_ms = self.total_ms
-   end
-   self.total_max_1s_ms = compute_window_max(
-      self.past_frames,
-      self.past_frames.total_ms,
-      self.past_frames.frame_end_seconds,
-      frame_end_seconds,
-      self.history_window_seconds,
-      self.total_ms
-   )
-
-   local present_ms = self.total_ms - self.cpu_ms
-   if present_ms < 0.0 then
-      present_ms = 0.0
-   end
-   self.present_ms = present_ms
-   if self.present_ms > self.present_max_ms then
-      self.present_max_ms = self.present_ms
-   end
-   self.present_max_1s_ms = compute_window_max(
-      self.past_frames,
-      self.past_frames.present_ms,
-      self.past_frames.frame_end_seconds,
-      frame_end_seconds,
-      self.history_window_seconds,
-      self.present_ms
-   )
-
-   local did_overrun = self.budget_ms ~= nil and self.total_ms > self.budget_ms
+   local did_overrun = self.budget_ms ~= nil and total_ms > self.budget_ms
    if did_overrun then
       self.overruns = self.overruns + 1
    end
-   record_past_frame(self.past_frames, self, frame_start_seconds, frame_end_seconds)
+
+   local pending_frame = self._pending_frame
+   pending_frame.frame_start_seconds = frame_start_seconds
+   pending_frame.frame_end_seconds = frame_end_seconds
+   pending_frame.cpu_ms = cpu_ms
+   pending_frame.present_ms = present_ms
+   pending_frame.total_ms = total_ms
+   self.pending_frame = pending_frame
 
    self._frame_start_seconds = nil
 end
@@ -325,7 +286,7 @@ function M.FrameProfiler:end_cpu()
 end
 
 function M.FrameProfiler:snapshot()
-   return self
+   return self._last_completed_frame
 end
 
 function M.FrameProfiler:before_frame_hook()

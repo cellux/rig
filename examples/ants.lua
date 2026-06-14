@@ -24,7 +24,7 @@ local Slider = rig.class()
 local ants = {}
 local rect = ffi.new("SDL_FRect[1]")
 local frame_profiler = profiler.FrameProfiler {
-   fps_smoothing_seconds = 1.0,
+   fps = 60,
 }
 local slider
 local clamp = mathx.clamp

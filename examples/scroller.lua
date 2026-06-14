@@ -685,11 +685,11 @@ local function draw_profiler(renderer)
 
    local text_x = panel_x + 10
    local header = "      CUR / 1S / MAX"
-   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(profile.cpu_ms, profile.cpu_max_1s_ms, profile.cpu_max_ms)
-   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(profile.present_ms, profile.present_max_1s_ms, profile.present_max_ms)
-   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(profile.total_ms, profile.total_max_1s_ms, profile.total_max_ms)
-   local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_max_1s_ms, profile.interval_max_ms)
-   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_max_1s_ms, profile.gap_max_ms)
+   local line_1 = ("CPU %.2f / %.2f / %.2f"):format(profile.cpu_ms, profile.cpu_window_max_ms, profile.cpu_peak_ms)
+   local line_2 = ("PRS %.2f / %.2f / %.2f"):format(profile.present_ms, profile.present_window_max_ms, profile.present_peak_ms)
+   local line_3 = ("TOT %.2f / %.2f / %.2f"):format(profile.total_ms, profile.total_window_max_ms, profile.total_peak_ms)
+   local line_4 = ("INT %.2f / %.2f / %.2f"):format(profile.interval_ms, profile.interval_window_max_ms, profile.interval_peak_ms)
+   local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_window_max_ms, profile.gap_peak_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
    local line_8 = scene.raster_splits.enabled and "RASTER ON [1]" or "RASTER OFF [1]"
@@ -915,8 +915,7 @@ local function initialize_scene()
    font_path = find_font_path()
    face = font.load_face(font_path)
    frame_profiler = profiler.FrameProfiler {
-      budget_fps = 60,
-      fps_smoothing_seconds = 1.0,
+      fps = 60,
    }
    scene.title = Title(face, "NEON PHANTOMS")
    scene.scroller = Scroller(face, scroll_text)
