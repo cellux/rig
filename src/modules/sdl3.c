@@ -16,6 +16,7 @@ static void set_string_constant(lua_State *L, const char *name,
 #define SET_U32_CONST(name) set_u32_constant(L, #name, SDL_##name)
 #define SET_INIT_CONST(name) set_u32_constant(L, "INIT_" #name, SDL_INIT_##name)
 #define SET_PROP_CONST(name) set_string_constant(L, #name, SDL_##name)
+#define SET_HINT_CONST(name) set_string_constant(L, #name, SDL_##name)
 #define SET_GL_ATTR_CONST(name) set_u32_constant(L, "GL_ATTR_" #name, SDL_GL_##name)
 #define SET_GL_PROFILE_CONST(name) set_u32_constant(L, "GL_CONTEXT_PROFILE_" #name, SDL_GL_CONTEXT_PROFILE_##name)
 #define SET_GL_CONTEXT_FLAG_CONST(name) set_u32_constant(L, "GL_CONTEXT_" #name, SDL_GL_CONTEXT_##name)
@@ -51,6 +52,11 @@ void rig_register_sdl3(lua_State *L) {
   SET_U32_CONST(KMOD_CTRL);
   SET_U32_CONST(KMOD_ALT);
   SET_U32_CONST(KMOD_GUI);
+
+  SET_U32_CONST(THREAD_PRIORITY_LOW);
+  SET_U32_CONST(THREAD_PRIORITY_NORMAL);
+  SET_U32_CONST(THREAD_PRIORITY_HIGH);
+  SET_U32_CONST(THREAD_PRIORITY_TIME_CRITICAL);
 
   SET_GL_ATTR_CONST(RED_SIZE);
   SET_GL_ATTR_CONST(GREEN_SIZE);
@@ -223,6 +229,9 @@ void rig_register_sdl3(lua_State *L) {
 
   /* GLOBAL_VIDEO */
   SET_PROP_CONST(PROP_GLOBAL_VIDEO_WAYLAND_WL_DISPLAY_POINTER);
+
+  /* HINTS */
+  SET_HINT_CONST(HINT_THREAD_PRIORITY_POLICY);
 
   /* GPU_BUFFER */
   SET_PROP_CONST(PROP_GPU_BUFFER_CREATE_NAME_STRING);

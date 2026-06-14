@@ -144,6 +144,7 @@ bool SDL_GetWindowSize(SDL_Window *window, int *w, int *h);
 bool SDL_GetWindowSizeInPixels(SDL_Window *window, int *w, int *h);
 bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen);
 bool SDL_SyncWindow(SDL_Window *window);
+bool SDL_SetCurrentThreadPriority(int priority);
 const char *SDL_GetError(void);
 const char *SDL_GetKeyName(SDL_Keycode key);
 bool SDL_GetCurrentTime(Sint64 *ticks);
@@ -502,6 +503,7 @@ export_sdl_function("GetWindowSize", "SDL_GetWindowSize")
 export_sdl_function("GetWindowSizeInPixels", "SDL_GetWindowSizeInPixels")
 export_sdl_function("SetWindowFullscreen", "SDL_SetWindowFullscreen")
 export_sdl_function("SyncWindow", "SDL_SyncWindow")
+export_sdl_function("SetCurrentThreadPriority", "SDL_SetCurrentThreadPriority")
 export_sdl_function("GetError", "SDL_GetError")
 export_sdl_function("GetKeyName", "SDL_GetKeyName")
 export_sdl_function("GetCurrentTime", "SDL_GetCurrentTime")

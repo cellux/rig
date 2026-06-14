@@ -125,6 +125,19 @@ Additional fields accepted by `options.driver_config.sdl3_gpu`:
 - `sdl3.DelayPrecise(ns)`
   - Higher-precision SDL delay helper.
 
+## Thread Helpers
+
+- `sdl3.SetCurrentThreadPriority(priority)`
+  - Raw SDL thread-priority setter for the current thread.
+  - Returns `true` on success, `false` on failure.
+  - On some platforms this may require elevated privileges.
+- `sdl3.THREAD_PRIORITY_LOW`
+- `sdl3.THREAD_PRIORITY_NORMAL`
+- `sdl3.THREAD_PRIORITY_HIGH`
+- `sdl3.THREAD_PRIORITY_TIME_CRITICAL`
+- `sdl3.HINT_THREAD_PRIORITY_POLICY`
+  - SDL hint string for selecting the scheduler policy used by `sdl3.SetCurrentThreadPriority(...)`.
+
 ## Renderer Helpers
 
 - `sdl3.get_renderer()`
