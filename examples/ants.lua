@@ -3,6 +3,7 @@ local sched = require("sched")
 local mathx = require("mathx")
 local profiler = require("profiler")
 local color = require("color")
+local time = require("time")
 local ffi = require("ffi")
 
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
@@ -17,16 +18,22 @@ local base_sensor_half_width = 6.0
 local base_body_radius = 6.0
 local max_turn_step = 0.12
 local ant_scale = 1.0
+local fixed_animation_dt = 1.0 / 120.0
+local max_animation_dt = 0.05
+local max_animation_steps_per_frame = 6
 
-local Ant = rig.class()
-local Slider = rig.class()
+local Object = rig.class()
+local Animator = rig.class()
+local Ant = rig.class(Object)
+local Slider = rig.class(Object)
+local ProfilerOverlay = rig.class(Object)
+local Scene = rig.class(Object)
 
-local ants = {}
+local scene = nil
 local rect = ffi.new("SDL_FRect[1]")
 local frame_profiler = profiler.FrameProfiler {
    fps = 60,
 }
-local slider
 local clamp = mathx.clamp
 local clamp01 = mathx.clamp01
 local background_color = color.rgbaf(0.06, 0.08, 0.05, 1.0)
@@ -167,6 +174,200 @@ local glyphs = {
 
 math.randomseed(tonumber(sdl3.GetPerformanceCounter()))
 
+function Object:init()
+   self.children = {}
+   self.enabled = true
+   self.running = true
+   self.parent = nil
+   self.animator = nil
+end
+
+function Object:add_child(child)
+   if child == nil then
+      rig.raise("Object:add_child requires a child object")
+   end
+
+   child.parent = self
+   table.insert(self.children, child)
+   if self.animator ~= nil then
+      child:set_animator(self.animator)
+   end
+   return child
+end
+
+function Object:set_animator(animator)
+   self.animator = animator
+   for i = 1, #self.children do
+      self.children[i]:set_animator(animator)
+   end
+end
+
+function Object:update_tree(dt)
+   if type(self.update) == "function" then
+      self:update(dt)
+   end
+   for i = 1, #self.children do
+      self.children[i]:update_tree(dt)
+   end
+end
+
+function Object:draw_tree(context)
+   if self.enabled == false then
+      return
+   end
+
+   if type(self.draw) == "function" then
+      self:draw(context)
+   end
+   for i = 1, #self.children do
+      self.children[i]:draw_tree(context)
+   end
+end
+
+function Object:spawn_drive_tasks(tasks)
+   if self.running ~= false and type(self.drive) == "function" then
+      tasks[#tasks + 1] = sched.spawn(function()
+         self:drive()
+      end)
+   end
+   for i = 1, #self.children do
+      self.children[i]:spawn_drive_tasks(tasks)
+   end
+end
+
+function Object:release_tree()
+   for i = #self.children, 1, -1 do
+      self.children[i]:release_tree()
+   end
+   if type(self.release) == "function" then
+      self:release()
+   end
+   self.children = {}
+end
+
+function Animator:init(root)
+   self.root = nil
+   self.animate_enabled = true
+   self.animation_time = 0.0
+   self.animation_last_monotonic = 0.0
+   self.animation_accumulator = 0.0
+   self.animation_step_generation = 0
+   self.animation_step_count = 0
+   self.drive_tasks = {}
+
+   if root ~= nil then
+      self:register_root(root)
+   end
+end
+
+function Animator:register_root(root)
+   if root == nil then
+      rig.raise("Animator:register_root requires a root object")
+   end
+
+   self.root = root
+   root:set_animator(self)
+end
+
+function Animator:start()
+   self.animation_time = 0.0
+   self.animation_last_monotonic = time.monotonic()
+   self.animation_accumulator = 0.0
+   self.animation_step_generation = 0
+   self.animation_step_count = 0
+   self.drive_tasks = {}
+
+   if self.root ~= nil then
+      self.root:spawn_drive_tasks(self.drive_tasks)
+   end
+end
+
+function Animator:set_enabled(enabled)
+   self.animate_enabled = enabled
+
+   if enabled then
+      self.animation_last_monotonic = time.monotonic()
+      local scheduler = sched.active_scheduler()
+      if scheduler ~= nil then
+         for i = 1, #self.drive_tasks do
+            scheduler:wake(self.drive_tasks[i])
+         end
+      end
+   end
+end
+
+function Animator:update_scene(dt)
+   if self.root ~= nil then
+      self.root:update_tree(dt)
+   end
+end
+
+function Animator:next_steps(last_generation)
+   while true do
+      if not self.animate_enabled then
+         sched.park()
+      elseif self.animation_step_generation ~= last_generation then
+         return self.animation_step_generation, self.animation_step_count
+      else
+         sched.park()
+      end
+   end
+end
+
+function Animator:sleep(duration)
+   local deadline = self.animation_time + duration
+   local generation = self.animation_step_generation
+
+   while self.animation_time < deadline do
+      generation = self:next_steps(generation)
+   end
+end
+
+function Animator:tick()
+   if not self.animate_enabled then
+      self.animation_last_monotonic = time.monotonic()
+      return
+   end
+
+   local now = time.monotonic()
+   local dt = now - self.animation_last_monotonic
+   self.animation_last_monotonic = now
+   if dt < 0.0 then
+      dt = 0.0
+   elseif dt > max_animation_dt then
+      dt = max_animation_dt
+   end
+
+   self.animation_accumulator = self.animation_accumulator + dt
+   local steps = 0
+   while self.animation_accumulator >= fixed_animation_dt and steps < max_animation_steps_per_frame do
+      self.animation_accumulator = self.animation_accumulator - fixed_animation_dt
+      steps = steps + 1
+   end
+
+   if steps == max_animation_steps_per_frame and self.animation_accumulator > fixed_animation_dt then
+      self.animation_accumulator = fixed_animation_dt
+   end
+
+   if steps == 0 then
+      return
+   end
+
+   for _ = 1, steps do
+      self:update_scene(fixed_animation_dt)
+      self.animation_time = self.animation_time + fixed_animation_dt
+   end
+   self.animation_step_count = steps
+   self.animation_step_generation = self.animation_step_generation + 1
+
+   local scheduler = sched.active_scheduler()
+   if scheduler ~= nil then
+      for i = 1, #self.drive_tasks do
+         scheduler:wake(self.drive_tasks[i])
+      end
+   end
+end
+
 local function choose_turn()
    local roll = math.random()
    if roll < 0.10 then
@@ -263,6 +464,7 @@ local function sensor_half_width()
 end
 
 function Slider:init()
+   Object.init(self)
    self.x = nil
    self.y = 14
    self.w = 152
@@ -330,16 +532,15 @@ function Slider:handle_mouse(mouse_info)
    end
 end
 
-function Slider:tick()
+function Slider:update(dt)
+   local blend = 1.0 - math.exp(-12.0 * dt)
    self.emphasis = self.emphasis
-      + (self.target_emphasis - self.emphasis) * 0.35
+      + (self.target_emphasis - self.emphasis) * blend
 
    if math.abs(self.target_emphasis - self.emphasis) < 0.002 then
       self.emphasis = self.target_emphasis
    end
 end
-
-slider = Slider()
 
 local function draw_glyph(renderer, glyph, x, y, scale)
    for row = 1, #glyph do
@@ -358,8 +559,8 @@ local function draw_glyph(renderer, glyph, x, y, scale)
    end
 end
 
-local function draw_text(renderer, text, x, y, color, scale)
-   set_color(renderer, color)
+local function draw_text(renderer, text, x, y, draw_color, scale)
+   set_color(renderer, draw_color)
 
    local cursor_x = x
    for i = 1, #text do
@@ -391,7 +592,8 @@ local function draw_fps_overlay(renderer)
    )
 end
 
-function Slider:draw(renderer)
+function Slider:draw(context)
+   local renderer = context.renderer
    local amount = clamp01(self.emphasis)
    slider_panel_color:set_mix(
       slider_panel_dim_color,
@@ -413,6 +615,12 @@ function Slider:draw(renderer)
       slider_knob_bright_color,
       amount
    )
+   slider_outline_color:set_mix(
+      slider_outline_dim_color,
+      slider_outline_bright_color,
+      amount
+   )
+
    local panel_pad = 6
    local track_h = 4
    local knob_half = self.knob_size * 0.5
@@ -420,11 +628,6 @@ function Slider:draw(renderer)
    local knob_x = self.x + knob_half + self.value * (self.w - self.knob_size)
    local knob_y = self.y + self.h * 0.5
    local fill_w = math.max(0, knob_x - self.x)
-   slider_outline_color:set_mix(
-      slider_outline_dim_color,
-      slider_outline_bright_color,
-      amount
-   )
 
    set_color(renderer, slider_panel_color)
    fill_rect(
@@ -482,6 +685,7 @@ function Slider:draw(renderer)
 end
 
 function Ant:init(index, ant_color)
+   Object.init(self)
    self.id = index
    self.x = math.random(ant_margin, window_width - ant_margin)
    self.y = math.random(ant_margin, window_height - ant_margin)
@@ -493,9 +697,11 @@ function Ant:init(index, ant_color)
    self.walk_phase = math.random() * math.pi * 2.0
    self.color = ant_color
    self.speed = ant_speed * self.step_interval * (0.85 + math.random() * 0.35)
+   self.scene = nil
 end
 
-function Ant:draw(renderer)
+function Ant:draw(context)
+   local renderer = context.renderer
    local scale = ant_scale
    local cos_angle = math.cos(self.angle)
    local sin_angle = math.sin(self.angle)
@@ -676,13 +882,6 @@ function Ant:clamp_to_window()
    self.y = clamp(self.y, ant_margin, window_height - ant_margin)
 end
 
-local function animate_slider()
-   while true do
-      slider:tick()
-      sched.yield()
-   end
-end
-
 function Ant:step(all_ants)
    self.angle = turn_toward(self.angle, self.desired_angle, self.turn_speed)
 
@@ -743,10 +942,11 @@ function Ant:step(all_ants)
    end
 end
 
-function Ant:run(all_ants)
-   sched.sleep(math.random() * self.step_interval)
+function Ant:drive()
+   local all_ants = self.scene.ants
+   self.animator:sleep(math.random() * self.step_interval)
 
-   while true do
+   while self.running do
       self:step(all_ants)
 
       local delay = self.step_interval
@@ -754,23 +954,76 @@ function Ant:run(all_ants)
          delay = delay + 0.06 + math.random() * 0.18
       end
 
-      sched.sleep(delay)
+      self.animator:sleep(delay)
    end
 end
 
-local function initialize_ants()
-   ants = {}
+function ProfilerOverlay:init()
+   Object.init(self)
+end
+
+function ProfilerOverlay:draw(context)
+   draw_fps_overlay(context.renderer)
+end
+
+function Scene:init()
+   Object.init(self)
+   self.background_color = background_color
+   self.ants = {}
+   self.slider = Slider()
 
    for i = 1, ant_count do
       local ant_color = palette_cycle[((i - 1) % #palette_cycle) + 1]
-      local ant = Ant(i, ant_color)
-      ants[i] = ant
-      sched.spawn(function()
-         ant:run(ants)
-      end)
+      local ant = self:add_child(Ant(i, ant_color))
+      ant.scene = self
+      self.ants[i] = ant
    end
 
-   sched.spawn(animate_slider)
+   self.profiler_overlay = self:add_child(ProfilerOverlay())
+   self:add_child(self.slider)
+   self.animator = nil
+end
+
+function Scene:draw(context)
+   sdl3.clear(self.background_color:unpackf())
+end
+
+function Scene:on_mouse(mouse_info)
+   self.slider:handle_mouse(mouse_info)
+end
+
+function Scene:on_resize(info)
+   window_width = math.max(1, info.width)
+   window_height = math.max(1, info.height)
+   self.slider.x = window_width - 184
+
+   for i = 1, #self.ants do
+      self.ants[i]:clamp_to_window()
+   end
+end
+
+function Scene:release()
+   self.animator = nil
+   self.profiler_overlay = nil
+   self.slider = nil
+   self.ants = {}
+end
+
+local function initialize_scene()
+   scene = Scene()
+   scene.animator = Animator(scene)
+   scene:on_resize({
+      width = window_width or 1280,
+      height = window_height or 720,
+   })
+   scene.animator:start()
+end
+
+local function release_scene()
+   if scene ~= nil then
+      scene:release_tree()
+      scene = nil
+   end
 end
 
 local function on_render()
@@ -780,32 +1033,37 @@ local function on_render()
       rig.raise("sdl3 runtime did not provide a renderer")
    end
 
-   sdl3.clear(background_color:unpackf())
-
-   for i = 1, #ants do
-      ants[i]:draw(renderer)
+   if scene ~= nil then
+      scene:draw_tree({
+         renderer = renderer,
+      })
    end
-
-   draw_fps_overlay(renderer)
-   slider:draw(renderer)
    frame_profiler:end_cpu()
 end
 
-local function handle_resize(info)
-   window_width = math.max(1, info.width)
-   window_height = math.max(1, info.height)
-   slider.x = window_width - 184
-
-   for i = 1, #ants do
-      ants[i]:clamp_to_window()
+local function tick_animation()
+   if scene == nil or scene.animator == nil then
+      return
    end
+   scene.animator:tick()
+end
+
+local function handle_resize(info)
+   if scene == nil then
+      window_width = math.max(1, info.width)
+      window_height = math.max(1, info.height)
+      return
+   end
+   scene:on_resize(info)
 end
 
 rig.run {
    mode = "sdl3",
    event_handlers = {
       mouse = function(mouse_info)
-         slider:handle_mouse(mouse_info)
+         if scene ~= nil then
+            scene:on_mouse(mouse_info)
+         end
       end,
       resize = handle_resize,
    },
@@ -819,12 +1077,16 @@ rig.run {
       },
    },
    hooks = {
-      after_setup = initialize_ants,
+      after_setup = initialize_scene,
+      before_drain = function()
+         tick_animation()
+      end,
       before_frame = function()
          frame_profiler:begin_frame()
       end,
       after_frame = function()
          frame_profiler:end_frame()
       end,
+      before_shutdown = release_scene,
    },
 }
