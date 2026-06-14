@@ -16,6 +16,7 @@ local profiler_style
 local frame_profiler
 local profiler_enabled = true
 local vsync_enabled = true
+local fullscreen_enabled = false
 
 local draw_rect = ffi.new("SDL_FRect[1]")
 local src_rect = ffi.new("SDL_FRect[1]")
@@ -678,7 +679,7 @@ local function draw_profiler(renderer)
    local panel_x = 18
    local panel_y = 16
    local panel_w = 378
-   local panel_h = 194
+   local panel_h = 210
 
    set_draw_color(renderer, profiler_panel_color:unpack())
    fill_rect(renderer, panel_x, panel_y, panel_w, panel_h)
@@ -697,7 +698,8 @@ local function draw_profiler(renderer)
    local line_10 = scene.sprite_snake.outline_enabled and "OUTLINE ON [3]" or "OUTLINE OFF [3]"
    local line_11 = scene.scroller.enabled and "SCROLLER ON [4]" or "SCROLLER OFF [4]"
    local line_12 = scene.animate_enabled and "ANIM ON [5]" or "ANIM OFF [5]"
-   local line_13 = "PROFILER ON [0]"
+   local line_13 = fullscreen_enabled and "FULLSCREEN ON [F]" or "FULLSCREEN OFF [F]"
+   local line_14 = "PROFILER ON [0]"
 
    draw_label(profiler_style, header, text_x, panel_y + 16, profiler_header_color)
    draw_label(profiler_style, line_1, text_x, panel_y + 32, profiler_body_color)
@@ -713,6 +715,7 @@ local function draw_profiler(renderer)
    draw_label(profiler_style, line_11, text_x + 150, panel_y + 160, profiler_toggle_color)
    draw_label(profiler_style, line_12, text_x, panel_y + 176, profiler_toggle_color)
    draw_label(profiler_style, line_13, text_x + 150, panel_y + 176, profiler_toggle_color)
+   draw_label(profiler_style, line_14, text_x, panel_y + 192, profiler_toggle_color)
 end
 
 local function set_vsync(enabled)
@@ -748,6 +751,24 @@ local function toggle_animation()
    set_animation_enabled(not scene.animate_enabled)
 end
 
+local function set_fullscreen_enabled(enabled)
+   local window = sdl3.get_window()
+   if window == nil then
+      rig.raise("sdl3 runtime did not provide a window")
+   end
+   if not sdl3.SetWindowFullscreen(window, enabled) then
+      rig.raise("failed to set window fullscreen: " .. ffi.string(sdl3.GetError()))
+   end
+   if not sdl3.SyncWindow(window) then
+      rig.raise("failed to synchronize fullscreen state: " .. ffi.string(sdl3.GetError()))
+   end
+   fullscreen_enabled = enabled
+end
+
+local function toggle_fullscreen()
+   set_fullscreen_enabled(not fullscreen_enabled)
+end
+
 local function on_key(key_info)
    if key_info.action ~= "down" or key_info["repeat"] then
       return
@@ -767,6 +788,8 @@ local function on_key(key_info)
       scene.scroller.enabled = not scene.scroller.enabled
    elseif key_info.key == "5" then
       toggle_animation()
+   elseif key_info.key == "F" or key_info.key == "f" then
+      toggle_fullscreen()
    end
 end
 
@@ -928,7 +951,7 @@ local function initialize_scene()
    })
 
    profiler_style:warm_text(
-      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM PROFILER ON OFF [] 0123456789./-"
+      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
    )
 
    scene.raster_splits = RasterSplits(renderer, 8)
