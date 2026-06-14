@@ -65,6 +65,10 @@ function M.Schema:optional(default_value)
    return M.OptionalSchema(self, default_value)
 end
 
+function M.Schema:optional_with(default_factory)
+   return M.OptionalSchema(self, nil, default_factory)
+end
+
 function M.Schema:transform(transform_fn)
    return M.TransformSchema(self, transform_fn)
 end
@@ -89,13 +93,20 @@ function M.DecodeSchema:decode(value, path)
    return self.decode_fn(value, path)
 end
 
-function M.OptionalSchema:init(inner, default_value)
+function M.OptionalSchema:init(inner, default_value, default_factory)
    self.inner = ensure_schema(inner, "schema.OptionalSchema inner")
    self.default_value = default_value
+   if default_factory ~= nil and type(default_factory) ~= "function" then
+      raise("schema.OptionalSchema default_factory must be a function if provided")
+   end
+   self.default_factory = default_factory
 end
 
 function M.OptionalSchema:decode(value, path)
    if value == nil then
+      if self.default_factory ~= nil then
+         return self.default_factory()
+      end
       return self.default_value
    end
    return self.inner:decode(value, path)
@@ -448,6 +459,10 @@ end
 
 function M.optional(inner, default_value)
    return M.OptionalSchema(inner, default_value)
+end
+
+function M.optional_with(inner, default_factory)
+   return M.OptionalSchema(inner, nil, default_factory)
 end
 
 function M.array(item_schema, options)

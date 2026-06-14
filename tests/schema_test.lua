@@ -55,6 +55,20 @@ test.case("schema record supports optional defaults and extra-field control", fu
    test.match(err, "point.z is not allowed")
 end)
 
+test.case("schema optional_with constructs a fresh default value", function()
+   local tags_schema = schema.optional_with(schema.array(schema.non_empty_string()), function()
+      return {}
+   end)
+
+   local first = schema.assert(tags_schema, nil, "tags")
+   local second = schema.assert(tags_schema, nil, "tags")
+
+   test.truthy(first ~= second)
+
+   first[1] = "alpha"
+   test.equal(#second, 0)
+end)
+
 test.case("schema record can opt in to allow extra fields", function()
    local point_schema = schema.record({
       x = schema.number(),

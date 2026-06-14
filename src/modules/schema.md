@@ -48,15 +48,23 @@ Schemas decode input values into validated, normalized output values.
 - `schema.table()`
 - `schema.optional(inner[, default_value])`
   - Also available as `inner:optional(default_value)`.
+  - Reuses `default_value` as-is when the input value is `nil`.
+- `schema.optional_with(inner, default_factory)`
+  - Also available as `inner:optional_with(default_factory)`.
+  - Calls `default_factory()` each time the input value is `nil`.
 - `schema.array(item_schema[, options])`
   - Supports:
     - `unique = true`
+  - Expects a dense 1-based array-like table.
 - `schema.map(key_schema, value_schema)`
 - `schema.record(fields[, options])`
   - Supports:
     - `allow_extra = true`
+  - Rejects extra fields by default.
 - `schema.enum(values)`
 - `schema.one_of(choices[, description])`
+  - Tries each choice in order until one succeeds.
+  - If `description` is provided, it is used as the failure message instead of exposing the last branch error.
 - `schema.has_metatable(expected_metatable, description)`
 
 ## Schema Methods
@@ -66,10 +74,12 @@ All schema objects provide:
 - `schema_object:assert(value[, path])`
 - `schema_object:check(value[, path])`
 - `schema_object:optional(default_value)`
+- `schema_object:optional_with(default_factory)`
 - `schema_object:transform(transform_fn)`
   - Applies caller-supplied normalization after the inner schema succeeds.
 - `schema_object:where(description, check_fn)`
   - Adds one extra predicate check after the inner schema succeeds.
+  - Raises `"... expects <description>"` when `check_fn` returns false.
 
 ## Examples
 
@@ -87,7 +97,9 @@ local history_schema = schema.positive_integer {
 local roots_schema = schema.array(schema.non_empty_string())
 
 local run_options_schema = schema.record({
-   roots = roots_schema:optional({ "." }),
+   roots = roots_schema:optional_with(function()
+      return { "." }
+   end),
    jobs = jobs_schema:optional(1),
 })
 
@@ -99,6 +111,8 @@ assert(opts.jobs == 4)
 assert(opts.roots[1] == ".")
 assert(schema.assert(history_schema, "8", "history") == 8)
 ```
+
+Use `optional_with(...)` when the default should be freshly constructed each time, such as for tables or other mutable values.
 
 Injected normalization:
 
