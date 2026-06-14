@@ -5,6 +5,7 @@ repr
 rig
 color
 schema
+stat
 platform
 windows
 dl
