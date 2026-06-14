@@ -13,6 +13,7 @@ freetype
 harfbuzz
 font
 sched
+scenegraph
 uv
 test
 sdl3
@@ -23,6 +24,7 @@ dxc
 spirvcross
 shader
 time
+animator
 profiler
 mathx
 mesh

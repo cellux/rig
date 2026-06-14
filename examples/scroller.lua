@@ -1,10 +1,10 @@
 local sdl3 = require("sdl3")
-local sched = require("sched")
+local scenegraph = require("scenegraph")
+local animator = require("animator")
 local font = require("font")
 local mathx = require("mathx")
 local color = require("color")
 local profiler = require("profiler")
-local time = require("time")
 local ffi = require("ffi")
 
 -- Populated by the initial sdl3 on_resize callback before after_setup runs.
@@ -22,9 +22,6 @@ local draw_rect = ffi.new("SDL_FRect[1]")
 local src_rect = ffi.new("SDL_FRect[1]")
 local dst_rect = ffi.new("SDL_FRect[1]")
 local full_alpha = 255
-local fixed_animation_dt = 1.0 / 120.0
-local max_animation_dt = 0.05
-local max_animation_steps_per_frame = 6
 local tau = math.pi * 2.0
 local lerp = mathx.lerp
 local upload_raster_texture
@@ -52,8 +49,8 @@ local sprite_outline_offsets = {
    { 2, 2 },
 }
 
-local Object = rig.class()
-local Animator = rig.class()
+local Object = scenegraph.Object
+local Animator = animator.Animator
 local Sprite = rig.class()
 local RasterSplit = rig.class()
 local RasterSplits = rig.class(Object)
@@ -64,200 +61,6 @@ local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
 
 local scene = nil
-
-function Object:init()
-   self.children = {}
-   self.enabled = true
-   self.running = true
-   self.parent = nil
-   self.animator = nil
-end
-
-function Object:add_child(child)
-   if child == nil then
-      rig.raise("Object:add_child requires a child object")
-   end
-
-   child.parent = self
-   table.insert(self.children, child)
-   if self.animator ~= nil then
-      child:set_animator(self.animator)
-   end
-   return child
-end
-
-function Object:set_animator(animator)
-   self.animator = animator
-   for i = 1, #self.children do
-      self.children[i]:set_animator(animator)
-   end
-end
-
-function Object:update_tree(dt)
-   if type(self.update) == "function" then
-      self:update(dt)
-   end
-   for i = 1, #self.children do
-      self.children[i]:update_tree(dt)
-   end
-end
-
-function Object:draw_tree(context)
-   if self.enabled == false then
-      return
-   end
-
-   if type(self.draw) == "function" then
-      self:draw(context)
-   end
-   for i = 1, #self.children do
-      self.children[i]:draw_tree(context)
-   end
-end
-
-function Object:spawn_drive_tasks(tasks)
-   if self.running ~= false and type(self.drive) == "function" then
-      tasks[#tasks + 1] = sched.spawn(function()
-         self:drive()
-      end)
-   end
-   for i = 1, #self.children do
-      self.children[i]:spawn_drive_tasks(tasks)
-   end
-end
-
-function Object:release_tree()
-   for i = #self.children, 1, -1 do
-      self.children[i]:release_tree()
-   end
-   if type(self.release) == "function" then
-      self:release()
-   end
-   self.children = {}
-end
-
-function Animator:init(root)
-   self.root = nil
-   self.animate_enabled = true
-   self.animation_time = 0.0
-   self.animation_last_monotonic = 0.0
-   self.animation_accumulator = 0.0
-   self.animation_step_generation = 0
-   self.animation_step_count = 0
-   self.drive_tasks = {}
-
-   if root ~= nil then
-      self:register_root(root)
-   end
-end
-
-function Animator:register_root(root)
-   if root == nil then
-      rig.raise("Animator:register_root requires a root object")
-   end
-
-   self.root = root
-   root:set_animator(self)
-end
-
-function Animator:start()
-   self.animation_time = 0.0
-   self.animation_last_monotonic = time.monotonic()
-   self.animation_accumulator = 0.0
-   self.animation_step_generation = 0
-   self.animation_step_count = 0
-   self.drive_tasks = {}
-
-   if self.root ~= nil then
-      self.root:spawn_drive_tasks(self.drive_tasks)
-   end
-end
-
-function Animator:set_enabled(enabled)
-   self.animate_enabled = enabled
-
-   if enabled then
-      self.animation_last_monotonic = time.monotonic()
-      local scheduler = sched.active_scheduler()
-      if scheduler ~= nil then
-         for i = 1, #self.drive_tasks do
-            scheduler:wake(self.drive_tasks[i])
-         end
-      end
-   end
-end
-
-function Animator:update_scene(dt)
-   if self.root ~= nil then
-      self.root:update_tree(dt)
-   end
-end
-
-function Animator:next_steps(last_generation)
-   while true do
-      if not self.animate_enabled then
-         sched.park()
-      elseif self.animation_step_generation ~= last_generation then
-         return self.animation_step_generation, self.animation_step_count
-      else
-         sched.park()
-      end
-   end
-end
-
-function Animator:sleep(duration)
-   local deadline = self.animation_time + duration
-   local generation = self.animation_step_generation
-
-   while self.animation_time < deadline do
-      generation = self:next_steps(generation)
-   end
-end
-
-function Animator:tick()
-   if not self.animate_enabled then
-      self.animation_last_monotonic = time.monotonic()
-      return
-   end
-
-   local now = time.monotonic()
-   local dt = now - self.animation_last_monotonic
-   self.animation_last_monotonic = now
-   if dt < 0.0 then
-      dt = 0.0
-   elseif dt > max_animation_dt then
-      dt = max_animation_dt
-   end
-
-   self.animation_accumulator = self.animation_accumulator + dt
-   local steps = 0
-   while self.animation_accumulator >= fixed_animation_dt and steps < max_animation_steps_per_frame do
-      self.animation_accumulator = self.animation_accumulator - fixed_animation_dt
-      steps = steps + 1
-   end
-
-   if steps == max_animation_steps_per_frame and self.animation_accumulator > fixed_animation_dt then
-      self.animation_accumulator = fixed_animation_dt
-   end
-
-   if steps == 0 then
-      return
-   end
-
-   for _ = 1, steps do
-      self:update_scene(fixed_animation_dt)
-      self.animation_time = self.animation_time + fixed_animation_dt
-   end
-   self.animation_step_count = steps
-   self.animation_step_generation = self.animation_step_generation + 1
-
-   local scheduler = sched.active_scheduler()
-   if scheduler ~= nil then
-      for i = 1, #self.drive_tasks do
-         scheduler:wake(self.drive_tasks[i])
-      end
-   end
-end
 
 function Sprite:init(index, character, glyph)
    self.character = character
