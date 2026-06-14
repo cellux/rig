@@ -5,6 +5,8 @@ repr
 rig
 color
 schema
+platform
+windows
 dl
 freetype
 harfbuzz

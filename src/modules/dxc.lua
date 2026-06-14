@@ -1,42 +1,9 @@
 local M = ... or {}
 local ffi = require("ffi")
 local schema = require("schema")
+local windows = require("windows")
 
 ffi.cdef[[
-typedef unsigned char BYTE;
-typedef uint32_t UINT32;
-typedef uint64_t UINT64;
-typedef unsigned int UINT;
-typedef unsigned long ULONG;
-typedef long HRESULT;
-typedef size_t SIZE_T;
-typedef wchar_t WCHAR;
-typedef WCHAR *LPWSTR;
-typedef const WCHAR *LPCWSTR;
-typedef void *LPVOID;
-typedef const void *LPCVOID;
-typedef const char *LPCSTR;
-typedef int BOOL;
-
-typedef struct GUID {
-   uint32_t Data1;
-   uint16_t Data2;
-   uint16_t Data3;
-   uint8_t Data4[8];
-} GUID;
-typedef GUID CLSID;
-typedef GUID IID;
-
-typedef struct IUnknown IUnknown;
-typedef struct IUnknownVtbl {
-   HRESULT (*QueryInterface)(IUnknown *This, const IID *riid, void **ppvObject);
-   ULONG (*AddRef)(IUnknown *This);
-   ULONG (*Release)(IUnknown *This);
-} IUnknownVtbl;
-struct IUnknown {
-   const IUnknownVtbl *lpVtbl;
-};
-
 typedef struct IDxcBlob IDxcBlob;
 typedef struct IDxcBlobVtbl {
    HRESULT (*QueryInterface)(IDxcBlob *This, const IID *riid, void **ppvObject);
@@ -165,7 +132,6 @@ struct IDxcCompiler3 {
 HRESULT DxcCreateInstance(const CLSID *rclsid, const IID *riid, void **ppv);
 ]]
 
-local DXC_CP_UTF8 = 65001
 local DXC_OUT_OBJECT = 1
 local DXC_OUT_ERRORS = 2
 
@@ -400,7 +366,7 @@ function M.compile_spirv(options)
    local source = ffi.new("DxcBuffer[1]")
    source[0].Ptr = source_buffer
    source[0].Size = #normalized.source
-   source[0].Encoding = DXC_CP_UTF8
+   source[0].Encoding = windows.CP_UTF8
 
    local result_out = ffi.new("void *[1]")
    hr = compiler.lpVtbl.Compile(
