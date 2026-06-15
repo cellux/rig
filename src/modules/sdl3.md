@@ -42,14 +42,15 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Overrides renderer creation for `mode = "sdl3"`.
   - Defaults to the builtin SDL renderer path.
 - `render`
-  - Mandatory render callback for the selected SDL driver.
+  - Render callback for the selected SDL driver.
+  - Required unless `options.app` provides `render(...)` or `invoke_render(...)`.
 - `event_handlers.key(key_info)`
   - Optional keyboard event callback.
 - `event_handlers.mouse(mouse_info)`
   - Optional mouse event callback.
 - `event_handlers.resize(resize_info)`
   - Optional window resize callback.
-  - Called once during setup with `resize_info.initial == true`.
+  - Called once at the start of the runtime loop with `resize_info.initial == true`.
   - Called again when the window size or pixel size changes.
   - `resize_info` currently includes:
     - `type = "resize"`
@@ -85,6 +86,14 @@ Additional fields accepted by `options.driver_config.sdl3_gl`:
     - `accelerated_visual`
 - `swap_interval`
   - OpenGL swap interval passed after context creation.
+
+When `options.app` is a `rig.App` subclass, the SDL drivers also look for app event methods:
+
+- `app:on_key(key_info)`
+- `app:on_mouse(mouse_info)`
+- `app:on_resize(resize_info)`
+
+Those app handlers are merged with any explicit `options.event_handlers`.
 
 Additional fields accepted by `options.driver_config.sdl3_gpu`:
 

@@ -20,31 +20,13 @@ local max_turn_step = 0.12
 local ant_scale = 1.0
 
 local Object = scenegraph.Object
-local Animator = animator.Animator
 local Ant = rig.class(Object)
 local Slider = rig.class(Object)
 local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
+local App = rig.class(animator.App)
 
-local scene = nil
-local animation_runtime = animator.make_hooks {
-   create_root = function()
-      scene = Scene()
-      scene:on_resize({
-         width = window_width or 1280,
-         height = window_height or 720,
-      })
-      return scene
-   end,
-
-   release = function()
-      scene = nil
-   end,
-}
 local rect = ffi.new("SDL_FRect[1]")
-local frame_profiler = profiler.FrameProfiler {
-   fps = 60,
-}
 local clamp = mathx.clamp
 local clamp01 = mathx.clamp01
 local background_color = color.rgbaf(0.06, 0.08, 0.05, 1.0)
@@ -388,7 +370,7 @@ local function draw_text(renderer, text, x, y, draw_color, scale)
    end
 end
 
-local function draw_fps_overlay(renderer)
+local function draw_fps_overlay(renderer, frame_profiler)
    local profile = frame_profiler:snapshot()
    local label = ("FPS %d"):format(math.floor(profile.fps + 0.5))
    local panel_w = (#label * 4 * font_scale) + 8
@@ -504,8 +486,8 @@ end
 function Ant:init(index, ant_color)
    self:super().init(self)
    self.id = index
-   self.x = math.random(ant_margin, window_width - ant_margin)
-   self.y = math.random(ant_margin, window_height - ant_margin)
+   self.x = 0
+   self.y = 0
    self.angle = math.random() * math.pi * 2.0
    self.desired_angle = self.angle
    self.turn_speed = max_turn_step * (0.8 + math.random() * 0.5)
@@ -515,6 +497,11 @@ function Ant:init(index, ant_color)
    self.color = ant_color
    self.speed = ant_speed * self.step_interval * (0.85 + math.random() * 0.35)
    self.scene = nil
+end
+
+function Ant:place_randomly()
+   self.x = math.random(ant_margin, window_width - ant_margin)
+   self.y = math.random(ant_margin, window_height - ant_margin)
 end
 
 function Ant:draw(context)
@@ -780,7 +767,7 @@ function ProfilerOverlay:init()
 end
 
 function ProfilerOverlay:draw(context)
-   draw_fps_overlay(context.renderer)
+   draw_fps_overlay(context.renderer, context.frame_profiler)
 end
 
 function Scene:init()
@@ -798,11 +785,16 @@ function Scene:init()
 
    self.profiler_overlay = self:add_child(ProfilerOverlay())
    self:add_child(self.slider)
-   self.animator = nil
 end
 
 function Scene:draw(context)
    sdl3.clear(self.background_color:unpackf())
+end
+
+function Scene:activate()
+   for i = 1, #self.ants do
+      self.ants[i]:place_randomly()
+   end
 end
 
 function Scene:on_mouse(mouse_info)
@@ -820,64 +812,91 @@ function Scene:on_resize(info)
 end
 
 function Scene:release()
-   self.animator = nil
    self.profiler_overlay = nil
    self.slider = nil
    self.ants = {}
 end
 
-local function on_render()
-   frame_profiler:begin_cpu()
+function App:init()
+   self:super().init(self)
+   self.frame_profiler = profiler.FrameProfiler {
+      fps = 60,
+   }
+   self.root = Scene()
+end
+
+function App:after_setup()
+   local window = sdl3.get_window()
+   if window == nil then
+      rig.raise("sdl3 runtime did not provide a window")
+   end
+
+   local width_out = ffi.new("int[1]")
+   local height_out = ffi.new("int[1]")
+   if not sdl3.GetWindowSize(window, width_out, height_out) then
+      rig.raise("failed to query window size: " .. ffi.string(sdl3.GetError()))
+   end
+
+   window_width = tonumber(width_out[0]) or 0
+   window_height = tonumber(height_out[0]) or 0
+   self.root:on_resize({
+      width = window_width,
+      height = window_height,
+   })
+   self:super().after_setup(self)
+end
+
+function App:before_frame()
+   self.frame_profiler:begin_frame()
+end
+
+function App:after_frame()
+   self.frame_profiler:end_frame()
+end
+
+function App:on_mouse(mouse_info)
+   if self.root ~= nil then
+      self.root:on_mouse(mouse_info)
+   end
+end
+
+function App:on_resize(info)
+   window_width = math.max(1, info.width)
+   window_height = math.max(1, info.height)
+   if self.root ~= nil then
+      self.root:on_resize(info)
+   end
+end
+
+function App:render()
    local renderer = sdl3.get_renderer()
    if renderer == nil then
       rig.raise("sdl3 runtime did not provide a renderer")
    end
 
-   if scene ~= nil then
-      scene:draw_tree({
+   self.frame_profiler:begin_cpu()
+   if self.root ~= nil then
+      self.root:draw_tree({
          renderer = renderer,
+         frame_profiler = self.frame_profiler,
       })
    end
-   frame_profiler:end_cpu()
+   self.frame_profiler:end_cpu()
 end
 
-local function handle_resize(info)
-   if scene == nil then
-      window_width = math.max(1, info.width)
-      window_height = math.max(1, info.height)
-      return
-   end
-   scene:on_resize(info)
+function App:release()
+   self.frame_profiler = nil
 end
 
 rig.run {
    mode = "sdl3",
-   event_handlers = {
-      mouse = function(mouse_info)
-         if scene ~= nil then
-            scene:on_mouse(mouse_info)
-         end
-      end,
-      resize = handle_resize,
-   },
    driver_config = {
       sdl3 = {
          window_props = {
             [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
             [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
          },
-         render = on_render,
       },
    },
-   hooks = {
-      after_setup = animation_runtime.hooks.after_setup,
-      before_drain = animation_runtime.hooks.before_drain,
-      before_frame = function()
-         frame_profiler:begin_frame()
-      end,
-      after_frame = function()
-         frame_profiler:end_frame()
-      end,
-      before_shutdown = animation_runtime.hooks.before_shutdown,
-   },
+   app = App,
 }

@@ -12,6 +12,33 @@ function Object:init()
    self.running = true
    self.parent = nil
    self.animator = nil
+   self._resource_scope = nil
+end
+
+function Object:ensure_resource_scope(label)
+   local scope = self._resource_scope
+   if scope ~= nil then
+      return scope
+   end
+
+   scope = rig.ResourceScope(self, label or "scenegraph object resource scope")
+   self._resource_scope = scope
+   return scope
+end
+
+function Object:own(resource, release_fn)
+   return self:ensure_resource_scope():adopt(resource, release_fn)
+end
+
+function Object:replace_owned(key, resource, release_fn)
+   return self:ensure_resource_scope():replace(key, resource, release_fn)
+end
+
+function Object:create_owned_scope(label)
+   local scope = rig.ResourceScope(self, label or "scenegraph owned scope")
+   return self:own(scope, function(_, owned_scope)
+      owned_scope:release()
+   end)
 end
 
 function Object:add_child(child)
@@ -31,6 +58,15 @@ function Object:set_animator(animator)
    self.animator = animator
    for i = 1, #self.children do
       self.children[i]:set_animator(animator)
+   end
+end
+
+function Object:activate_tree(context)
+   if type(self.activate) == "function" then
+      self:activate(context)
+   end
+   for i = 1, #self.children do
+      self.children[i]:activate_tree(context)
    end
 end
 
@@ -73,6 +109,10 @@ function Object:release_tree()
    end
    if type(self.release) == "function" then
       self:release()
+   end
+   if self._resource_scope ~= nil then
+      self._resource_scope:release()
+      self._resource_scope = nil
    end
    self.children = {}
 end

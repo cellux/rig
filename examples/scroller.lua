@@ -7,7 +7,6 @@ local color = require("color")
 local profiler = require("profiler")
 local ffi = require("ffi")
 
--- Populated by the initial sdl3 on_resize callback before after_setup runs.
 local window_width
 local window_height
 local font_path
@@ -50,7 +49,6 @@ local sprite_outline_offsets = {
 }
 
 local Object = scenegraph.Object
-local Animator = animator.Animator
 local Sprite = rig.class()
 local RasterSplit = rig.class()
 local RasterSplits = rig.class(Object)
@@ -59,47 +57,10 @@ local Scroller = rig.class(Object)
 local SpriteSnake = rig.class(Object)
 local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
+local App = rig.class(animator.App)
 
-local scene = nil
 local find_font_path
 local scroll_text
-local animation_runtime = animator.make_hooks {
-   create_root = function()
-      local renderer = sdl3.get_renderer()
-      font_path = find_font_path()
-      face = font.load_face(font_path)
-      frame_profiler = profiler.FrameProfiler {
-         fps = 60,
-      }
-      profiler_style = font.create_style(face, {
-         pixel_size = 14,
-         page_width = 256,
-         page_height = 128,
-         padding = 1,
-      })
-
-      profiler_style:warm_text(
-         "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
-      )
-
-      scene = Scene(renderer, face, scroll_text)
-      return scene
-   end,
-
-   release = function()
-      frame_profiler = nil
-      scene = nil
-      if profiler_style ~= nil then
-         profiler_style:release()
-         profiler_style = nil
-      end
-      if face ~= nil then
-         face:release()
-         face = nil
-      end
-      font_path = nil
-   end,
-}
 
 function Sprite:init(index, character, glyph)
    self.character = character
@@ -238,6 +199,11 @@ function RasterSplits:init(renderer, count)
    self.items = {}
    self.field = build_raster_field()
    self.texture, self.texture_height = upload_raster_texture(renderer, self.field, 2)
+   self.texture = self:replace_owned("texture", self.texture, function(_, texture)
+      if texture ~= nil and texture ~= ffi.NULL then
+         sdl3.DestroyTexture(texture)
+      end
+   end)
    self.alpha = 1.0
    self.preset_index = 1
    self.target_preset_index = 1
@@ -259,10 +225,7 @@ function RasterSplits:release()
    self.items = {}
    self.field = nil
    self.texture_height = nil
-   if self.texture ~= nil and self.texture ~= ffi.NULL then
-      sdl3.DestroyTexture(self.texture)
-      self.texture = nil
-   end
+   self.texture = nil
 end
 
 function RasterSplits:apply_preset(preset_index)
@@ -355,12 +318,14 @@ function Title:init(face, text)
    self.enabled = false
    self.shadow_offset = 4
    self.phase = 0.0
-   self.style = font.create_style(face, {
+   self.style = self:replace_owned("style", font.create_style(face, {
       pixel_size = 74,
       page_width = 512,
       page_height = 256,
       padding = 2,
-   })
+   }), function(_, style)
+      style:release()
+   end)
    self.run = self.style:build_run(text)
    self.draw_color = color.WHITE:copy()
 end
@@ -368,10 +333,7 @@ end
 function Title:release()
    self.run = nil
    self.draw_color = nil
-   if self.style ~= nil then
-      self.style:release()
-      self.style = nil
-   end
+   self.style = nil
 end
 
 function Title:calc_color(out, index)
@@ -416,12 +378,14 @@ function Scroller:init(face, text)
    self.loop_gap = 240.0
    self.offset = 0.0
    self.wave_phase = 0.0
-   self.style = font.create_style(face, {
+   self.style = self:replace_owned("style", font.create_style(face, {
       pixel_size = 38,
       page_width = 1024,
       page_height = 512,
       padding = 2,
-   })
+   }), function(_, style)
+      style:release()
+   end)
    self.run = self.style:build_run(text)
    self.glyph_color = color.WHITE:copy()
 end
@@ -429,14 +393,11 @@ end
 function Scroller:release()
    self.run = nil
    self.glyph_color = nil
-   if self.style ~= nil then
-      self.style:release()
-      self.style = nil
-   end
+   self.style = nil
 end
 
 function Scroller:calc_color(out, index, x, y)
-   local phase = scene.raster_splits.phase * 1.7 + index * 0.18 + x * 0.003
+   local phase = self.parent.raster_splits.phase * 1.7 + index * 0.18 + x * 0.003
    local r = math.floor(150 + 105 * (0.5 + 0.5 * math.sin(phase)))
    local g = math.floor(110 + 130 * (0.5 + 0.5 * math.sin(phase + 1.9)))
    local b = math.floor(80 + 165 * (0.5 + 0.5 * math.sin(phase + 3.7)))
@@ -490,12 +451,14 @@ function SpriteSnake:init(face, text)
    self.outline_enabled = true
    self.text = text
    self.phase = 0.0
-   self.style = font.create_style(face, {
+   self.style = self:replace_owned("style", font.create_style(face, {
       pixel_size = 82,
       page_width = 256,
       page_height = 256,
       padding = 2,
-   })
+   }), function(_, style)
+      style:release()
+   end)
    self.glyphs = self:create_glyphs(text)
    self.sprites = {}
 
@@ -520,10 +483,7 @@ end
 function SpriteSnake:release()
    self.sprites = {}
    self.glyphs = nil
-   if self.style ~= nil then
-      self.style:release()
-      self.style = nil
-   end
+   self.style = nil
 end
 
 function SpriteSnake:draw(context)
@@ -548,7 +508,12 @@ end
 
 function ProfilerOverlay:draw(context)
    if profiler_enabled then
-      draw_profiler(context.renderer)
+      draw_profiler(
+         context.renderer,
+         context.scene,
+         context.profiler_style,
+         context.frame_profiler
+      )
    end
 end
 
@@ -560,7 +525,6 @@ function Scene:init(renderer, face, scroll_text_value)
    self.title = self:add_child(Title(face, "NEON PHANTOMS"))
    self.scroller = self:add_child(Scroller(face, scroll_text_value))
    self.profiler_overlay = self:add_child(ProfilerOverlay())
-   self.animator = nil
 end
 
 function Scene:draw(context)
@@ -607,7 +571,6 @@ function Scene:on_key(key_info)
 end
 
 function Scene:release()
-   self.animator = nil
    self.raster_splits = nil
    self.sprite_snake = nil
    self.title = nil
@@ -825,7 +788,7 @@ build_raster_field = function()
    return field
 end
 
-draw_profiler = function(renderer)
+draw_profiler = function(renderer, scene, style, frame_profiler)
    local profile = frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
@@ -852,21 +815,21 @@ draw_profiler = function(renderer)
    local line_13 = fullscreen_enabled and "FULLSCREEN ON [F]" or "FULLSCREEN OFF [F]"
    local line_14 = "PROFILER ON [0]"
 
-   draw_label(profiler_style, header, text_x, panel_y + 16, profiler_header_color)
-   draw_label(profiler_style, line_1, text_x, panel_y + 32, profiler_body_color)
-   draw_label(profiler_style, line_2, text_x, panel_y + 48, profiler_body_color)
-   draw_label(profiler_style, line_3, text_x, panel_y + 64, profiler_body_color)
-   draw_label(profiler_style, line_4, text_x, panel_y + 80, profiler_body_color)
-   draw_label(profiler_style, line_5, text_x, panel_y + 96, profiler_body_color)
-   draw_label(profiler_style, line_6, text_x, panel_y + 112, profiler_warn_color)
-   draw_label(profiler_style, line_7, text_x, panel_y + 128, profiler_toggle_color)
-   draw_label(profiler_style, line_8, text_x, panel_y + 144, profiler_toggle_color)
-   draw_label(profiler_style, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
-   draw_label(profiler_style, line_10, text_x, panel_y + 160, profiler_toggle_color)
-   draw_label(profiler_style, line_11, text_x + 150, panel_y + 160, profiler_toggle_color)
-   draw_label(profiler_style, line_12, text_x, panel_y + 176, profiler_toggle_color)
-   draw_label(profiler_style, line_13, text_x + 150, panel_y + 176, profiler_toggle_color)
-   draw_label(profiler_style, line_14, text_x, panel_y + 192, profiler_toggle_color)
+   draw_label(style, header, text_x, panel_y + 16, profiler_header_color)
+   draw_label(style, line_1, text_x, panel_y + 32, profiler_body_color)
+   draw_label(style, line_2, text_x, panel_y + 48, profiler_body_color)
+   draw_label(style, line_3, text_x, panel_y + 64, profiler_body_color)
+   draw_label(style, line_4, text_x, panel_y + 80, profiler_body_color)
+   draw_label(style, line_5, text_x, panel_y + 96, profiler_body_color)
+   draw_label(style, line_6, text_x, panel_y + 112, profiler_warn_color)
+   draw_label(style, line_7, text_x, panel_y + 128, profiler_toggle_color)
+   draw_label(style, line_8, text_x, panel_y + 144, profiler_toggle_color)
+   draw_label(style, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
+   draw_label(style, line_10, text_x, panel_y + 160, profiler_toggle_color)
+   draw_label(style, line_11, text_x + 150, panel_y + 160, profiler_toggle_color)
+   draw_label(style, line_12, text_x, panel_y + 176, profiler_toggle_color)
+   draw_label(style, line_13, text_x + 150, panel_y + 176, profiler_toggle_color)
+   draw_label(style, line_14, text_x, panel_y + 192, profiler_toggle_color)
 end
 
 local function set_vsync(enabled)
@@ -900,55 +863,94 @@ toggle_fullscreen = function()
    set_fullscreen_enabled(not fullscreen_enabled)
 end
 
-local function on_key(key_info)
-   if scene == nil then
-      return
-   end
-   scene:on_key(key_info)
-end
+function App:init()
+   self:super().init(self)
 
-local function render_frame()
-   frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
-   local layout = current_layout()
-   if scene ~= nil then
-      scene:draw_tree({
-         renderer = renderer,
-         layout = layout,
-      })
+   if renderer == nil then
+      rig.raise("sdl3 runtime did not provide a renderer")
    end
-   frame_profiler:end_cpu()
+
+   font_path = find_font_path()
+   face = font.load_face(font_path)
+   frame_profiler = profiler.FrameProfiler {
+      fps = 60,
+   }
+   profiler_style = font.create_style(face, {
+      pixel_size = 14,
+      page_width = 256,
+      page_height = 128,
+      padding = 1,
+   })
+
+   profiler_style:warm_text(
+      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
+   )
+
+   self.frame_profiler = frame_profiler
+   self.profiler_style = profiler_style
+   self.root = Scene(renderer, face, scroll_text)
 end
 
-local function on_resize(info)
+function App:before_frame()
+   self.frame_profiler:begin_frame()
+end
+
+function App:after_frame()
+   self.frame_profiler:end_frame()
+end
+
+function App:on_key(key_info)
+   if self.root ~= nil then
+      self.root:on_key(key_info)
+   end
+end
+
+function App:on_resize(info)
    window_width = math.max(1, info.width)
    window_height = math.max(1, info.height)
 end
 
+function App:render()
+   self.frame_profiler:begin_cpu()
+   local renderer = sdl3.get_renderer()
+   local layout = current_layout()
+   if self.root ~= nil then
+      self.root:draw_tree({
+         renderer = renderer,
+         layout = layout,
+         scene = self.root,
+         profiler_style = self.profiler_style,
+         frame_profiler = self.frame_profiler,
+      })
+   end
+   self.frame_profiler:end_cpu()
+end
+
+function App:release()
+   self.frame_profiler = nil
+   self.profiler_style = nil
+   if profiler_style ~= nil then
+      profiler_style:release()
+      profiler_style = nil
+   end
+   if face ~= nil then
+      face:release()
+      face = nil
+   end
+   frame_profiler = nil
+   font_path = nil
+end
+
 rig.run {
    mode = "sdl3",
-   event_handlers = {
-      key = on_key,
-      resize = on_resize,
-   },
    driver_config = {
       sdl3 = {
          window_props = {
             [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
             [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
          },
-         render = render_frame,
       },
    },
-   hooks = {
-      after_setup = animation_runtime.hooks.after_setup,
-      before_drain = animation_runtime.hooks.before_drain,
-      before_frame = function()
-         frame_profiler:begin_frame()
-      end,
-      after_frame = function()
-         frame_profiler:end_frame()
-      end,
-      before_shutdown = animation_runtime.hooks.before_shutdown,
-   },
+   app = App,
 }

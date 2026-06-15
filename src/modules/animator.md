@@ -5,10 +5,10 @@
 ## Exports
 
 - `animator.Animator`
+- `animator.App`
 - `animator.DEFAULT_FIXED_DT`
 - `animator.DEFAULT_MAX_DT`
 - `animator.DEFAULT_MAX_STEPS_PER_FRAME`
-- `animator.make_hooks(options)`
 
 ## Usage
 
@@ -26,34 +26,32 @@ local scene_animator = animator.Animator(root, {
 
 Call `scene_animator:start()` once the object tree is ready, `scene_animator:tick()` once per frame, and `scene_animator:sleep(seconds)` from `drive()` coroutines that should wait in scene time.
 
-## `make_hooks`
+## `App`
 
-`animator.make_hooks(...)` builds the common `rig.run(...)` hook trio for scene creation, ticking, and teardown.
+`animator.App` extends `rig.App` with the common scene-root and animator lifecycle:
 
 ```lua
 local animator = require("animator")
 
-local runtime = animator.make_hooks {
-   create_root = function()
-      return Scene()
-   end,
-   setup = function(root, scene_animator)
-      root:initialize_resources()
-   end,
-   release = function(root, scene_animator)
-      -- Optional extra cleanup after root:release_tree().
-   end,
-}
+local App = rig.class(animator.App)
+
+function App:init()
+   self:super().init(self)
+   self.root = Scene()
+end
 
 rig.run {
-   hooks = runtime.hooks,
+   mode = "sdl3_gpu",
+   app = App,
 }
 ```
 
-The returned table exposes:
+Subclasses may override:
 
-- `runtime.root`
-- `runtime.animator`
-- `runtime.hooks.after_setup`
-- `runtime.hooks.before_drain`
-- `runtime.hooks.before_shutdown`
+- `init(options)`
+- `create_root()`
+- `create_scene_animator(root)`
+- `after_setup()`
+- `release(root, scene_animator)`
+
+The base class expects either `self.root` to be set or `create_root()` to return a root before `self:super().after_setup(self)` runs. `rig.run { app = SomeAppClass }` instantiates the app class after driver setup, so `init(...)` may use runtime facilities if needed. The inherited animator behavior wires `self.root` to an animator in `after_setup`, runs `root:activate_tree()` before the animator starts, ticks it in `before_drain`, and releases the root tree in `before_shutdown`.

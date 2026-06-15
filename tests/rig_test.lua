@@ -456,3 +456,95 @@ test.case("rig.run validates and executes declared hook phases", function()
    test.match(tostring(unknown_phase_err), "does not know hook phase")
    test.match(tostring(unknown_phase_err), "before_frame")
 end)
+
+test.case("rig.run instantiates app classes and merges app hooks with run hooks", function()
+   local observed = {}
+   local setup_complete = false
+   local TestApp = rig.class(rig.App)
+
+   function TestApp:init(options)
+      test.truthy(setup_complete)
+      self.options = options
+   end
+
+   function TestApp:after_setup()
+      test.equal(self.options.driver, "rig_test_app_driver")
+      table.insert(observed, "app_after_setup")
+   end
+
+   function TestApp:before_tick()
+      table.insert(observed, "app_before_tick")
+   end
+
+   function TestApp:before_shutdown()
+      table.insert(observed, "app_before_shutdown")
+   end
+
+   rig.register_runtime_driver("rig_test_app_driver", {
+      phases = {
+         "before_tick",
+      },
+      setup = function()
+         setup_complete = true
+      end,
+      loop = function(options, run_hooks)
+         run_hooks("before_tick", options)
+      end,
+   })
+
+   rig.run {
+      driver = "rig_test_app_driver",
+      app = TestApp,
+      hooks = {
+         after_setup = function()
+            table.insert(observed, "hook_after_setup")
+         end,
+         before_shutdown = function()
+            table.insert(observed, "hook_before_shutdown")
+         end,
+      },
+   }
+
+   test.equal(#observed, 5)
+   test.equal(observed[1], "app_after_setup")
+   test.equal(observed[2], "hook_after_setup")
+   test.equal(observed[3], "app_before_tick")
+   test.equal(observed[4], "hook_before_shutdown")
+   test.equal(observed[5], "app_before_shutdown")
+end)
+
+test.case("rig.run merges app event handlers with option event handlers", function()
+   local observed = {}
+   local TestApp = rig.class(rig.App)
+
+   function TestApp:on_key(key_info)
+      table.insert(observed, "app:" .. key_info.key)
+   end
+
+   rig.register_runtime_driver("rig_test_event_driver", {
+      events = {
+         "key",
+      },
+      loop = function(_, _, runtime)
+         local handler = runtime:event_handler("key")
+         test.equal(type(handler), "function")
+         handler({
+            key = "space",
+         })
+      end,
+   })
+
+   rig.run {
+      driver = "rig_test_event_driver",
+      app = TestApp,
+      event_handlers = {
+         key = function(key_info)
+            table.insert(observed, "option:" .. key_info.key)
+         end,
+      },
+   }
+
+   test.equal(#observed, 2)
+   test.equal(observed[1], "app:space")
+   test.equal(observed[2], "option:space")
+end)

@@ -7,10 +7,10 @@ local sdl3 = require("sdl3")
 local ffi = require("ffi")
 
 local Object = scenegraph.Object
-local Animator = animator.Animator
 local MovingSquare = rig.class(Object)
 local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
+local App = rig.class(animator.App)
 
 local window_width
 local window_height
@@ -26,43 +26,7 @@ local profiler_warn_color = color.rgb(255, 214, 160)
 local profiler_toggle_color = color.rgb(196, 220, 255)
 
 local draw_rect = ffi.new("SDL_FRect[1]")
-local scene = nil
 local find_font_path
-local animation_runtime = animator.make_hooks {
-   create_root = function()
-      font_path = find_font_path()
-      face = font.load_face(font_path)
-      frame_profiler = profiler.FrameProfiler {
-         fps = 60,
-      }
-      profiler_style = font.create_style(face, {
-         pixel_size = 14,
-         page_width = 256,
-         page_height = 128,
-         padding = 1,
-      })
-      profiler_style:warm_text(
-         "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
-      )
-
-      scene = Scene()
-      return scene
-   end,
-
-   release = function()
-      frame_profiler = nil
-      scene = nil
-      if profiler_style ~= nil then
-         profiler_style:release()
-         profiler_style = nil
-      end
-      if face ~= nil then
-         face:release()
-         face = nil
-      end
-      font_path = nil
-   end,
-}
 
 local function file_exists(path)
    local file = io.open(path, "rb")
@@ -105,9 +69,9 @@ local function fill_rect(renderer, x, y, w, h)
    end
 end
 
-local function draw_label(renderer, text, x, baseline_y, draw_color)
-   local run = profiler_style:build_run(text)
-   profiler_style:draw_run(run, x, baseline_y, function()
+local function draw_label(style, renderer, text, x, baseline_y, draw_color)
+   local run = style:build_run(text)
+   style:draw_run(run, x, baseline_y, function()
       return draw_color
    end)
 end
@@ -152,7 +116,7 @@ end
 
 function ProfilerOverlay:draw(context)
    local renderer = context.renderer
-   local profile = frame_profiler:snapshot()
+   local profile = context.frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
    local panel_w = math.min(378, math.max(220, window_width - panel_x * 2))
@@ -170,24 +134,23 @@ function ProfilerOverlay:draw(context)
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_window_max_ms, profile.gap_peak_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
-   local line_8 = scene.animator.animate_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
+   local line_8 = context.scene.animator.animate_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
 
-   draw_label(renderer, header, text_x, panel_y + 16, profiler_header_color)
-   draw_label(renderer, line_1, text_x, panel_y + 32, profiler_body_color)
-   draw_label(renderer, line_2, text_x, panel_y + 48, profiler_body_color)
-   draw_label(renderer, line_3, text_x, panel_y + 64, profiler_body_color)
-   draw_label(renderer, line_4, text_x, panel_y + 80, profiler_body_color)
-   draw_label(renderer, line_5, text_x, panel_y + 96, profiler_body_color)
-   draw_label(renderer, line_6, text_x, panel_y + 112, profiler_warn_color)
-   draw_label(renderer, line_7, text_x, panel_y + 128, profiler_toggle_color)
-   draw_label(renderer, line_8, text_x, panel_y + 144, profiler_toggle_color)
-   draw_label(renderer, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
+   draw_label(context.profiler_style, renderer, header, text_x, panel_y + 16, profiler_header_color)
+   draw_label(context.profiler_style, renderer, line_1, text_x, panel_y + 32, profiler_body_color)
+   draw_label(context.profiler_style, renderer, line_2, text_x, panel_y + 48, profiler_body_color)
+   draw_label(context.profiler_style, renderer, line_3, text_x, panel_y + 64, profiler_body_color)
+   draw_label(context.profiler_style, renderer, line_4, text_x, panel_y + 80, profiler_body_color)
+   draw_label(context.profiler_style, renderer, line_5, text_x, panel_y + 96, profiler_body_color)
+   draw_label(context.profiler_style, renderer, line_6, text_x, panel_y + 112, profiler_warn_color)
+   draw_label(context.profiler_style, renderer, line_7, text_x, panel_y + 128, profiler_toggle_color)
+   draw_label(context.profiler_style, renderer, line_8, text_x, panel_y + 144, profiler_toggle_color)
+   draw_label(context.profiler_style, renderer, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
 end
 
 function Scene:init()
    self:super().init(self)
-   self.animator = nil
    self.moving_square = self:add_child(MovingSquare())
    self.profiler_overlay = self:add_child(ProfilerOverlay())
 end
@@ -225,57 +188,86 @@ function Scene:on_key(key_info)
 end
 
 function Scene:release()
-   self.animator = nil
    self.moving_square = nil
    self.profiler_overlay = nil
 end
 
-local function on_key(key_info)
-   if scene ~= nil then
-      scene:on_key(key_info)
+function App:init()
+   self:super().init(self)
+
+   font_path = find_font_path()
+   face = font.load_face(font_path)
+   frame_profiler = profiler.FrameProfiler {
+      fps = 60,
+   }
+   profiler_style = font.create_style(face, {
+      pixel_size = 14,
+      page_width = 256,
+      page_height = 128,
+      padding = 1,
+   })
+   profiler_style:warm_text(
+      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
+   )
+
+   self.frame_profiler = frame_profiler
+   self.profiler_style = profiler_style
+   self.root = Scene()
+end
+
+function App:before_frame()
+   self.frame_profiler:begin_frame()
+end
+
+function App:after_frame()
+   self.frame_profiler:end_frame()
+end
+
+function App:on_key(key_info)
+   if self.root ~= nil then
+      self.root:on_key(key_info)
    end
 end
 
-local function on_resize(info)
+function App:on_resize(info)
    window_width = math.max(1, info.width)
    window_height = math.max(1, info.height)
 end
 
-local function render_frame()
-   frame_profiler:begin_cpu()
+function App:render()
+   self.frame_profiler:begin_cpu()
    local renderer = sdl3.get_renderer()
-   if scene ~= nil then
-      scene:draw_tree({
+   if self.root ~= nil then
+      self.root:draw_tree({
          renderer = renderer,
+         frame_profiler = self.frame_profiler,
+         profiler_style = self.profiler_style,
+         scene = self.root,
       })
    end
-   frame_profiler:end_cpu()
+   self.frame_profiler:end_cpu()
+end
+
+function App:release()
+   self.frame_profiler = nil
+   self.profiler_style = nil
+   profiler_style:release()
+   profiler_style = nil
+   face:release()
+   face = nil
+   frame_profiler = nil
+   font_path = nil
 end
 
 rig.run {
    mode = "sdl3",
-   event_handlers = {
-      key = on_key,
-      resize = on_resize,
-   },
    driver_config = {
       sdl3 = {
          window_props = {
             [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Renderer Baseline",
             [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
          },
-         render = render_frame,
       },
    },
-   hooks = {
-      after_setup = animation_runtime.hooks.after_setup,
-      before_drain = animation_runtime.hooks.before_drain,
-      before_frame = function()
-         frame_profiler:begin_frame()
-      end,
-      after_frame = function()
-         frame_profiler:end_frame()
-      end,
-      before_shutdown = animation_runtime.hooks.before_shutdown,
-   },
+   app = App,
 }

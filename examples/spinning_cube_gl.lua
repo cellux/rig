@@ -10,9 +10,9 @@ local shader = require("shader")
 local sdl3 = require("sdl3")
 
 local Object = scenegraph.Object
-local Animator = animator.Animator
 local Cube = rig.class(Object)
 local Scene = rig.class(Object)
+local App = rig.class(animator.App)
 
 local vertex_shader_source = [[
 #version 330 core
@@ -43,16 +43,6 @@ void main()
 }
 ]]
 
-local rotation_x = mathx.mat4()
-local rotation_y = mathx.mat4()
-local model = mathx.mat4()
-local view = mathx.mat4()
-local projection = mathx.mat4()
-local mvp = mathx.mat4()
-local eye = mathx.vec3(0.0, 0.0, -4.5)
-local target = mathx.vec3(0.0, 0.0, 0.0)
-local up = mathx.vec3(0.0, 1.0, 0.0)
-local background_color = color.rgbaf(0.07, 0.08, 0.11, 1.0)
 local cube_face_colors = {
    color.rgb(255, 96, 96),
    color.rgb(96, 224, 128),
@@ -67,40 +57,6 @@ local cube_mesh = mesh.make_cube {
    colors = cube_face_colors,
 }
 
-local scene = nil
-local animation_runtime = animator.make_hooks {
-   create_root = function()
-      scene = Scene()
-      return scene
-   end,
-
-   setup = function(root)
-      root:initialize_resources()
-   end,
-
-   release = function()
-      scene = nil
-   end,
-}
-local viewport_width
-local viewport_height
-local gl_vertex_arrays = ffi.new("GLuint[1]")
-local gl_buffers = ffi.new("GLuint[1]")
-
-local function fail(message)
-   rig.raise(message)
-end
-
-local function build_mvp(out, aspect, x_angle, y_angle)
-   mathx.mat4_rotation_x(rotation_x, x_angle)
-   mathx.mat4_rotation_y(rotation_y, y_angle)
-   mathx.mat4_multiply(model, rotation_x, rotation_y)
-   mathx.mat4_look_at_lh(view, eye, target, up)
-   mathx.mat4_multiply(model, model, view)
-   mathx.mat4_perspective_lh(projection, math.rad(60.0), aspect, 0.1, 100.0)
-   return mathx.mat4_multiply(out, model, projection)
-end
-
 function Cube:init()
    self:super().init(self)
    self.program = 0
@@ -109,9 +65,30 @@ function Cube:init()
    self.mvp_location = -1
    self.rotation_x_angle = 0.0
    self.rotation_y_angle = 0.0
+   self.rotation_x = mathx.mat4()
+   self.rotation_y = mathx.mat4()
+   self.model = mathx.mat4()
+   self.view = mathx.mat4()
+   self.projection = mathx.mat4()
+   self.mvp = mathx.mat4()
+   self.eye = mathx.vec3(0.0, 0.0, -4.5)
+   self.target = mathx.vec3(0.0, 0.0, 0.0)
+   self.up = mathx.vec3(0.0, 1.0, 0.0)
+   self.gl_vertex_arrays = ffi.new("GLuint[1]")
+   self.gl_buffers = ffi.new("GLuint[1]")
 end
 
-function Cube:initialize_resources()
+function Cube:build_mvp(out, aspect)
+   mathx.mat4_rotation_x(self.rotation_x, self.rotation_x_angle)
+   mathx.mat4_rotation_y(self.rotation_y, self.rotation_y_angle)
+   mathx.mat4_multiply(self.model, self.rotation_x, self.rotation_y)
+   mathx.mat4_look_at_lh(self.view, self.eye, self.target, self.up)
+   mathx.mat4_multiply(self.model, self.model, self.view)
+   mathx.mat4_perspective_lh(self.projection, math.rad(60.0), aspect, 0.1, 100.0)
+   return mathx.mat4_multiply(out, self.model, self.projection)
+end
+
+function Cube:activate()
    local vertex_shader = shader.create_stage {
       language = "glsl",
       stage = "vertex",
@@ -136,14 +113,28 @@ function Cube:initialize_resources()
    if not ok then
       rig.raise(linked_or_err)
    end
-   self.program = linked_or_err
+   self.program = self:replace_owned("program", linked_or_err, function(_, program)
+      if program ~= 0 then
+         gl.DeleteProgram(program)
+      end
+   end)
 
-   gl.GenVertexArrays(1, gl_vertex_arrays)
-   gl.GenBuffers(1, gl_buffers)
-   self.vao = tonumber(gl_vertex_arrays[0]) or 0
-   self.vbo = tonumber(gl_buffers[0]) or 0
+   gl.GenVertexArrays(1, self.gl_vertex_arrays)
+   gl.GenBuffers(1, self.gl_buffers)
+   self.vao = self:replace_owned("vao", tonumber(self.gl_vertex_arrays[0]) or 0, function(self_ref, vao)
+      if vao ~= 0 then
+         self_ref.gl_vertex_arrays[0] = vao
+         gl.DeleteVertexArrays(1, self_ref.gl_vertex_arrays)
+      end
+   end)
+   self.vbo = self:replace_owned("vbo", tonumber(self.gl_buffers[0]) or 0, function(self_ref, vbo)
+      if vbo ~= 0 then
+         self_ref.gl_buffers[0] = vbo
+         gl.DeleteBuffers(1, self_ref.gl_buffers)
+      end
+   end)
    if self.vao == 0 or self.vbo == 0 then
-      fail("failed to create OpenGL vertex objects")
+      rig.raise("failed to create OpenGL vertex objects")
    end
 
    gl.BindVertexArray(self.vao)
@@ -175,7 +166,7 @@ function Cube:initialize_resources()
 
    self.mvp_location = gl.get_uniform_location(self.program, "u_mvp")
    if self.mvp_location < 0 then
-      fail("failed to locate OpenGL uniform 'u_mvp'")
+      rig.raise("failed to locate OpenGL uniform 'u_mvp'")
    end
 end
 
@@ -185,79 +176,60 @@ function Cube:update(dt)
 end
 
 function Cube:draw(context)
-   build_mvp(mvp, context.viewport_width / context.viewport_height, self.rotation_x_angle, self.rotation_y_angle)
+   self:build_mvp(self.mvp, context.viewport_width / context.viewport_height)
 
    gl.Viewport(0, 0, context.viewport_width, context.viewport_height)
-   gl.ClearColor(background_color:unpackf())
+   gl.ClearColor(context.background_color:unpackf())
    gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
 
    gl.UseProgram(self.program)
-   gl.UniformMatrix4fv(self.mvp_location, 1, gl.FALSE, mvp)
+   gl.UniformMatrix4fv(self.mvp_location, 1, gl.FALSE, self.mvp)
    gl.BindVertexArray(self.vao)
    gl.DrawArrays(gl.TRIANGLES, 0, cube_mesh.vertex_count)
 end
 
 function Cube:release()
-   if self.program ~= 0 then
-      gl.DeleteProgram(self.program)
-      self.program = 0
-   end
-   if self.vbo ~= 0 then
-      gl_buffers[0] = self.vbo
-      gl.DeleteBuffers(1, gl_buffers)
-      self.vbo = 0
-   end
-   if self.vao ~= 0 then
-      gl_vertex_arrays[0] = self.vao
-      gl.DeleteVertexArrays(1, gl_vertex_arrays)
-      self.vao = 0
-   end
+   self.program = 0
+   self.vbo = 0
+   self.vao = 0
    self.mvp_location = -1
 end
 
 function Scene:init()
    self:super().init(self)
+   self.background_color = color.rgbaf(0.07, 0.08, 0.11, 1.0)
    self.cube = self:add_child(Cube())
-   self.animator = nil
-end
-
-function Scene:initialize_resources()
-   self.cube:initialize_resources()
-end
-
-function Scene:on_resize(info)
-   viewport_width = math.max(1, info.pixel_width)
-   viewport_height = math.max(1, info.pixel_height)
 end
 
 function Scene:release()
-   self.animator = nil
+   self.background_color = nil
    self.cube = nil
 end
 
-local function on_resize(info)
-   if scene == nil then
-      viewport_width = math.max(1, info.pixel_width)
-      viewport_height = math.max(1, info.pixel_height)
-      return
-   end
-   scene:on_resize(info)
+function App:init()
+   self:super().init(self)
+   self.root = Scene()
+   self.viewport_width = 1
+   self.viewport_height = 1
 end
 
-local function on_render()
-   if scene ~= nil then
-      scene:draw_tree({
-         viewport_width = viewport_width,
-         viewport_height = viewport_height,
+function App:on_resize(info)
+   self.viewport_width = math.max(1, info.pixel_width)
+   self.viewport_height = math.max(1, info.pixel_height)
+end
+
+function App:render()
+   if self.root ~= nil then
+      self.root:draw_tree({
+         viewport_width = self.viewport_width,
+         viewport_height = self.viewport_height,
+         background_color = self.root.background_color,
       })
    end
 end
 
 rig.run {
    mode = "sdl3_gl",
-   event_handlers = {
-      resize = on_resize,
-   },
    driver_config = {
       sdl3_gl = {
          window_props = {
@@ -272,12 +244,7 @@ rig.run {
             depth_size = 24,
          },
          swap_interval = 1,
-         render = on_render,
       },
    },
-   hooks = {
-      after_setup = animation_runtime.hooks.after_setup,
-      before_drain = animation_runtime.hooks.before_drain,
-      before_shutdown = animation_runtime.hooks.before_shutdown,
-   },
+   app = App,
 }

@@ -26,5 +26,6 @@ shader
 time
 animator
 profiler
+sdl3x
 mathx
 mesh

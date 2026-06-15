@@ -574,12 +574,6 @@ local driver_config_schema = schema.map(
    schema.non_empty_string(),
    driver_config_entry_schema
 )
-local event_handlers_schema = schema.record({
-   key = schema.func():optional(),
-   mouse = schema.func():optional(),
-   resize = schema.func():optional(),
-})
-
 local DEFAULT_WINDOW_WIDTH = 640
 local DEFAULT_WINDOW_HEIGHT = 360
 
@@ -1448,18 +1442,6 @@ local function get_driver_config(options, driver_id)
       return {}
    end
    return normalize_driver_config(config)
-end
-
-local function get_event_handlers(options)
-   local event_handlers = options.event_handlers
-   if event_handlers == nil then
-      return {}
-   end
-   return schema.assert(
-      event_handlers_schema,
-      event_handlers,
-      "rig.run options.event_handlers"
-   )
 end
 
 local shutdown
@@ -2845,8 +2827,20 @@ local function shutdown_scheduler()
    runtime_scheduler = nil
 end
 
-local function require_render_callback(mode_options, mode_key)
+local function require_render_callback(mode_options, mode_key, runtime)
    local callback = mode_options.render
+   if callback == nil and runtime.app ~= nil then
+      if type(runtime.app.invoke_render) == "function" then
+         callback = function(...)
+            return runtime.app:invoke_render(...)
+         end
+      elseif type(runtime.app.render) == "function" then
+         callback = function(...)
+            return runtime.app:render(...)
+         end
+      end
+   end
+
    if type(callback) ~= "function" then
       rig.raise(
          "rig.run requires " .. mode_key .. ".render to be a function")
@@ -2855,6 +2849,11 @@ local function require_render_callback(mode_options, mode_key)
 end
 
 rig.register_runtime_driver("sdl3", {
+   events = {
+      "key",
+      "mouse",
+      "resize",
+   },
    phases = {
       "before_poll",
       "after_poll",
@@ -2865,19 +2864,16 @@ rig.register_runtime_driver("sdl3", {
    },
    setup = function(options)
       local sdl3_options = get_driver_config(options, "sdl3")
-      local event_handlers = get_event_handlers(options)
-      require_render_callback(sdl3_options, "options.driver_config.sdl3")
       setup(sdl3_options)
       setup_scheduler("sdl3 scheduler")
-      dispatch_resize_if_changed(event_handlers.resize, "initial", 0)
    end,
-   loop = function(options, run_hooks)
+   loop = function(options, run_hooks, runtime)
       local sdl3_options = get_driver_config(options, "sdl3")
-      local event_handlers = get_event_handlers(options)
-      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3")
-      local on_key = event_handlers.key
-      local on_mouse = event_handlers.mouse
-      local on_resize = event_handlers.resize
+      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3", runtime)
+      local on_key = runtime:event_handler("key")
+      local on_mouse = runtime:event_handler("mouse")
+      local on_resize = runtime:event_handler("resize")
+      dispatch_resize_if_changed(on_resize, "initial", 0)
       while true do
          run_hooks("before_poll", options)
          if pump_events(on_key, on_mouse, on_resize) == false then
@@ -2907,6 +2903,11 @@ rig.register_runtime_preset("sdl3", {
 })
 
 rig.register_runtime_driver("sdl3_gpu", {
+   events = {
+      "key",
+      "mouse",
+      "resize",
+   },
    phases = {
       "before_poll",
       "after_poll",
@@ -2917,8 +2918,6 @@ rig.register_runtime_driver("sdl3_gpu", {
    },
    setup = function(options)
       local sdl3_options = get_driver_config(options, "sdl3_gpu")
-      local event_handlers = get_event_handlers(options)
-      require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu")
       setup_gpu {
          init_flags = sdl3_options.init_flags,
          window_props = sdl3_options.window_props,
@@ -2928,15 +2927,14 @@ rig.register_runtime_driver("sdl3_gpu", {
          backend_name = sdl3_options.backend_name,
       }
       setup_scheduler("sdl3_gpu scheduler")
-      dispatch_resize_if_changed(event_handlers.resize, "initial", 0)
    end,
-   loop = function(options, run_hooks)
+   loop = function(options, run_hooks, runtime)
       local sdl3_options = get_driver_config(options, "sdl3_gpu")
-      local event_handlers = get_event_handlers(options)
-      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu")
-      local on_key = event_handlers.key
-      local on_mouse = event_handlers.mouse
-      local on_resize = event_handlers.resize
+      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu", runtime)
+      local on_key = runtime:event_handler("key")
+      local on_mouse = runtime:event_handler("mouse")
+      local on_resize = runtime:event_handler("resize")
+      dispatch_resize_if_changed(on_resize, "initial", 0)
       while true do
          run_hooks("before_poll", options)
          if pump_events(on_key, on_mouse, on_resize) == false then
@@ -2967,6 +2965,11 @@ rig.register_runtime_preset("sdl3_gpu", {
 })
 
 rig.register_runtime_driver("sdl3_gl", {
+   events = {
+      "key",
+      "mouse",
+      "resize",
+   },
    phases = {
       "before_poll",
       "after_poll",
@@ -2977,19 +2980,16 @@ rig.register_runtime_driver("sdl3_gl", {
    },
    setup = function(options)
       local sdl3_options = get_driver_config(options, "sdl3_gl")
-      local event_handlers = get_event_handlers(options)
-      require_render_callback(sdl3_options, "options.driver_config.sdl3_gl")
       setup_gl(sdl3_options)
       setup_scheduler("sdl3_gl scheduler")
-      dispatch_resize_if_changed(event_handlers.resize, "initial", 0)
    end,
-   loop = function(options, run_hooks)
+   loop = function(options, run_hooks, runtime)
       local sdl3_options = get_driver_config(options, "sdl3_gl")
-      local event_handlers = get_event_handlers(options)
-      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gl")
-      local on_key = event_handlers.key
-      local on_mouse = event_handlers.mouse
-      local on_resize = event_handlers.resize
+      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gl", runtime)
+      local on_key = runtime:event_handler("key")
+      local on_mouse = runtime:event_handler("mouse")
+      local on_resize = runtime:event_handler("resize")
+      dispatch_resize_if_changed(on_resize, "initial", 0)
       while true do
          run_hooks("before_poll", options)
          if pump_events(on_key, on_mouse, on_resize) == false then

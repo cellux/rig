@@ -9,19 +9,10 @@ local sdl3 = require("sdl3")
 local shader = require("shader")
 
 local Object = scenegraph.Object
-local Animator = animator.Animator
 local Cube = rig.class(Object)
 local Scene = rig.class(Object)
+local App = rig.class(animator.App)
 
-local rotation_x = mathx.mat4()
-local rotation_y = mathx.mat4()
-local model = mathx.mat4()
-local view = mathx.mat4()
-local projection = mathx.mat4()
-local eye = mathx.vec3(0.0, 0.0, -4.5)
-local target = mathx.vec3(0.0, 0.0, 0.0)
-local up = mathx.vec3(0.0, 1.0, 0.0)
-local background_color = color.rgbaf(0.07, 0.08, 0.11, 1.0)
 local cube_face_colors = {
    color.rgb(255, 96, 96),
    color.rgb(96, 224, 128),
@@ -81,43 +72,11 @@ local cube_mesh = mesh.make_cube {
    colors = cube_face_colors,
 }
 
-local scene = nil
-local animation_runtime = animator.make_hooks {
-   create_root = function()
-      scene = Scene()
-      return scene
-   end,
-
-   setup = function(root)
-      root:initialize_resources()
-   end,
-
-   release = function()
-      scene = nil
-   end,
-}
-local vertex_uniform_data = mathx.mat4()
-local vertex_binding = ffi.new("SDL_GPUBufferBinding[1]")
-
-local function fail(message)
-   rig.raise(message)
-end
-
-local function build_mvp(out, aspect, x_angle, y_angle)
-   mathx.mat4_rotation_x(rotation_x, x_angle)
-   mathx.mat4_rotation_y(rotation_y, y_angle)
-   mathx.mat4_multiply(model, rotation_x, rotation_y)
-   mathx.mat4_look_at_lh(view, eye, target, up)
-   mathx.mat4_multiply(model, model, view)
-   mathx.mat4_perspective_lh(projection, math.rad(60.0), aspect, 0.1, 100.0)
-   return mathx.mat4_multiply(out, model, projection)
-end
-
 function Cube:init()
    self:super().init(self)
    self.rotation_x_angle = 0.0
    self.rotation_y_angle = 0.0
-   self.resource_scope = nil
+   self.gpu_resources = nil
    self.vertex_input = nil
    self.vertex_buffer = nil
    self.pipeline = nil
@@ -125,17 +84,41 @@ function Cube:init()
    self.depth_format = nil
    self.depth_width = 0
    self.depth_height = 0
+   self.rotation_x = mathx.mat4()
+   self.rotation_y = mathx.mat4()
+   self.model = mathx.mat4()
+   self.view = mathx.mat4()
+   self.projection = mathx.mat4()
+   self.eye = mathx.vec3(0.0, 0.0, -4.5)
+   self.target = mathx.vec3(0.0, 0.0, 0.0)
+   self.up = mathx.vec3(0.0, 1.0, 0.0)
+   self.vertex_uniform_data = mathx.mat4()
+   self.vertex_binding = ffi.new("SDL_GPUBufferBinding[1]")
 end
 
-function Cube:initialize_resources()
+function Cube:build_mvp(out, aspect)
+   mathx.mat4_rotation_x(self.rotation_x, self.rotation_x_angle)
+   mathx.mat4_rotation_y(self.rotation_y, self.rotation_y_angle)
+   mathx.mat4_multiply(self.model, self.rotation_x, self.rotation_y)
+   mathx.mat4_look_at_lh(self.view, self.eye, self.target, self.up)
+   mathx.mat4_multiply(self.model, self.model, self.view)
+   mathx.mat4_perspective_lh(self.projection, math.rad(60.0), aspect, 0.1, 100.0)
+   return mathx.mat4_multiply(out, self.model, self.projection)
+end
+
+function Cube:activate()
    local device = sdl3.get_gpu_device()
    local window = sdl3.get_window()
    if device == nil or window == nil then
-      fail("sdl3_gpu runtime mode did not produce a device and window")
+      rig.raise("sdl3_gpu runtime mode did not produce a device and window")
    end
 
-   local scope = sdl3.resource_scope(device)
-   self.resource_scope = scope
+   local scope = self:replace_owned("gpu_resources",
+      sdl3.resource_scope(device),
+      function(_, owned_scope)
+         owned_scope:release()
+      end)
+   self.gpu_resources = scope
    self.vertex_input = mesh.build_vertex_input(cube_mesh)
 
    local vertex_shader = scope:adopt(
@@ -194,8 +177,8 @@ function Cube:initialize_resources()
       props = 0,
    }
 
-   vertex_binding[0].buffer = self.vertex_buffer
-   vertex_binding[0].offset = 0
+   self.vertex_binding[0].buffer = self.vertex_buffer
+   self.vertex_binding[0].offset = 0
 end
 
 function Cube:ensure_depth_texture(width, height)
@@ -203,7 +186,7 @@ function Cube:ensure_depth_texture(width, height)
       return
    end
 
-   self.depth_texture = self.resource_scope:replace("depth_texture",
+   self.depth_texture = self.gpu_resources:replace("depth_texture",
       sdl3.create_depth_texture(sdl3.get_gpu_device(), width, height, self.depth_format),
       function(scope_device, resource)
          sdl3.ReleaseGPUTexture(scope_device, resource)
@@ -224,22 +207,22 @@ function Cube:draw(context)
    local height = context.height
 
    self:ensure_depth_texture(width, height)
-   build_mvp(vertex_uniform_data, width / height, self.rotation_x_angle, self.rotation_y_angle)
+   self:build_mvp(self.vertex_uniform_data, width / height)
    sdl3.PushGPUVertexUniformData(
       command_buffer,
       0,
-      vertex_uniform_data,
-      ffi.sizeof(vertex_uniform_data)
+      self.vertex_uniform_data,
+      ffi.sizeof(self.vertex_uniform_data)
    )
 
    local color_target_info = ffi.new("SDL_GPUColorTargetInfo[1]")
    color_target_info[0].texture = swapchain_texture
    color_target_info[0].mip_level = 0
    color_target_info[0].layer_or_depth_plane = 0
-   color_target_info[0].clear_color.r = background_color.r / 255.0
-   color_target_info[0].clear_color.g = background_color.g / 255.0
-   color_target_info[0].clear_color.b = background_color.b / 255.0
-   color_target_info[0].clear_color.a = background_color.a / 255.0
+   color_target_info[0].clear_color.r = context.background_color.r / 255.0
+   color_target_info[0].clear_color.g = context.background_color.g / 255.0
+   color_target_info[0].clear_color.b = context.background_color.b / 255.0
+   color_target_info[0].clear_color.a = context.background_color.a / 255.0
    color_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
    color_target_info[0].store_op = sdl3.GPU_STOREOP_STORE
    color_target_info[0].resolve_texture = nil
@@ -267,7 +250,7 @@ function Cube:draw(context)
       depth_target_info
    )
    sdl3.BindGPUGraphicsPipeline(render_pass, self.pipeline)
-   sdl3.BindGPUVertexBuffers(render_pass, 0, vertex_binding, 1)
+   sdl3.BindGPUVertexBuffers(render_pass, 0, self.vertex_binding, 1)
    sdl3.DrawGPUPrimitives(render_pass, cube_mesh.vertex_count, 1, 0, 0)
    sdl3.EndGPURenderPass(render_pass)
 end
@@ -280,36 +263,37 @@ function Cube:release()
    self.depth_format = nil
    self.depth_width = 0
    self.depth_height = 0
-   if self.resource_scope ~= nil then
-      self.resource_scope:release()
-      self.resource_scope = nil
-   end
+   self.gpu_resources = nil
 end
 
 function Scene:init()
    self:super().init(self)
+   self.background_color = color.rgbaf(0.07, 0.08, 0.11, 1.0)
    self.cube = self:add_child(Cube())
-   self.animator = nil
-end
-
-function Scene:initialize_resources()
-   self.cube:initialize_resources()
 end
 
 function Scene:release()
-   self.animator = nil
+   self.background_color = nil
    self.cube = nil
 end
 
-local function on_render(command_buffer, swapchain_texture, width, height)
-   if scene ~= nil then
-      scene:draw_tree({
-         command_buffer = command_buffer,
-         swapchain_texture = swapchain_texture,
-         width = width,
-         height = height,
-      })
+function App:init()
+   self:super().init(self)
+   self.root = Scene()
+end
+
+function App:render(command_buffer, swapchain_texture, width, height)
+   if self.root == nil then
+      return
    end
+
+   self.root:draw_tree({
+      command_buffer = command_buffer,
+      swapchain_texture = swapchain_texture,
+      width = width,
+      height = height,
+      background_color = self.root.background_color,
+   })
 end
 
 rig.run {
@@ -320,13 +304,8 @@ rig.run {
             [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
             [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
          },
-         render = on_render,
          shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
       },
    },
-   hooks = {
-      after_setup = animation_runtime.hooks.after_setup,
-      before_drain = animation_runtime.hooks.before_drain,
-      before_shutdown = animation_runtime.hooks.before_shutdown,
-   },
+   app = App,
 }

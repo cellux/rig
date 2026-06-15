@@ -8,10 +8,10 @@ local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
 
 local Object = scenegraph.Object
-local Animator = animator.Animator
 local MovingSquare = rig.class(Object)
 local ProfilerOverlay = rig.class(Object)
 local Scene = rig.class(Object)
+local App = rig.class(animator.App)
 
 local window_width
 local window_height
@@ -29,47 +29,7 @@ local profiler_toggle_color = color.rgb(196, 220, 255)
 local gl_vertex_arrays = ffi.new("GLuint[1]")
 local gl_buffers = ffi.new("GLuint[1]")
 local rect_vertices = ffi.new("float[12]")
-local scene = nil
 local find_font_path
-local animation_runtime = animator.make_hooks {
-   create_root = function()
-      font_path = find_font_path()
-      face = font.load_face(font_path)
-      frame_profiler = profiler.FrameProfiler {
-         fps = 60,
-      }
-      profiler_style = font.create_style(face, {
-         pixel_size = 14,
-         page_width = 256,
-         page_height = 128,
-         padding = 1,
-      })
-      profiler_style:warm_text(
-         "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
-      )
-
-      scene = Scene()
-      return scene
-   end,
-
-   setup = function(root)
-      root:initialize_gl_resources()
-   end,
-
-   release = function()
-      frame_profiler = nil
-      scene = nil
-      if profiler_style ~= nil then
-         profiler_style:release()
-         profiler_style = nil
-      end
-      if face ~= nil then
-         face:release()
-         face = nil
-      end
-      font_path = nil
-   end,
-}
 
 local rect_vertex_shader_source = [[
 #version 330 core
@@ -126,9 +86,9 @@ find_font_path = function()
    rig.raise("could not find a system DejaVuSans.ttf font")
 end
 
-local function draw_label(text, x, baseline_y, draw_color)
-   local run = profiler_style:build_run(text)
-   profiler_style:draw_run(run, x, baseline_y, function()
+local function draw_label(style, text, x, baseline_y, draw_color)
+   local run = style:build_run(text)
+   style:draw_run(run, x, baseline_y, function()
       return draw_color
    end)
 end
@@ -153,7 +113,7 @@ local function write_rect_vertices(x, y, w, h)
    rect_vertices[11] = y2
 end
 
-local function draw_rect(x, y, w, h, r, g, b, a)
+local function draw_rect(scene, x, y, w, h, r, g, b, a)
    write_rect_vertices(x, y, w, h)
 
    gl.Enable(gl.BLEND)
@@ -195,21 +155,21 @@ function MovingSquare:draw()
    local x = orbit * (window_width - size)
    local y = (window_height * 0.5 - size * 0.5) + (bob - 0.5) * 180
 
-   draw_rect(x, y, size, size, 240, 246, 255, 255)
+   draw_rect(self.parent, x, y, size, size, 240, 246, 255, 255)
 end
 
 function ProfilerOverlay:init()
    self:super().init(self)
 end
 
-function ProfilerOverlay:draw()
-   local profile = frame_profiler:snapshot()
+function ProfilerOverlay:draw(context)
+   local profile = context.frame_profiler:snapshot()
    local panel_x = 18
    local panel_y = 16
    local panel_w = math.min(378, math.max(220, window_width - panel_x * 2))
    local panel_h = 162
 
-   draw_rect(panel_x, panel_y, panel_w, panel_h, 0, 0, 0, 150)
+   draw_rect(context.scene, panel_x, panel_y, panel_w, panel_h, 0, 0, 0, 150)
 
    local text_x = panel_x + 10
    local header = "      CUR / 1S / MAX"
@@ -220,19 +180,19 @@ function ProfilerOverlay:draw()
    local line_5 = ("GAP %.2f / %.2f / %.2f"):format(profile.gap_ms, profile.gap_window_max_ms, profile.gap_peak_ms)
    local line_6 = ("OVR %d"):format(profile.overruns)
    local line_7 = vsync_enabled and "VSYNC ON [V]" or "VSYNC OFF [V]"
-   local line_8 = scene.animator.animate_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
+   local line_8 = context.scene.animator.animate_enabled and "ANIM ON [1]" or "ANIM OFF [1]"
    local line_9 = "PROFILER ON [0]"
 
-   draw_label(header, text_x, panel_y + 16, profiler_header_color)
-   draw_label(line_1, text_x, panel_y + 32, profiler_body_color)
-   draw_label(line_2, text_x, panel_y + 48, profiler_body_color)
-   draw_label(line_3, text_x, panel_y + 64, profiler_body_color)
-   draw_label(line_4, text_x, panel_y + 80, profiler_body_color)
-   draw_label(line_5, text_x, panel_y + 96, profiler_body_color)
-   draw_label(line_6, text_x, panel_y + 112, profiler_warn_color)
-   draw_label(line_7, text_x, panel_y + 128, profiler_toggle_color)
-   draw_label(line_8, text_x, panel_y + 144, profiler_toggle_color)
-   draw_label(line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
+   draw_label(context.profiler_style, header, text_x, panel_y + 16, profiler_header_color)
+   draw_label(context.profiler_style, line_1, text_x, panel_y + 32, profiler_body_color)
+   draw_label(context.profiler_style, line_2, text_x, panel_y + 48, profiler_body_color)
+   draw_label(context.profiler_style, line_3, text_x, panel_y + 64, profiler_body_color)
+   draw_label(context.profiler_style, line_4, text_x, panel_y + 80, profiler_body_color)
+   draw_label(context.profiler_style, line_5, text_x, panel_y + 96, profiler_body_color)
+   draw_label(context.profiler_style, line_6, text_x, panel_y + 112, profiler_warn_color)
+   draw_label(context.profiler_style, line_7, text_x, panel_y + 128, profiler_toggle_color)
+   draw_label(context.profiler_style, line_8, text_x, panel_y + 144, profiler_toggle_color)
+   draw_label(context.profiler_style, line_9, text_x + 150, panel_y + 144, profiler_toggle_color)
 end
 
 function Scene:init()
@@ -242,21 +202,34 @@ function Scene:init()
    self.rect_vbo = 0
    self.rect_view_size_location = -1
    self.rect_color_location = -1
-   self.animator = nil
    self.moving_square = self:add_child(MovingSquare())
    self.profiler_overlay = self:add_child(ProfilerOverlay())
 end
 
-function Scene:initialize_gl_resources()
-   self.rect_program = gl.create_program {
+function Scene:activate()
+   self.rect_program = self:replace_owned("rect_program", gl.create_program {
       vertex_source = rect_vertex_shader_source,
       fragment_source = rect_fragment_shader_source,
-   }
+   }, function(_, program)
+      if program ~= 0 then
+         gl.DeleteProgram(program)
+      end
+   end)
 
    gl.GenVertexArrays(1, gl_vertex_arrays)
    gl.GenBuffers(1, gl_buffers)
-   self.rect_vao = tonumber(gl_vertex_arrays[0]) or 0
-   self.rect_vbo = tonumber(gl_buffers[0]) or 0
+   self.rect_vao = self:replace_owned("rect_vao", tonumber(gl_vertex_arrays[0]) or 0, function(_, vao)
+      if vao ~= 0 then
+         gl_vertex_arrays[0] = vao
+         gl.DeleteVertexArrays(1, gl_vertex_arrays)
+      end
+   end)
+   self.rect_vbo = self:replace_owned("rect_vbo", tonumber(gl_buffers[0]) or 0, function(_, vbo)
+      if vbo ~= 0 then
+         gl_buffers[0] = vbo
+         gl.DeleteBuffers(1, gl_buffers)
+      end
+   end)
 
    if self.rect_vao == 0 or self.rect_vbo == 0 then
       rig.raise("failed to create OpenGL rectangle resources")
@@ -279,7 +252,7 @@ function Scene:draw()
    gl.ClearColor(6.0 / 255.0, 8.0 / 255.0, 18.0 / 255.0, 1.0)
    gl.Clear(gl.COLOR_BUFFER_BIT)
 
-   draw_rect(0, window_height * 0.5 - 1, window_width, 2, 24, 28, 44, 255)
+   draw_rect(self, 0, window_height * 0.5 - 1, window_width, 2, 24, 28, 44, 255)
 end
 
 function Scene:set_animation_enabled(enabled)
@@ -308,56 +281,85 @@ function Scene:on_resize(info)
 end
 
 function Scene:release()
-   if self.rect_vbo ~= 0 then
-      gl_buffers[0] = self.rect_vbo
-      gl.DeleteBuffers(1, gl_buffers)
-      self.rect_vbo = 0
-   end
-   if self.rect_vao ~= 0 then
-      gl_vertex_arrays[0] = self.rect_vao
-      gl.DeleteVertexArrays(1, gl_vertex_arrays)
-      self.rect_vao = 0
-   end
-   if self.rect_program ~= 0 then
-      gl.DeleteProgram(self.rect_program)
-      self.rect_program = 0
-   end
+   self.rect_vbo = 0
+   self.rect_vao = 0
+   self.rect_program = 0
    self.rect_view_size_location = -1
    self.rect_color_location = -1
-   self.animator = nil
    self.moving_square = nil
    self.profiler_overlay = nil
 end
 
-local function on_key(key_info)
-   if scene ~= nil then
-      scene:on_key(key_info)
+function App:init()
+   self:super().init(self)
+
+   font_path = find_font_path()
+   face = font.load_face(font_path)
+   frame_profiler = profiler.FrameProfiler {
+      fps = 60,
+   }
+   profiler_style = font.create_style(face, {
+      pixel_size = 14,
+      page_width = 256,
+      page_height = 128,
+      padding = 1,
+   })
+   profiler_style:warm_text(
+      "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
+   )
+
+   self.frame_profiler = frame_profiler
+   self.profiler_style = profiler_style
+   self.root = Scene()
+end
+
+function App:before_frame()
+   self.frame_profiler:begin_frame()
+end
+
+function App:after_frame()
+   self.frame_profiler:end_frame()
+end
+
+function App:on_key(key_info)
+   if self.root ~= nil then
+      self.root:on_key(key_info)
    end
 end
 
-local function on_resize(info)
-   if scene == nil then
-      window_width = math.max(1, info.pixel_width)
-      window_height = math.max(1, info.pixel_height)
-      return
+function App:on_resize(info)
+   window_width = math.max(1, info.pixel_width)
+   window_height = math.max(1, info.pixel_height)
+   if self.root ~= nil then
+      self.root:on_resize(info)
    end
-   scene:on_resize(info)
 end
 
-local function render_frame()
-   frame_profiler:begin_cpu()
-   if scene ~= nil then
-      scene:draw_tree({})
+function App:render()
+   self.frame_profiler:begin_cpu()
+   if self.root ~= nil then
+      self.root:draw_tree({
+         frame_profiler = self.frame_profiler,
+         profiler_style = self.profiler_style,
+         scene = self.root,
+      })
    end
-   frame_profiler:end_cpu()
+   self.frame_profiler:end_cpu()
+end
+
+function App:release()
+   self.frame_profiler = nil
+   self.profiler_style = nil
+   profiler_style:release()
+   profiler_style = nil
+   face:release()
+   face = nil
+   frame_profiler = nil
+   font_path = nil
 end
 
 rig.run {
    mode = "sdl3_gl",
-   event_handlers = {
-      key = on_key,
-      resize = on_resize,
-   },
    driver_config = {
       sdl3_gl = {
          window_props = {
@@ -371,18 +373,7 @@ rig.run {
             doublebuffer = true,
          },
          swap_interval = 1,
-         render = render_frame,
       },
    },
-   hooks = {
-      after_setup = animation_runtime.hooks.after_setup,
-      before_drain = animation_runtime.hooks.before_drain,
-      before_frame = function()
-         frame_profiler:begin_frame()
-      end,
-      after_frame = function()
-         frame_profiler:end_frame()
-      end,
-      before_shutdown = animation_runtime.hooks.before_shutdown,
-   },
+   app = App,
 }

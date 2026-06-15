@@ -177,6 +177,63 @@ function M.ResourceScope:release()
    self._released = true
 end
 
+M.App = M.class()
+
+local function class_is_descendant(class_value, ancestor)
+   local current = class_value
+
+   while type(current) == "table" do
+      if current == ancestor then
+         return true
+      end
+
+      local current_mt = getmetatable(current)
+      if type(current_mt) ~= "table" then
+         return false
+      end
+
+      current = rawget(current_mt, "__index")
+   end
+
+   return false
+end
+
+function M.App:build_hooks(allowed_phases)
+   if type(allowed_phases) ~= "table" then
+      raise("rig.App:build_hooks requires an allowed phase map")
+   end
+
+   local hooks = {}
+   for phase in pairs(allowed_phases) do
+      local hook = self[phase]
+      if type(hook) == "function" then
+         hooks[phase] = function(...)
+            return hook(self, ...)
+         end
+      end
+   end
+
+   return hooks
+end
+
+function M.App:build_event_handlers(allowed_events)
+   if type(allowed_events) ~= "table" then
+      raise("rig.App:build_event_handlers requires an allowed event map")
+   end
+
+   local handlers = {}
+   for event_name in pairs(allowed_events) do
+      local handler = self["on_" .. event_name]
+      if type(handler) == "function" then
+         handlers[event_name] = function(...)
+            return handler(self, ...)
+         end
+      end
+   end
+
+   return handlers
+end
+
 local _runtime_drivers = {}
 local _runtime_presets = {}
 local _runtime_hooks = {}
@@ -191,6 +248,131 @@ local core_runtime_phase_names = {
 local core_runtime_phases = {}
 for i = 1, #core_runtime_phase_names do
    core_runtime_phases[core_runtime_phase_names[i]] = true
+end
+
+local function build_allowed_phase_map(driver)
+   local allowed_phases = {}
+
+   for i = 1, #core_runtime_phase_names do
+      allowed_phases[core_runtime_phase_names[i]] = true
+   end
+
+   for i = 1, #driver.phases do
+      allowed_phases[driver.phases[i]] = true
+   end
+
+   return allowed_phases
+end
+
+local function build_allowed_event_map(driver)
+   local allowed_events = {}
+   local driver_events = driver.events or {}
+
+   for i = 1, #driver_events do
+      allowed_events[driver_events[i]] = true
+   end
+
+   return allowed_events
+end
+
+local function compose_hooks(first, second)
+   if first == nil then
+      return second
+   end
+   if second == nil then
+      return first
+   end
+
+   return function(...)
+      first(...)
+      second(...)
+   end
+end
+
+local function compose_event_handlers(first, second)
+   if first == nil then
+      return second
+   end
+   if second == nil then
+      return first
+   end
+
+   return function(...)
+      first(...)
+      second(...)
+   end
+end
+
+local function validate_app_spec(app_spec)
+   if app_spec == nil then
+      return
+   end
+   if type(app_spec) ~= "table" then
+      raise("rig.run expects options.app to be a rig.App class or instance")
+   end
+
+   if M.App:is_instance(app_spec) or class_is_descendant(app_spec, M.App) then
+      return
+   end
+
+   raise("rig.run expects options.app to be a rig.App class or instance")
+end
+
+local function instantiate_app(app_spec, options)
+   if app_spec == nil then
+      return nil
+   end
+   validate_app_spec(app_spec)
+
+   if M.App:is_instance(app_spec) then
+      return app_spec
+   end
+
+   return app_spec(options)
+end
+
+local function merge_run_hooks(app_hooks, option_hooks)
+   if app_hooks == nil then
+      return option_hooks
+   end
+   if option_hooks == nil then
+      return app_hooks
+   end
+
+   local merged = {}
+   for phase, hook in pairs(app_hooks) do
+      merged[phase] = hook
+   end
+
+   for phase, hook in pairs(option_hooks) do
+      if phase == "before_shutdown" then
+         merged[phase] = compose_hooks(hook, merged[phase])
+      else
+         merged[phase] = compose_hooks(merged[phase], hook)
+      end
+   end
+
+   return merged
+end
+
+local function merge_event_handlers(app_handlers, option_handlers)
+   if app_handlers == nil then
+      return option_handlers
+   end
+   if option_handlers == nil then
+      return app_handlers
+   end
+
+   local merged = {}
+   for event_name, handler in pairs(app_handlers) do
+      merged[event_name] = handler
+   end
+
+   for event_name, handler in pairs(option_handlers) do
+      merged[event_name] = compose_event_handlers(merged[event_name], handler)
+   end
+
+   return merged
 end
 
 local non_empty_string_schema = schema.non_empty_string()
@@ -341,6 +523,9 @@ function M.ActiveRuntime:init(spec)
    self.driver_id = spec.driver_id
    self.mode_id = spec.mode_id
    self.providers = spec.providers or {}
+   self.app_spec = spec.app
+   self.app = nil
+   self.option_event_handlers = self:normalize_option_event_handlers(spec.option_event_handlers)
    self.option_hooks = self:normalize_option_hooks(spec.option_hooks)
 
    local ok, service_providers_or_err = pcall(function()
@@ -379,19 +564,42 @@ local option_hooks_schema = schema.map(
    non_empty_string_schema,
    schema.func()
 )
+local option_event_handlers_schema = schema.map(
+   non_empty_string_schema,
+   schema.func()
+)
+
+function M.ActiveRuntime:normalize_option_event_handlers(event_handlers)
+   if event_handlers == nil then
+      return nil
+   end
+
+   local allowed_events = build_allowed_event_map(self.driver)
+   local normalized = schema.assert(
+      option_event_handlers_schema,
+      event_handlers,
+      "rig.run options.event_handlers"
+   )
+
+   for event_name in pairs(normalized) do
+      if not allowed_events[event_name] then
+         raise(
+            "rig.run runtime '%s' does not know event handler '%s'",
+            self:runtime_id(),
+            event_name
+         )
+      end
+   end
+
+   return normalized
+end
 
 function M.ActiveRuntime:normalize_option_hooks(hooks)
    if hooks == nil then
       return nil
    end
 
-   local allowed_phases = {}
-   for i = 1, #core_runtime_phase_names do
-      allowed_phases[core_runtime_phase_names[i]] = true
-   end
-   for i = 1, #self.driver.phases do
-      allowed_phases[self.driver.phases[i]] = true
-   end
+   local allowed_phases = build_allowed_phase_map(self.driver)
 
    local normalized = schema.assert(
       option_hooks_schema,
@@ -412,6 +620,14 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
    return normalized
 end
 
+function M.ActiveRuntime:event_handler(event_name)
+   if self.option_event_handlers == nil then
+      return nil
+   end
+
+   return self.option_event_handlers[event_name]
+end
+
 function M.ActiveRuntime:run_hooks(phase, ...)
    run_runtime_hooks(phase, ...)
 
@@ -419,6 +635,24 @@ function M.ActiveRuntime:run_hooks(phase, ...)
    if hook_function ~= nil then
       hook_function(...)
    end
+end
+
+function M.ActiveRuntime:activate_app(options)
+   if self.app_spec == nil or self.app ~= nil then
+      return
+   end
+
+   local allowed_phases = build_allowed_phase_map(self.driver)
+   local allowed_events = build_allowed_event_map(self.driver)
+   self.app = instantiate_app(self.app_spec, options)
+   self.option_event_handlers = merge_event_handlers(
+      self.app:build_event_handlers(allowed_events),
+      self.option_event_handlers
+   )
+   self.option_hooks = merge_run_hooks(
+      self.app:build_hooks(allowed_phases),
+      self.option_hooks
+   )
 end
 
 local _active_runtime = nil
@@ -444,6 +678,7 @@ function M.require_service(service_id)
 end
 
 local runtime_driver_schema = schema.record({
+   events = unique_non_empty_string_array_schema:optional(),
    phases = unique_non_empty_string_array_schema:optional(),
    setup = schema.func():optional(),
    loop = schema.func(),
@@ -460,6 +695,7 @@ function M.register_runtime_driver(name, driver)
       driver,
       "rig.register_runtime_driver driver"
    )
+   normalized.events = normalized.events or {}
    normalized.phases = normalized.phases or {}
    for i = 1, #normalized.phases do
       local phase_name = normalized.phases[i]
@@ -536,6 +772,7 @@ local function resolve_runtime(options)
    if driver == nil then
       raise("rig.run does not know runtime driver '%s'", driver_id)
    end
+   validate_app_spec(options.app)
 
    local providers = {}
    if preset ~= nil then
@@ -555,6 +792,8 @@ local function resolve_runtime(options)
       driver_id = driver_id,
       mode_id = mode_id,
       providers = providers,
+      app = options.app,
+      option_event_handlers = options.event_handlers,
       option_hooks = options.hooks,
    }
 end
@@ -571,17 +810,18 @@ function M.run(options)
    local ok, err = pcall(function()
       resolved_runtime:run_hooks("before_setup", options)
       if type(driver.setup) == "function" then
-         driver.setup(options)
+         driver.setup(options, resolved_runtime)
       end
+      resolved_runtime:activate_app(options)
       resolved_runtime:run_hooks("after_setup", options)
 
       driver.loop(options, function(phase, ...)
          resolved_runtime:run_hooks(phase, ...)
-      end)
+      end, resolved_runtime)
 
       resolved_runtime:run_hooks("before_shutdown", options)
       if type(driver.shutdown) == "function" then
-         driver.shutdown(options)
+         driver.shutdown(options, resolved_runtime)
       end
       resolved_runtime:run_hooks("after_shutdown", options)
    end)
