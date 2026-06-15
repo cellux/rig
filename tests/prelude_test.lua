@@ -49,6 +49,26 @@ test.case("prelude.class supports single inheritance for methods", function()
    test.equal(getmetatable(Dog).__index, Animal)
 end)
 
+test.case("prelude.class exposes super for explicit parent init calls", function()
+   local Animal = prelude.class()
+
+   function Animal:init(name)
+      self.name = name
+   end
+
+   local Dog = prelude.class(Animal)
+
+   function Dog:init(name, breed)
+      self:super().init(self, name)
+      self.breed = breed
+   end
+
+   local dog = Dog("fido", "mutt")
+   test.equal(dog:super(), Animal)
+   test.equal(dog.name, "fido")
+   test.equal(dog.breed, "mutt")
+end)
+
 test.case("prelude.class accepts missing init", function()
    local Empty = prelude.class()
    local instance = Empty()
@@ -68,11 +88,33 @@ end)
 
 test.case("prelude.class supports is_instance across inheritance", function()
    local Animal = prelude.class()
+ 
+   function Animal:speak()
+      return "..."
+   end
+
    local Dog = prelude.class(Animal)
+
+   function Dog:speak()
+      return "woof"
+   end
+
+   local Puppy = prelude.class(Dog)
+
+   function Puppy:speak()
+      return "yip"
+   end
+
+   function Animal:parent_speak()
+      return self:super().speak(self)
+   end
+
    local dog = Dog()
+   local puppy = Puppy()
 
    test.truthy(Dog:is_instance(dog))
    test.truthy(Animal:is_instance(dog))
+   test.equal(puppy:parent_speak(), "woof")
    test.falsey(Dog:is_instance({}))
 end)
 

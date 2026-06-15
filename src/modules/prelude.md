@@ -8,6 +8,8 @@ Small foundational helpers that are safe to use before `rig` is available.
   - Creates a callable class table.
   - Calling the class constructs one instance whose metatable is the class table.
   - If the instance resolves an `init(...)` method, it is called during construction.
+  - Instances expose `:super()` to return the immediate parent class table, if any.
+  - Parent methods may be invoked explicitly as `self:super().method(self, ...)`.
   - If `parent` is provided, method lookup on the class falls back to that parent table.
 - `prelude.raise(message[, ...])`
   - Raises an error without adding Lua stack-location prefixes.

@@ -180,7 +180,7 @@ local function toggle_vsync()
 end
 
 function MovingSquare:init()
-   Object.init(self)
+   self:super().init(self)
    self.elapsed = 0.0
 end
 
@@ -199,7 +199,7 @@ function MovingSquare:draw()
 end
 
 function ProfilerOverlay:init()
-   Object.init(self)
+   self:super().init(self)
 end
 
 function ProfilerOverlay:draw()
@@ -236,7 +236,7 @@ function ProfilerOverlay:draw()
 end
 
 function Scene:init()
-   Object.init(self)
+   self:super().init(self)
    self.rect_program = 0
    self.rect_vao = 0
    self.rect_vbo = 0

@@ -114,7 +114,7 @@ local function build_mvp(out, aspect, x_angle, y_angle)
 end
 
 function Cube:init()
-   Object.init(self)
+   self:super().init(self)
    self.rotation_x_angle = 0.0
    self.rotation_y_angle = 0.0
    self.resource_scope = nil
@@ -287,7 +287,7 @@ function Cube:release()
 end
 
 function Scene:init()
-   Object.init(self)
+   self:super().init(self)
    self.cube = self:add_child(Cube())
    self.animator = nil
 end

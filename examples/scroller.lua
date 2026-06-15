@@ -233,7 +233,7 @@ function RasterSplit:draw(renderer, raster_texture, raster_phase, layout, split_
 end
 
 function RasterSplits:init(renderer, count)
-   Object.init(self)
+   self:super().init(self)
    self.count = count
    self.items = {}
    self.field = build_raster_field()
@@ -351,7 +351,7 @@ function RasterSplits:drive()
 end
 
 function Title:init(face, text)
-   Object.init(self)
+   self:super().init(self)
    self.enabled = false
    self.shadow_offset = 4
    self.phase = 0.0
@@ -408,7 +408,7 @@ function Title:update(dt)
 end
 
 function Scroller:init(face, text)
-   Object.init(self)
+   self:super().init(self)
    self.speed = 204.0
    self.wave_amplitude = 48.0
    self.wave_frequency = 0.001
@@ -486,7 +486,7 @@ function Scroller:update(dt)
 end
 
 function SpriteSnake:init(face, text)
-   Object.init(self)
+   self:super().init(self)
    self.outline_enabled = true
    self.text = text
    self.phase = 0.0
@@ -543,7 +543,7 @@ function SpriteSnake:update(dt)
 end
 
 function ProfilerOverlay:init()
-   Object.init(self)
+   self:super().init(self)
 end
 
 function ProfilerOverlay:draw(context)
@@ -553,7 +553,7 @@ function ProfilerOverlay:draw(context)
 end
 
 function Scene:init(renderer, face, scroll_text_value)
-   Object.init(self)
+   self:super().init(self)
    self.background_color = color.rgb(6, 8, 18)
    self.raster_splits = self:add_child(RasterSplits(renderer, 8))
    self.sprite_snake = self:add_child(SpriteSnake(face, "NEON PHANTOMS"))

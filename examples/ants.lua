@@ -281,7 +281,7 @@ local function sensor_half_width()
 end
 
 function Slider:init()
-   Object.init(self)
+   self:super().init(self)
    self.x = nil
    self.y = 14
    self.w = 152
@@ -502,7 +502,7 @@ function Slider:draw(context)
 end
 
 function Ant:init(index, ant_color)
-   Object.init(self)
+   self:super().init(self)
    self.id = index
    self.x = math.random(ant_margin, window_width - ant_margin)
    self.y = math.random(ant_margin, window_height - ant_margin)
@@ -776,7 +776,7 @@ function Ant:drive()
 end
 
 function ProfilerOverlay:init()
-   Object.init(self)
+   self:super().init(self)
 end
 
 function ProfilerOverlay:draw(context)
@@ -784,7 +784,7 @@ function ProfilerOverlay:draw(context)
 end
 
 function Scene:init()
-   Object.init(self)
+   self:super().init(self)
    self.background_color = background_color
    self.ants = {}
    self.slider = Slider()

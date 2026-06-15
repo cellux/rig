@@ -126,7 +126,7 @@ local function toggle_vsync()
 end
 
 function MovingSquare:init()
-   Object.init(self)
+   self:super().init(self)
    self.elapsed = 0.0
 end
 
@@ -147,7 +147,7 @@ function MovingSquare:draw(context)
 end
 
 function ProfilerOverlay:init()
-   Object.init(self)
+   self:super().init(self)
 end
 
 function ProfilerOverlay:draw(context)
@@ -186,7 +186,7 @@ function ProfilerOverlay:draw(context)
 end
 
 function Scene:init()
-   Object.init(self)
+   self:super().init(self)
    self.animator = nil
    self.moving_square = self:add_child(MovingSquare())
    self.profiler_overlay = self:add_child(ProfilerOverlay())

@@ -9,6 +9,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Returns a best-effort Lua-readable representation for any value.
 - `rig.class(parent?)`
   - Alias for `prelude.class(parent?)`.
+  - Constructed instances expose `:super()` to return their immediate parent class table, if any.
 - `rig.raise(message[, ...])`
   - Alias for `prelude.raise(message[, ...])`.
   - Raises an error without adding Lua stack-location prefixes.

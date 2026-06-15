@@ -15,6 +15,10 @@ function M.class(parent)
    local c = {}
    c.__index = c
 
+   function c:super()
+      return parent
+   end
+
    function c:is_instance(value)
       local current = getmetatable(value)
 
