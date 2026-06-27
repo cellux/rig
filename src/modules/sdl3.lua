@@ -2854,7 +2854,7 @@ rig.register_runtime_driver("sdl3", {
       "mouse",
       "resize",
    },
-   phases = {
+   driver_phases = {
       "before_poll",
       "after_poll",
       "before_drain",
@@ -2908,7 +2908,7 @@ rig.register_runtime_driver("sdl3_gpu", {
       "mouse",
       "resize",
    },
-   phases = {
+   driver_phases = {
       "before_poll",
       "after_poll",
       "before_drain",
@@ -2970,7 +2970,7 @@ rig.register_runtime_driver("sdl3_gl", {
       "mouse",
       "resize",
    },
-   phases = {
+   driver_phases = {
       "before_poll",
       "after_poll",
       "before_drain",

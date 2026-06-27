@@ -407,11 +407,12 @@ test.case("rig.run validates option shapes before resolving the runtime", functi
    test.match(tostring(bad_provider_map_err), "rig.run options%.providers key expects a non%-empty string")
 end)
 
-test.case("rig.run validates and executes declared hook phases", function()
+test.case("rig.run executes app-defined hook phases after app activation", function()
    local observed = {}
+   local TestApp = rig.class(rig.App)
 
    rig.register_runtime_driver("rig_test_hook_driver", {
-      phases = {
+      driver_phases = {
          "before_tick",
          "after_tick",
       },
@@ -421,44 +422,49 @@ test.case("rig.run validates and executes declared hook phases", function()
       end,
    })
 
+   function TestApp:before_tick()
+      table.insert(observed, "before_tick")
+   end
+
+   function TestApp:after_tick()
+      table.insert(observed, "after_tick")
+   end
+
+   function TestApp:after_shutdown()
+      table.insert(observed, "after_shutdown")
+   end
+
    rig.run {
       driver = "rig_test_hook_driver",
-      hooks = {
-         before_setup = function()
-            table.insert(observed, "before_setup")
-         end,
-         before_tick = function()
-            table.insert(observed, "before_tick")
-         end,
-         after_tick = function()
-            table.insert(observed, "after_tick")
-         end,
-         after_shutdown = function()
-            table.insert(observed, "after_shutdown")
-         end,
-      },
+      app = TestApp,
    }
 
-   test.equal(#observed, 4)
-   test.equal(observed[1], "before_setup")
-   test.equal(observed[2], "before_tick")
-   test.equal(observed[3], "after_tick")
-   test.equal(observed[4], "after_shutdown")
-
-   local unknown_phase_ok, unknown_phase_err = pcall(function()
-      rig.run {
-         driver = "rig_test_hook_driver",
-         hooks = {
-            before_frame = function() end,
-         },
-      }
-   end)
-   test.falsey(unknown_phase_ok)
-   test.match(tostring(unknown_phase_err), "does not know hook phase")
-   test.match(tostring(unknown_phase_err), "before_frame")
+   test.equal(#observed, 3)
+   test.equal(observed[1], "before_tick")
+   test.equal(observed[2], "after_tick")
+   test.equal(observed[3], "after_shutdown")
 end)
 
-test.case("rig.run instantiates app classes and merges app hooks with run hooks", function()
+test.case("rig.run rejects prebuilt app instances", function()
+   rig.register_runtime_driver("rig_test_app_instance_driver", {
+      loop = function() end,
+   })
+
+   local TestApp = rig.class(rig.App)
+   local app = TestApp()
+
+   local ok, err = pcall(function()
+      rig.run {
+         driver = "rig_test_app_instance_driver",
+         app = app,
+      }
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "rig%.run expects options%.app to be a rig%.App subclass")
+end)
+
+test.case("rig.run instantiates app classes and runs app hooks", function()
    local observed = {}
    local setup_complete = false
    local TestApp = rig.class(rig.App)
@@ -482,7 +488,7 @@ test.case("rig.run instantiates app classes and merges app hooks with run hooks"
    end
 
    rig.register_runtime_driver("rig_test_app_driver", {
-      phases = {
+      driver_phases = {
          "before_tick",
       },
       setup = function()
@@ -496,25 +502,15 @@ test.case("rig.run instantiates app classes and merges app hooks with run hooks"
    rig.run {
       driver = "rig_test_app_driver",
       app = TestApp,
-      hooks = {
-         after_setup = function()
-            table.insert(observed, "hook_after_setup")
-         end,
-         before_shutdown = function()
-            table.insert(observed, "hook_before_shutdown")
-         end,
-      },
    }
 
-   test.equal(#observed, 5)
+   test.equal(#observed, 3)
    test.equal(observed[1], "app_after_setup")
-   test.equal(observed[2], "hook_after_setup")
-   test.equal(observed[3], "app_before_tick")
-   test.equal(observed[4], "hook_before_shutdown")
-   test.equal(observed[5], "app_before_shutdown")
+   test.equal(observed[2], "app_before_tick")
+   test.equal(observed[3], "app_before_shutdown")
 end)
 
-test.case("rig.run merges app event handlers with option event handlers", function()
+test.case("rig.run uses app event handlers", function()
    local observed = {}
    local TestApp = rig.class(rig.App)
 
@@ -538,14 +534,8 @@ test.case("rig.run merges app event handlers with option event handlers", functi
    rig.run {
       driver = "rig_test_event_driver",
       app = TestApp,
-      event_handlers = {
-         key = function(key_info)
-            table.insert(observed, "option:" .. key_info.key)
-         end,
-      },
    }
 
-   test.equal(#observed, 2)
+   test.equal(#observed, 1)
    test.equal(observed[1], "app:space")
-   test.equal(observed[2], "option:space")
 end)

@@ -26,6 +26,9 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Subclasses may implement runtime-phase methods such as `after_setup`, `before_drain`, `before_frame`, and `before_shutdown`.
   - `app:build_hooks(allowed_phases)` binds the implemented phase methods into a hook table.
   - `app:build_event_handlers(allowed_events)` binds implemented `on_<event>(...)` methods into an event-handler table.
+- `rig.Runtime`
+  - Runtime instance class used by `rig.run(...)` to track one active run.
+  - `core_phase_names` lists the runtime-owned core phases.
 - `rig.tostring(value)`
   - Returns `tostring(value)` for values with a `__tostring` metamethod.
   - Returns `rig.repr(value)` for other tables.
@@ -50,7 +53,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Same as `rig.print(...)`, but appends `\n`.
 - `rig.register_runtime_driver(name, driver)`
   - Registers a named runtime driver for `rig.run(...)`.
-  - `driver.phases` may declare additional hook phases beyond the core runtime phases.
+  - `driver.driver_phases` may declare driver-owned hook phases beyond `rig.Runtime`'s core phases.
   - `driver.events` may declare named event-handler slots such as `key`, `mouse`, or `resize`.
 - `rig.register_runtime_preset(name, preset)`
   - Registers a named preset that selects one driver plus default service providers.
@@ -58,12 +61,12 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `preset.providers[service_id] = provider_id` sets default service providers for that preset.
 - `rig.register_runtime_hook(phase, hook)`
   - Registers a hook function for a named runtime phase.
-  - Core phases emitted by `rig.run(...)` are:
+  - `rig.Runtime` owns the core phases emitted by `rig.run(...)`:
     - `before_setup`
     - `after_setup`
     - `before_shutdown`
     - `after_shutdown`
-  - Drivers may declare additional phases through `driver.phases`.
+  - Drivers may extend that phase set through `driver.driver_phases`.
   - The built-in `sdl3` drivers declare:
     - `before_poll`
     - `after_poll`
@@ -77,22 +80,15 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `options.driver` may be used directly without a mode.
   - `options.providers[service_id] = provider_id` overrides service-provider selection for one run.
   - Provider mappings are validated before driver setup begins.
-  - `options.event_handlers` may provide generic runtime callbacks such as `key`, `mouse`, and `resize`.
   - `options.driver_config[driver_id]` stores driver-owned configuration such as render callbacks, window creation options, and presentation settings.
   - `options.module_config[module_id]` stores module-owned runtime configuration such as `uv.main`.
   - All built-in runtime modes create and own a scheduler.
   - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
-  - `options.app` may be a `rig.App` instance or subclass. If a subclass is provided, `rig.run(...)` instantiates it after driver setup and before `after_setup` hooks run.
-  - The app's implemented phase methods are merged into the run hooks automatically.
-  - The app's implemented `on_<event>(...)` methods are merged into the run event handlers automatically when the selected driver declares those events.
-  - Optional per-run hooks may be passed under `options.hooks`.
-  - `options.hooks.<phase>` must be a function.
-  - `options.hooks` is validated against the core phases plus any phases declared by the selected driver.
-  - `options.event_handlers.<event>` must be a function.
-  - `options.event_handlers` is validated against the event names declared by the selected driver.
-  - When both `options.app` and `options.hooks` provide the same phase, app hooks run first except for `before_shutdown`, where `options.hooks.before_shutdown` runs before app cleanup.
-  - When both `options.app` and `options.event_handlers` provide the same event, app handlers run first.
-  - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the merged app/per-run hooks for the same phase.
+  - `options.app` must be a `rig.App` subclass.
+  - `rig.run(...)` instantiates that app class after driver setup and before `after_setup` hooks run.
+  - The app's implemented phase methods are used automatically when the selected driver declares those phases.
+  - The app's implemented `on_<event>(...)` methods are used automatically when the selected driver declares those events.
+  - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the app hook for the same phase if one exists.
 - `rig.register_service(service_id, method_names)`
   - Registers a named runtime service definition.
   - `service_id` is a string.

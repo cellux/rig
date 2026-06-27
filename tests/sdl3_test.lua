@@ -1,21 +1,7 @@
 local test = require("test")
 local sdl3 = require("sdl3")
 
-test.case("sdl3 runtime options validate event handlers and driver config shapes", function()
-   local bad_handlers_ok, bad_handlers_err = pcall(function()
-      rig.run {
-         driver = "sdl3",
-         event_handlers = {
-            key = "bad",
-         },
-      }
-   end)
-   test.falsey(bad_handlers_ok)
-   test.match(
-      tostring(bad_handlers_err),
-      "rig%.run options%.event_handlers%.key expects a function"
-   )
-
+test.case("sdl3 runtime options validate driver config shapes", function()
    local bad_config_ok, bad_config_err = pcall(function()
       rig.run {
          driver = "sdl3",

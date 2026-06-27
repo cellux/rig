@@ -1,8 +1,11 @@
-(local sdl3 (require "sdl3"))
+(local sdl3x (require "sdl3x"))
 
-(rig.run
-  {:mode "sdl3"
-   :event_handlers {:key (fn [key-info]
-                           (rig.println key-info))}
-   :driver_config {:sdl3 {:render (fn []
-                                    (sdl3.clear 0 0 0 1))}}})
+(local App (rig.class sdl3x.App))
+
+(fn App.on_key [self key-info]
+  (rig.println key-info))
+
+(fn App.render [self]
+  (sdl3.clear 0 0 0 1))
+
+(rig.run {:mode "sdl3" :app App})

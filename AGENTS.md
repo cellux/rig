@@ -40,7 +40,7 @@
 - Per-run startup and runtime configuration should go through `rig.run(...)` options.
   - Avoid monkey-patching module globals to control runtime behavior.
   - Use module-scoped option tables such as `sdl3 = { ... }`, `sdl3_gpu = { ... }`, and `uv = { ... }`.
-  - Use `options.hooks` for run-local hooks and `rig.register_runtime_hook(...)` for persistent module-level hooks.
+  - Use app methods for run-local phase and event behavior, and `rig.register_runtime_hook(...)` for persistent module-level hooks.
 - Public async APIs should be coroutine-based.
   - Callback-style async APIs are internal implementation details.
   - User-facing async operations should suspend through `sched`.
