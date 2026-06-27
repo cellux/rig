@@ -9,6 +9,7 @@ Small foundational helpers that are safe to use before `rig` is available.
   - Calling the class constructs one instance whose metatable is the class table.
   - If the instance resolves an `init(...)` method, it is called during construction.
   - Instances expose `:super()` to return the immediate parent class table, if any.
+  - Class tables expose `:is_descendant(ancestor)` to test inheritance against a parent class.
   - Parent methods may be invoked explicitly as `self:super().method(self, ...)`.
   - If `parent` is provided, method lookup on the class falls back to that parent table.
 - `prelude.raise(message[, ...])`

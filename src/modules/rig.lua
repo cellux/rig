@@ -175,25 +175,6 @@ end
 
 M.App = M.class()
 
-local function class_is_descendant(class_value, ancestor)
-   local current = class_value
-
-   while type(current) == "table" do
-      if current == ancestor then
-         return true
-      end
-
-      local current_mt = getmetatable(current)
-      if type(current_mt) ~= "table" then
-         return false
-      end
-
-      current = rawget(current_mt, "__index")
-   end
-
-   return false
-end
-
 function M.App:build_hooks(allowed_phases)
    if type(allowed_phases) ~= "table" then
       raise("rig.App:build_hooks requires an allowed phase map")
@@ -307,7 +288,7 @@ local function validate_app_spec(app_spec)
       raise("rig.run expects options.app to be a rig.App class or instance")
    end
 
-   if M.App:is_instance(app_spec) or class_is_descendant(app_spec, M.App) then
+   if M.App:is_instance(app_spec) or app_spec:is_descendant(M.App) then
       return
    end
 

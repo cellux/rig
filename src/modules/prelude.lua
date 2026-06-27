@@ -15,15 +15,11 @@ function M.class(parent)
    local c = {}
    c.__index = c
 
-   function c:super()
-      return parent
-   end
-
-   function c:is_instance(value)
-      local current = getmetatable(value)
+   local function is_descendant(class_value, ancestor)
+      local current = class_value
 
       while type(current) == "table" do
-         if current == self then
+         if current == ancestor then
             return true
          end
 
@@ -36,6 +32,18 @@ function M.class(parent)
       end
 
       return false
+   end
+
+   function c:super()
+      return parent
+   end
+
+   function c:is_instance(value)
+      return is_descendant(getmetatable(value), self)
+   end
+
+   function c:is_descendant(ancestor)
+      return is_descendant(self, ancestor)
    end
 
    setmetatable(c, {
