@@ -92,7 +92,6 @@ local function add_scope_entry(scope, resource, release_fn)
    local entry = {
       resource = resource,
       release_fn = release_fn,
-      key = nil,
    }
    table.insert(scope._entries, entry)
    return entry
@@ -153,7 +152,6 @@ function M.ResourceScope:replace(key, resource, release_fn)
    end
 
    local entry = add_scope_entry(self, resource, release_fn)
-   entry.key = key
    self._named_entries[key] = entry
    return resource
 end
@@ -168,12 +166,10 @@ function M.ResourceScope:release()
       if entry.resource ~= nil then
          entry.release_fn(self.context, entry.resource)
       end
-      if entry.key ~= nil and self._named_entries[entry.key] == entry then
-         self._named_entries[entry.key] = nil
-      end
       self._entries[index] = nil
    end
 
+   self._named_entries = {}
    self._released = true
 end
 
