@@ -410,85 +410,13 @@ end
 
 --[ App ]
 
-
-function M.App:build_hooks(allowed_phases)
-   if type(allowed_phases) ~= "table" then
-      raise("rig.App:build_hooks requires an allowed phase map")
-   end
-
-   local hooks = {}
-   for phase in pairs(allowed_phases) do
-      local hook = self[phase]
-      if type(hook) == "function" then
-         hooks[phase] = function(...)
-            return hook(self, ...)
-         end
-      end
-   end
-
-   return hooks
-end
-
-function M.App:build_event_handlers(allowed_events)
-   if type(allowed_events) ~= "table" then
-      raise("rig.App:build_event_handlers requires an allowed event map")
-   end
-
-   local handlers = {}
-   for event_name in pairs(allowed_events) do
-      local handler = self["on_" .. event_name]
-      if type(handler) == "function" then
-         handlers[event_name] = function(...)
-            return handler(self, ...)
-         end
-      end
-   end
-
-   return handlers
-end
 M.App = M.Class()
 
 --[ Runtime ]
 
 M.Runtime = M.Class()
 
-function M.Runtime:allowed_phase_map()
-   local allowed_phases = M.set(core_phase_names)
-   local driver_phases = self.driver.driver_phases or {}
-
-   for i = 1, #driver_phases do
-      allowed_phases[driver_phases[i]] = true
-   end
-
-   return allowed_phases
-end
-
-function M.Runtime:allowed_event_map()
-   return M.set(self.driver.events or {})
-end
-
-local function validate_app_spec(app_spec)
-   if app_spec == nil then
-      return
-   end
-   if type(app_spec) ~= "table" then
-      raise("rig.run expects options.app to be a rig.App subclass")
-   end
-   if app_spec:is_descendant(M.App) then
-      return
-   end
-
-   raise("rig.run expects options.app to be a rig.App subclass")
-end
-
-local function instantiate_app(app_spec, options)
-   if app_spec == nil then
-      return nil
-   end
-   validate_app_spec(app_spec)
-
-   return app_spec(options)
-end
+local _active_runtime = nil
 
 function M.Runtime:init(spec)
    if type(spec) ~= "table" then
@@ -500,10 +428,8 @@ function M.Runtime:init(spec)
    self.driver_id = spec.driver_id
    self.mode_id = spec.mode_id
    self.providers = spec.providers or {}
-   self.app_spec = spec.app
+   self.app_factory = spec.app
    self.app = nil
-   self.app_event_handlers = nil
-   self.app_hooks = nil
 
    local ok, service_providers_or_err = pcall(function()
       return self.service_registry:resolve_service_providers(self.providers)
@@ -537,33 +463,38 @@ function M.Runtime:require_service(service_id)
    return provider
 end
 
-function M.Runtime:event_handler(event_name)
-   if self.app_event_handlers == nil then
+function M.Runtime:handle_event(event_name, ...)
+   if self.app == nil then
       return nil
    end
 
-   return self.app_event_handlers[event_name]
+   local handler = self.app["on_" .. event_name]
+   if type(handler) ~= "function" then
+      return nil
+   end
+
+   return handler(self.app, ...)
 end
 
 function M.Runtime:run_hooks(phase, ...)
    invoke_runtime_hooks(phase, ...)
 
-   local hook_function = self.app_hooks and self.app_hooks[phase]
-   if hook_function ~= nil then
-      hook_function(...)
+   if self.app == nil then
+      return
+   end
+
+   local hook = self.app[phase]
+   if type(hook) == "function" then
+      hook(self.app, ...)
    end
 end
 
 function M.Runtime:activate_app(options)
-   if self.app_spec == nil or self.app ~= nil then
+   if self.app_factory == nil or self.app ~= nil then
       return
    end
 
-   local allowed_events = self:allowed_event_map()
-   self.app = instantiate_app(self.app_spec, options)
-   local allowed_phases = self:allowed_phase_map()
-   self.app_event_handlers = self.app:build_event_handlers(allowed_events)
-   self.app_hooks = self.app:build_hooks(allowed_phases)
+   self.app = self.app_factory(options)
 end
 
 function M.Runtime:run(options)
@@ -574,9 +505,7 @@ function M.Runtime:run(options)
    self:activate_app(options)
    self:run_hooks("after_setup", options)
 
-   self.driver.loop(options, function(phase, ...)
-      self:run_hooks(phase, ...)
-   end, self)
+   self.driver.loop(options, self)
 
    self:run_hooks("before_shutdown", options)
    if type(self.driver.shutdown) == "function" then
@@ -584,8 +513,6 @@ function M.Runtime:run(options)
    end
    self:run_hooks("after_shutdown", options)
 end
-
-local _active_runtime = nil
 
 function M.require_service(service_id)
    if type(service_id) ~= "string" or service_id == "" then
@@ -636,7 +563,12 @@ local function resolve_runtime(options)
    if driver == nil then
       raise("rig.run does not know runtime driver '%s'", driver_id)
    end
-   validate_app_spec(options.app)
+
+   if options.app ~= nil then
+      if not M.App:is_ancestor(options.app) then
+         raise("rig.run expects options.app to be a rig.App subclass")
+      end
+   end
 
    local providers = {}
    if preset ~= nil then

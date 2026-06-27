@@ -416,9 +416,9 @@ test.case("rig.run executes app-defined hook phases after app activation", funct
          "before_tick",
          "after_tick",
       },
-      loop = function(options, run_hooks)
-         run_hooks("before_tick", options)
-         run_hooks("after_tick", options)
+      loop = function(options, runtime)
+         runtime:run_hooks("before_tick", options)
+         runtime:run_hooks("after_tick", options)
       end,
    })
 
@@ -494,8 +494,8 @@ test.case("rig.run instantiates app classes and runs app hooks", function()
       setup = function()
          setup_complete = true
       end,
-      loop = function(options, run_hooks)
-         run_hooks("before_tick", options)
+      loop = function(options, runtime)
+         runtime:run_hooks("before_tick", options)
       end,
    })
 
@@ -522,10 +522,8 @@ test.case("rig.run uses app event handlers", function()
       events = {
          "key",
       },
-      loop = function(_, _, runtime)
-         local handler = runtime:event_handler("key")
-         test.equal(type(handler), "function")
-         handler({
+      loop = function(_, runtime)
+         runtime:handle_event("key", {
             key = "space",
          })
       end,

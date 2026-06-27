@@ -34,8 +34,6 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.App`
   - Minimal base class for runtime-owned application objects used with `rig.run(...)`.
   - Subclasses may implement runtime-phase methods such as `after_setup`, `before_drain`, `before_frame`, and `before_shutdown`.
-  - `app:build_hooks(allowed_phases)` binds the implemented phase methods into a hook table.
-  - `app:build_event_handlers(allowed_events)` binds implemented `on_<event>(...)` methods into an event-handler table.
 - `rig.Runtime`
   - Runtime instance class used by `rig.run(...)` to track one active run.
   - `core_phase_names` lists the runtime-owned core phases.

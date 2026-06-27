@@ -1985,11 +1985,7 @@ local function get_window_size_in_pixels()
       tonumber(gl_font_window_height[0]) or 0
 end
 
-local function dispatch_resize_if_changed(handler, event_name, timestamp_ns)
-   if type(handler) ~= "function" then
-      return
-   end
-
+local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
    local width, height = get_window_size()
    local pixel_width, pixel_height = get_window_size_in_pixels()
    local previous = resize_state
@@ -2011,7 +2007,7 @@ local function dispatch_resize_if_changed(handler, event_name, timestamp_ns)
    }
 
    local ns = timestamp_ns or 0
-   handler({
+   runtime:handle_event("resize", {
       type = "resize",
       event = event_name,
       width = width,
@@ -2495,11 +2491,7 @@ function M.clear(r, g, b, a)
    end
 end
 
-local function dispatch_keyboard_event(event, handler)
-   if type(handler) ~= "function" then
-      return
-   end
-
+local function dispatch_keyboard_event(event, runtime)
    local key_name = M.GetKeyName(event.key)
    local key = "Unknown"
    local mods = tonumber(event.mod) or 0
@@ -2509,7 +2501,7 @@ local function dispatch_keyboard_event(event, handler)
       key = ffi.string(key_name)
    end
 
-   handler({
+   runtime:handle_event("key", {
       type = "key",
       action = event.down and "down" or "up",
       key = key,
@@ -2527,14 +2519,10 @@ local function dispatch_keyboard_event(event, handler)
    })
 end
 
-local function dispatch_mouse_motion_event(event, handler)
-   if type(handler) ~= "function" then
-      return
-   end
-
+local function dispatch_mouse_motion_event(event, runtime)
    local timestamp_ns = tonumber(event.timestamp) or 0
 
-   handler({
+   runtime:handle_event("mouse", {
       type = "mouse",
       action = "move",
       x = tonumber(event.x) or 0,
@@ -2547,14 +2535,10 @@ local function dispatch_mouse_motion_event(event, handler)
    })
 end
 
-local function dispatch_mouse_button_event(event, handler)
-   if type(handler) ~= "function" then
-      return
-   end
-
+local function dispatch_mouse_button_event(event, runtime)
    local timestamp_ns = tonumber(event.timestamp) or 0
 
-   handler({
+   runtime:handle_event("mouse", {
       type = "mouse",
       action = event.down and "down" or "up",
       button = tonumber(event.button) or 0,
@@ -2566,7 +2550,7 @@ local function dispatch_mouse_button_event(event, handler)
    })
 end
 
-local function pump_events(on_key, on_mouse, on_resize)
+local function pump_events(runtime)
    if runtime_window == nil then
       error("an SDL window must be initialized before sdl3.pump_events")
    end
@@ -2581,23 +2565,23 @@ local function pump_events(on_key, on_mouse, on_resize)
       end
 
       if event_type == M.EVENT_KEY_DOWN or event_type == M.EVENT_KEY_UP then
-         dispatch_keyboard_event(current.key, on_key)
+         dispatch_keyboard_event(current.key, runtime)
       elseif event_type == M.EVENT_WINDOW_RESIZED then
          dispatch_resize_if_changed(
-            on_resize,
+            runtime,
             "resized",
             tonumber(current.window.timestamp) or 0
          )
       elseif event_type == M.EVENT_WINDOW_PIXEL_SIZE_CHANGED then
          dispatch_resize_if_changed(
-            on_resize,
+            runtime,
             "pixel_size_changed",
             tonumber(current.window.timestamp) or 0
          )
       elseif event_type == M.EVENT_MOUSE_MOTION then
-         dispatch_mouse_motion_event(current.motion, on_mouse)
+         dispatch_mouse_motion_event(current.motion, runtime)
       elseif event_type == M.EVENT_MOUSE_BUTTON_DOWN or event_type == M.EVENT_MOUSE_BUTTON_UP then
-         dispatch_mouse_button_event(current.button, on_mouse)
+         dispatch_mouse_button_event(current.button, runtime)
       end
    end
 
@@ -2867,25 +2851,22 @@ rig.register_runtime_driver("sdl3", {
       setup(sdl3_options)
       setup_scheduler("sdl3 scheduler")
    end,
-   loop = function(options, run_hooks, runtime)
+   loop = function(options, runtime)
       local sdl3_options = get_driver_config(options, "sdl3")
       local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3", runtime)
-      local on_key = runtime:event_handler("key")
-      local on_mouse = runtime:event_handler("mouse")
-      local on_resize = runtime:event_handler("resize")
-      dispatch_resize_if_changed(on_resize, "initial", 0)
+      dispatch_resize_if_changed(runtime, "initial", 0)
       while true do
-         run_hooks("before_poll", options)
-         if pump_events(on_key, on_mouse, on_resize) == false then
+         runtime:run_hooks("before_poll", options)
+         if pump_events(runtime) == false then
             break
          end
-         run_hooks("after_poll", options)
-         run_hooks("before_drain", options)
+         runtime:run_hooks("after_poll", options)
+         runtime:run_hooks("before_drain", options)
          drain_scheduler()
-         run_hooks("after_drain", options)
-         run_hooks("before_frame", options)
+         runtime:run_hooks("after_drain", options)
+         runtime:run_hooks("before_frame", options)
          render_frame(on_render)
-         run_hooks("after_frame", options)
+         runtime:run_hooks("after_frame", options)
       end
    end,
    shutdown = function()
@@ -2928,25 +2909,22 @@ rig.register_runtime_driver("sdl3_gpu", {
       }
       setup_scheduler("sdl3_gpu scheduler")
    end,
-   loop = function(options, run_hooks, runtime)
+   loop = function(options, runtime)
       local sdl3_options = get_driver_config(options, "sdl3_gpu")
       local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu", runtime)
-      local on_key = runtime:event_handler("key")
-      local on_mouse = runtime:event_handler("mouse")
-      local on_resize = runtime:event_handler("resize")
-      dispatch_resize_if_changed(on_resize, "initial", 0)
+      dispatch_resize_if_changed(runtime, "initial", 0)
       while true do
-         run_hooks("before_poll", options)
-         if pump_events(on_key, on_mouse, on_resize) == false then
+         runtime:run_hooks("before_poll", options)
+         if pump_events(runtime) == false then
             break
          end
-         run_hooks("after_poll", options)
-         run_hooks("before_drain", options)
+         runtime:run_hooks("after_poll", options)
+         runtime:run_hooks("before_drain", options)
          drain_scheduler()
-         run_hooks("after_drain", options)
-         run_hooks("before_frame", options)
+         runtime:run_hooks("after_drain", options)
+         runtime:run_hooks("before_frame", options)
          render_gpu_frame(on_render)
-         run_hooks("after_frame", options)
+         runtime:run_hooks("after_frame", options)
       end
    end,
    shutdown = function()
@@ -2983,25 +2961,22 @@ rig.register_runtime_driver("sdl3_gl", {
       setup_gl(sdl3_options)
       setup_scheduler("sdl3_gl scheduler")
    end,
-   loop = function(options, run_hooks, runtime)
+   loop = function(options, runtime)
       local sdl3_options = get_driver_config(options, "sdl3_gl")
       local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gl", runtime)
-      local on_key = runtime:event_handler("key")
-      local on_mouse = runtime:event_handler("mouse")
-      local on_resize = runtime:event_handler("resize")
-      dispatch_resize_if_changed(on_resize, "initial", 0)
+      dispatch_resize_if_changed(runtime, "initial", 0)
       while true do
-         run_hooks("before_poll", options)
-         if pump_events(on_key, on_mouse, on_resize) == false then
+         runtime:run_hooks("before_poll", options)
+         if pump_events(runtime) == false then
             break
          end
-         run_hooks("after_poll", options)
-         run_hooks("before_drain", options)
+         runtime:run_hooks("after_poll", options)
+         runtime:run_hooks("before_drain", options)
          drain_scheduler()
-         run_hooks("after_drain", options)
-         run_hooks("before_frame", options)
+         runtime:run_hooks("after_drain", options)
+         runtime:run_hooks("before_frame", options)
          render_gl_frame(on_render)
-         run_hooks("after_frame", options)
+         runtime:run_hooks("after_frame", options)
       end
    end,
    shutdown = function()
