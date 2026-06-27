@@ -27,7 +27,15 @@ function M.class(parent)
    local c = {}
    c.__index = c
 
+   local function is_class(value)
+      return type(value) == "table" and rawget(value, "__index") == value
+   end
+
    local function is_descendant(class_value, ancestor)
+      if not is_class(class_value) or not is_class(ancestor) then
+         return false
+      end
+
       local current = class_value
 
       while type(current) == "table" do
