@@ -10,7 +10,9 @@ M.raise = prelude.raise
 
 local raise = M.raise
 
-function M.tostring(value)
+--[ rig.tostring ]
+
+local function stringify(value)
    if type(value) == "table" then
       local mt = getmetatable(value)
       if type(mt) == "table" and type(rawget(mt, "__tostring")) == "function" then
@@ -21,10 +23,12 @@ function M.tostring(value)
    return tostring(value)
 end
 
+M.tostring = stringify
+
+--[ printers ]
+
 local function print_values(stream, with_newline, ...)
    local parts = {}
-   local stringify = M.tostring
-
    for i = 1, select("#", ...) do
       local text = stringify(select(i, ...))
       if type(text) ~= "string" then
