@@ -19,17 +19,21 @@ function M.set(values)
    return set
 end
 
+local class_marker_key = {}
+
+local function is_class(value)
+   return type(value) == "table" and rawget(value, class_marker_key) == true
+end
+M.is_class = is_class
+
 function M.class(parent)
-   if parent ~= nil and type(parent) ~= "table" then
-      M.raise("class expects parent to be a table if provided")
+   if parent ~= nil and not is_class(parent) then
+      M.raise("class expects parent to be a class if provided")
    end
 
    local c = {}
    c.__index = c
-
-   local function is_class(value)
-      return type(value) == "table" and rawget(value, "__index") == value
-   end
+   c[class_marker_key] = true
 
    local function is_descendant(class_value, ancestor)
       if not is_class(class_value) or not is_class(ancestor) then
@@ -64,6 +68,10 @@ function M.class(parent)
 
    function c:is_descendant(ancestor)
       return is_descendant(self, ancestor)
+   end
+
+   function c:is_ancestor(descendant)
+      return is_descendant(descendant, self)
    end
 
    setmetatable(c, {

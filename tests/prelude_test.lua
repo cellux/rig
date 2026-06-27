@@ -83,7 +83,22 @@ test.case("prelude.class validates parent type", function()
    end)
 
    test.falsey(ok)
-   test.match(tostring(err), "expects parent to be a table")
+   test.match(tostring(err), "expects parent to be a class")
+end)
+
+test.case("prelude.is_class identifies rig classes exactly", function()
+   local Animal = prelude.class()
+   local Dog = prelude.class(Animal)
+   local dog = Dog()
+   local fake_class = {}
+   fake_class.__index = fake_class
+
+   test.truthy(prelude.is_class(Animal))
+   test.truthy(prelude.is_class(Dog))
+   test.falsey(prelude.is_class(dog))
+   test.falsey(prelude.is_class(fake_class))
+   test.falsey(prelude.is_class({}))
+   test.falsey(prelude.is_class("Animal"))
 end)
 
 test.case("prelude.set builds membership sets from arrays", function()
@@ -145,6 +160,21 @@ test.case("prelude.class supports is_descendant across inheritance", function()
    test.falsey(Dog:is_descendant({}))
 end)
 
+test.case("prelude.class supports is_ancestor across inheritance", function()
+   local Animal = prelude.class()
+   local Dog = prelude.class(Animal)
+   local Puppy = prelude.class(Dog)
+   local dog = Dog()
+
+   test.truthy(Animal:is_ancestor(Dog))
+   test.truthy(Animal:is_ancestor(Puppy))
+   test.truthy(Dog:is_ancestor(Puppy))
+   test.truthy(Animal:is_ancestor(Animal))
+   test.falsey(Dog:is_ancestor(Animal))
+   test.falsey(Animal:is_ancestor(dog))
+   test.falsey(Animal:is_ancestor({}))
+end)
+
 test.case("prelude.raise raises without stack location and formats when needed", function()
    local ok, err = pcall(function()
       prelude.raise("bad value '%s'", "x")
@@ -154,8 +184,9 @@ test.case("prelude.raise raises without stack location and formats when needed",
    test.equal(err, "bad value 'x'")
 end)
 
-test.case("rig aliases prelude.class and prelude.raise", function()
+test.case("rig aliases prelude class helpers and raise", function()
    test.equal(rig.set, prelude.set)
+   test.equal(rig.is_class, prelude.is_class)
    test.equal(rig.class, prelude.class)
    test.equal(rig.raise, prelude.raise)
 end)
