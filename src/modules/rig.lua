@@ -488,11 +488,11 @@ local function run_runtime_hooks(phase, ...)
    end
 end
 
-M.ActiveRuntime = M.class()
+M.Runtime = M.class()
 
-function M.ActiveRuntime:init(spec)
+function M.Runtime:init(spec)
    if type(spec) ~= "table" then
-      raise("rig.ActiveRuntime expects a table")
+      raise("rig.Runtime expects a table")
    end
 
    self.service_registry = spec.service_registry
@@ -520,11 +520,11 @@ function M.ActiveRuntime:init(spec)
    )
 end
 
-function M.ActiveRuntime:runtime_id()
+function M.Runtime:runtime_id()
    return self.mode_id or self.driver_id
 end
 
-function M.ActiveRuntime:require_service(service_id)
+function M.Runtime:require_service(service_id)
    local provider = self.service_providers[service_id]
    if provider == nil then
       raise(
@@ -546,7 +546,7 @@ local option_event_handlers_schema = schema.map(
    schema.func()
 )
 
-function M.ActiveRuntime:normalize_option_event_handlers(event_handlers)
+function M.Runtime:normalize_option_event_handlers(event_handlers)
    if event_handlers == nil then
       return nil
    end
@@ -571,7 +571,7 @@ function M.ActiveRuntime:normalize_option_event_handlers(event_handlers)
    return normalized
 end
 
-function M.ActiveRuntime:normalize_option_hooks(hooks)
+function M.Runtime:normalize_option_hooks(hooks)
    if hooks == nil then
       return nil
    end
@@ -597,7 +597,7 @@ function M.ActiveRuntime:normalize_option_hooks(hooks)
    return normalized
 end
 
-function M.ActiveRuntime:event_handler(event_name)
+function M.Runtime:event_handler(event_name)
    if self.option_event_handlers == nil then
       return nil
    end
@@ -605,7 +605,7 @@ function M.ActiveRuntime:event_handler(event_name)
    return self.option_event_handlers[event_name]
 end
 
-function M.ActiveRuntime:run_hooks(phase, ...)
+function M.Runtime:run_hooks(phase, ...)
    run_runtime_hooks(phase, ...)
 
    local hook_function = self.option_hooks and self.option_hooks[phase]
@@ -614,7 +614,7 @@ function M.ActiveRuntime:run_hooks(phase, ...)
    end
 end
 
-function M.ActiveRuntime:activate_app(options)
+function M.Runtime:activate_app(options)
    if self.app_spec == nil or self.app ~= nil then
       return
    end
@@ -763,7 +763,7 @@ local function resolve_runtime(options)
       providers[service_id] = provider_id
    end
 
-   return driver, M.ActiveRuntime {
+   return driver, M.Runtime {
       service_registry = _service_registry,
       driver = driver,
       driver_id = driver_id,
