@@ -4,6 +4,9 @@ Small foundational helpers that are safe to use before `rig` is available.
 
 ## API
 
+- `prelude.set(values)`
+  - Builds a membership set table from the array part of `values`.
+  - Each array element becomes a key with value `true`.
 - `prelude.class(parent?)`
   - Creates a callable class table.
   - Calling the class constructs one instance whose metatable is the class table.
@@ -18,5 +21,6 @@ Small foundational helpers that are safe to use before `rig` is available.
 
 ## Notes
 
+- `rig.set(...)` is an alias for `prelude.set(...)`.
 - `rig.class(...)` is an alias for `prelude.class(...)`.
 - `rig.raise(...)` is an alias for `prelude.raise(...)`.

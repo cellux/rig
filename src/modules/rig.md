@@ -7,6 +7,9 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.repr(value[, options])`
   - Alias for `repr.repr(value[, options])`.
   - Returns a best-effort Lua-readable representation for any value.
+- `rig.set(values)`
+  - Alias for `prelude.set(values)`.
+  - Builds a membership set table from the array part of `values`.
 - `rig.class(parent?)`
   - Alias for `prelude.class(parent?)`.
   - Constructed instances expose `:super()` to return their immediate parent class table, if any.

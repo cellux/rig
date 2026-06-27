@@ -7,9 +7,21 @@ function M.raise(message, ...)
    error(message, 0)
 end
 
+function M.set(values)
+   if type(values) ~= "table" then
+      M.raise("set expects values to be a table")
+   end
+
+   local set = {}
+   for i = 1, #values do
+      set[values[i]] = true
+   end
+   return set
+end
+
 function M.class(parent)
    if parent ~= nil and type(parent) ~= "table" then
-      M.raise("prelude.class expects parent to be a table if provided")
+      M.raise("class expects parent to be a table if provided")
    end
 
    local c = {}

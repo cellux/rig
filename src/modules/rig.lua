@@ -4,6 +4,7 @@ local repr = require("repr")
 local schema = require("schema")
 
 M.repr = repr.repr
+M.set = prelude.set
 M.class = prelude.class
 M.raise = prelude.raise
 

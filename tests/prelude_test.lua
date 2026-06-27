@@ -86,6 +86,18 @@ test.case("prelude.class validates parent type", function()
    test.match(tostring(err), "expects parent to be a table")
 end)
 
+test.case("prelude.set builds membership sets from arrays", function()
+   local values = prelude.set({
+      "alpha",
+      "beta",
+      "alpha",
+   })
+
+   test.truthy(values.alpha)
+   test.truthy(values.beta)
+   test.falsey(values.gamma)
+end)
+
 test.case("prelude.class supports is_instance across inheritance", function()
    local Animal = prelude.class()
  
@@ -141,6 +153,7 @@ test.case("prelude.raise raises without stack location and formats when needed",
 end)
 
 test.case("rig aliases prelude.class and prelude.raise", function()
+   test.equal(rig.set, prelude.set)
    test.equal(rig.class, prelude.class)
    test.equal(rig.raise, prelude.raise)
 end)

@@ -2,6 +2,7 @@ local M = ... or {}
 local prelude = require("prelude")
 local class = prelude.class
 local raise = prelude.raise
+local set = prelude.set
 
 local function path_label(path)
    if type(path) == "string" and path ~= "" then
@@ -228,12 +229,11 @@ function M.EnumSchema:init(values)
       raise("schema.EnumSchema expects values to be a table")
    end
 
-   self.values = {}
+   self.values = set(values)
    self.descriptions = {}
 
    for i = 1, #values do
       local value = values[i]
-      self.values[value] = true
       self.descriptions[i] = tostring(value)
    end
 end
