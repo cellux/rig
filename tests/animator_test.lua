@@ -27,12 +27,14 @@ test.case("animator.App manages root, animator, and teardown lifecycle", functio
 
    function TestApp:init()
       self:super().init(self, {
-         animator_options = {
-            fixed_dt = 0.25,
-            max_dt = 0.25,
-            max_steps_per_frame = 1,
+         module_config = {
+            animator = {
+               fixed_dt = 0.25,
+               max_dt = 0.25,
+               max_steps_per_frame = 1,
+               start = false,
+            },
          },
-         start = false,
       })
       self.root = TestRoot()
       root = self.root
@@ -88,7 +90,11 @@ test.case("animator.App can create the root during after_setup", function()
 
    function TestApp:init()
       self:super().init(self, {
-         start = false,
+         module_config = {
+            animator = {
+               start = false,
+            },
+         },
       })
    end
 
@@ -134,7 +140,11 @@ test.case("animator.App runs activate() on the root tree before starting", funct
 
    function TestApp:init()
       self:super().init(self, {
-         start = false,
+         module_config = {
+            animator = {
+               start = false,
+            },
+         },
       })
       self.root = Root()
    end
@@ -180,7 +190,11 @@ test.case("animator.App releases the root tree if activate() fails", function()
 
    function TestApp:init()
       self:super().init(self, {
-         start = false,
+         module_config = {
+            animator = {
+               start = false,
+            },
+         },
       })
       self.root = Root()
    end

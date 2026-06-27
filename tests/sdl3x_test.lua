@@ -169,7 +169,11 @@ test.case("sdl3x.SceneApp combines animator and owned-resource lifecycles", func
 
    function TestApp:init()
       self:super().init(self, {
-         start = false,
+         module_config = {
+            animator = {
+               start = false,
+            },
+         },
       })
    end
 

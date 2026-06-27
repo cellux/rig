@@ -46,6 +46,11 @@ rig.run {
 }
 ```
 
+Animator app behavior may be configured through `rig.run { module_config = { animator = { ... } } }`:
+
+- `fixed_dt`, `max_dt`, and `max_steps_per_frame` forward to `animator.Animator(root, options)`
+- `start = false` disables the default automatic `scene_animator:start()`
+
 Subclasses may override:
 
 - `init(options)`

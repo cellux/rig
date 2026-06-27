@@ -1,6 +1,7 @@
 local M = ... or {}
 local rig = require("rig")
 local sched = require("sched")
+local schema = require("schema")
 local time = require("time")
 
 M.DEFAULT_FIXED_DT = 1.0 / 120.0
@@ -13,20 +14,55 @@ local App = rig.Class(rig.App)
 M.Animator = Animator
 M.App = App
 
+local module_config_schema = schema.record({
+   fixed_dt = schema.number():optional(),
+   max_dt = schema.number():optional(),
+   max_steps_per_frame = schema.number():optional(),
+   start = schema.boolean():optional(),
+})
+
 local function validate_app_options(options, context_label)
    if type(options) ~= "table" then
       rig.raise("%s expects an options table", context_label)
    end
 end
 
+local function normalize_module_config(options)
+   if options == nil then
+      return {}
+   end
+   return schema.assert(module_config_schema, options, "animator module configuration")
+end
+
+local function get_module_config(runtime_options)
+   local module_config = runtime_options.module_config
+   if module_config == nil then
+      return {}
+   end
+   if type(module_config) ~= "table" then
+      rig.raise("rig.run expects options.module_config to be a table if provided")
+   end
+
+   local animator_config = module_config.animator
+   if animator_config == nil then
+      return {}
+   end
+
+   return normalize_module_config(animator_config)
+end
+
 function App:init(options)
    options = options or {}
    validate_app_options(options, "animator.App")
+   local config = get_module_config(options)
 
    self.animator = nil
-   self.animator_options = options.animator_options
-   self.start = options.start ~= false
-   self.animator_field = options.animator_field or "animator"
+   self.animator_options = {
+      fixed_dt = config.fixed_dt,
+      max_dt = config.max_dt,
+      max_steps_per_frame = config.max_steps_per_frame,
+   }
+   self.start = config.start ~= false
 end
 
 function App:create_scene_animator(root)
@@ -56,7 +92,7 @@ function App:after_setup()
 
    self.root = root
    self.animator = scene_animator
-   root[self.animator_field] = scene_animator
+   root.animator = scene_animator
 
    local ok, activate_err = pcall(function()
       root:activate_tree()

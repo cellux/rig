@@ -89,7 +89,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `options.providers[service_id] = provider_id` overrides service-provider selection for one run.
   - Provider mappings are validated before driver setup begins.
   - `options.driver_config[driver_id]` stores driver-owned configuration such as render callbacks, window creation options, and presentation settings.
-  - `options.module_config[module_id]` stores module-owned runtime configuration such as `uv.main`.
+  - `options.module_config[module_id]` stores module-owned runtime configuration such as `uv.main` or `animator.start`.
   - All built-in runtime modes create and own a scheduler.
   - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
   - `options.app` must be a `rig.App` subclass.
