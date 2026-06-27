@@ -1,6 +1,6 @@
 (local sdl3x (require "sdl3x"))
 
-(local App (rig.class sdl3x.App))
+(local App (rig.Class sdl3x.App))
 
 (fn App.on_key [self key-info]
   (rig.println key-info))

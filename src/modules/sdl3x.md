@@ -85,7 +85,7 @@ Typical usage:
 ```lua
 local sdl3x = require("sdl3x")
 
-local App = rig.class(sdl3x.SceneApp)
+local App = rig.Class(sdl3x.SceneApp)
 
 function App:init(options)
    self:super().init(self, options)

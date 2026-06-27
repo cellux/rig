@@ -56,8 +56,8 @@ local window_entry_array_type = ffi.typeof([[
 ]])
 local write_marker_array_type = ffi.typeof("uint8_t[?]")
 
-M.MetricBundle = rig.class()
-local Deque = rig.class()
+M.MetricBundle = rig.Class()
+local Deque = rig.Class()
 
 function Deque:init(capacity)
    self.capacity = capacity

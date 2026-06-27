@@ -9,9 +9,9 @@ local sdl3 = require("sdl3")
 local shader = require("shader")
 
 local Object = scenegraph.Object
-local Cube = rig.class(Object)
-local Scene = rig.class(Object)
-local App = rig.class(animator.App)
+local Cube = rig.Class(Object)
+local Scene = rig.Class(Object)
+local App = rig.Class(animator.App)
 
 local cube_face_colors = {
    color.rgb(255, 96, 96),

@@ -1,6 +1,6 @@
 local M = ... or {}
 local prelude = require("prelude")
-local class = prelude.class
+local Class = prelude.Class
 local raise = prelude.raise
 local set = prelude.set
 
@@ -30,17 +30,17 @@ local function ensure_schema(value, label)
    return value
 end
 
-M.Schema = class()
-M.DecodeSchema = class(M.Schema)
-M.OptionalSchema = class(M.Schema)
-M.ArraySchema = class(M.Schema)
-M.MapSchema = class(M.Schema)
-M.RecordSchema = class(M.Schema)
-M.EnumSchema = class(M.Schema)
-M.OneOfSchema = class(M.Schema)
-M.MetatableSchema = class(M.Schema)
-M.TransformSchema = class(M.Schema)
-M.CheckedSchema = class(M.Schema)
+M.Schema = Class()
+M.DecodeSchema = Class(M.Schema)
+M.OptionalSchema = Class(M.Schema)
+M.ArraySchema = Class(M.Schema)
+M.MapSchema = Class(M.Schema)
+M.RecordSchema = Class(M.Schema)
+M.EnumSchema = Class(M.Schema)
+M.OneOfSchema = Class(M.Schema)
+M.MetatableSchema = Class(M.Schema)
+M.TransformSchema = Class(M.Schema)
+M.CheckedSchema = Class(M.Schema)
 
 function M.Schema:decode(_, _)
    raise("schema.decode must be implemented by subclasses")

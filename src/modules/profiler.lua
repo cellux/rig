@@ -13,7 +13,7 @@ local frame_profiler_options_schema = schema.record({
    history_seconds = positive_number_schema:optional(1.0),
 })
 
-M.FrameProfiler = rig.class()
+M.FrameProfiler = rig.Class()
 
 local function create_past_frames(capacity, window_seconds)
    return stat.MetricBundle {

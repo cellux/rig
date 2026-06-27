@@ -8,8 +8,8 @@ test.case("animator.App manages root, animator, and teardown lifecycle", functio
    local observed = {}
    local root = nil
    local scene_animator = nil
-   local TestRoot = rig.class(Object)
-   local TestApp = rig.class(animator.App)
+   local TestRoot = rig.Class(Object)
+   local TestApp = rig.Class(animator.App)
 
    function TestRoot:init()
       self:super().init(self)
@@ -79,8 +79,8 @@ end)
 test.case("animator.App can create the root during after_setup", function()
    local root = nil
    local scene_animator = nil
-   local TestRoot = rig.class(Object)
-   local TestApp = rig.class(animator.App)
+   local TestRoot = rig.Class(Object)
+   local TestApp = rig.Class(animator.App)
 
    function TestRoot:init()
       self:super().init(self)
@@ -113,9 +113,9 @@ end)
 test.case("animator.App runs activate() on the root tree before starting", function()
    local observed = {}
    local scene_animator = nil
-   local Child = rig.class(Object)
-   local Root = rig.class(Object)
-   local TestApp = rig.class(animator.App)
+   local Child = rig.Class(Object)
+   local Root = rig.Class(Object)
+   local TestApp = rig.Class(animator.App)
 
    function Child:activate()
       table.insert(observed, "child_activate")
@@ -154,9 +154,9 @@ end)
 
 test.case("animator.App releases the root tree if activate() fails", function()
    local observed = {}
-   local Root = rig.class(Object)
-   local Child = rig.class(Object)
-   local TestApp = rig.class(animator.App)
+   local Root = rig.Class(Object)
+   local Child = rig.Class(Object)
+   local TestApp = rig.Class(animator.App)
 
    function Child:activate()
       self.token = self:own("child token", function(_, resource)

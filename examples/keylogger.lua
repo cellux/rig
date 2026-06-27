@@ -1,6 +1,6 @@
 local sdl3x = require("sdl3x")
 
-local App = rig.class(sdl3x.App)
+local App = rig.Class(sdl3x.App)
 
 function App:on_key(key_info)
    rig.println(key_info)

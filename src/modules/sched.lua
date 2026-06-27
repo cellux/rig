@@ -5,8 +5,8 @@ local _request_handlers = {}
 local _active_scheduler = nil
 local _current_task = nil
 
-local Request = rig.class()
-local AsyncTicket = rig.class()
+local Request = rig.Class()
+local AsyncTicket = rig.Class()
 
 local function is_request(value)
    return Request:is_instance(value)
@@ -80,7 +80,7 @@ function AsyncTicket:fail(err)
    scheduler:_set_pending_error(err)
 end
 
-M.Scheduler = rig.class()
+M.Scheduler = rig.Class()
 
 function M.Scheduler:init(label)
    if label ~= nil and (type(label) ~= "string" or label == "") then

@@ -42,7 +42,7 @@ end)
 
 test.case("sdl3x.App wraps render calls with profiler hooks when enabled", function()
    local observed = {}
-   local TestApp = rig.class(sdl3x.App)
+   local TestApp = rig.Class(sdl3x.App)
 
    function TestApp:init()
       self:super().init(self)
@@ -155,8 +155,8 @@ test.case("sdl3x.SceneApp combines animator and owned-resource lifecycles", func
    local released = {}
    local root = nil
    local scene_animator = nil
-   local TestRoot = rig.class(Object)
-   local TestApp = rig.class(sdl3x.SceneApp)
+   local TestRoot = rig.Class(Object)
+   local TestApp = rig.Class(sdl3x.SceneApp)
 
    function TestRoot:init()
       self:super().init(self)

@@ -2,7 +2,7 @@ local M = ... or {}
 local rig = require("rig")
 local sched = require("sched")
 
-local Object = rig.class()
+local Object = rig.Class()
 
 M.Object = Object
 

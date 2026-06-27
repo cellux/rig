@@ -24,7 +24,7 @@ end)
 
 test.case("scenegraph.Object releases owned resources after release()", function()
    local observed = {}
-   local TestObject = rig.class(Object)
+   local TestObject = rig.Class(Object)
 
    function TestObject:release()
       table.insert(observed, "release")
@@ -64,8 +64,8 @@ end)
 
 test.case("scenegraph.Object runs activate() in parent-to-child order", function()
    local observed = {}
-   local Parent = rig.class(Object)
-   local Child = rig.class(Object)
+   local Parent = rig.Class(Object)
+   local Child = rig.Class(Object)
 
    function Parent:activate()
       table.insert(observed, "parent")

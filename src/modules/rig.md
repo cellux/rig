@@ -10,10 +10,20 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.set(values)`
   - Alias for `prelude.set(values)`.
   - Builds a membership set table from the array part of `values`.
-- `rig.class(parent?)`
-  - Alias for `prelude.class(parent?)`.
-  - Constructed instances expose `:super()` to return their immediate parent class table, if any.
+- `rig.Class`
+  - Alias for `prelude.Class`.
+  - Metaclass shared by all class tables created by `rig.Class(...)` / `prelude.Class(...)`.
+  - Calling `rig.Class(parent?)` creates a new callable class table.
+  - Calling a class constructs one instance whose metatable is the class table.
+  - Instances expose `:super()` to return the immediate parent class table, if any.
   - Class tables expose `:is_descendant(ancestor)` to test inheritance against a parent class.
+  - Class tables expose `:is_ancestor(descendant)` to test whether another class inherits from them.
+  - All class tables use `rig.Class` / `prelude.Class` as their metaclass.
+- `rig.is_class(value)`
+  - Alias for `prelude.is_class(value)`.
+  - Returns `true` when `value` is a class table created by `rig.Class(...)` / `prelude.Class(...)`.
+  - Returns `true` for `rig.Class` / `prelude.Class` themselves.
+  - Returns `false` for ordinary instances.
 - `rig.raise(message[, ...])`
   - Alias for `prelude.raise(message[, ...])`.
   - Raises an error without adding Lua stack-location prefixes.

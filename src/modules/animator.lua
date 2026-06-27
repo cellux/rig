@@ -7,8 +7,8 @@ M.DEFAULT_FIXED_DT = 1.0 / 120.0
 M.DEFAULT_MAX_DT = 0.05
 M.DEFAULT_MAX_STEPS_PER_FRAME = 6
 
-local Animator = rig.class()
-local App = rig.class(rig.App)
+local Animator = rig.Class()
+local App = rig.Class(rig.App)
 
 M.Animator = Animator
 M.App = App

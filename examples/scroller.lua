@@ -49,15 +49,15 @@ local sprite_outline_offsets = {
 }
 
 local Object = scenegraph.Object
-local Sprite = rig.class()
-local RasterSplit = rig.class()
-local RasterSplits = rig.class(Object)
-local Title = rig.class(Object)
-local Scroller = rig.class(Object)
-local SpriteSnake = rig.class(Object)
-local ProfilerOverlay = rig.class(Object)
-local Scene = rig.class(Object)
-local App = rig.class(animator.App)
+local Sprite = rig.Class()
+local RasterSplit = rig.Class()
+local RasterSplits = rig.Class(Object)
+local Title = rig.Class(Object)
+local Scroller = rig.Class(Object)
+local SpriteSnake = rig.Class(Object)
+local ProfilerOverlay = rig.Class(Object)
+local Scene = rig.Class(Object)
+local App = rig.Class(animator.App)
 
 local find_font_path
 local scroll_text

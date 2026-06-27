@@ -10,9 +10,9 @@ local shader = require("shader")
 local sdl3 = require("sdl3")
 
 local Object = scenegraph.Object
-local Cube = rig.class(Object)
-local Scene = rig.class(Object)
-local App = rig.class(animator.App)
+local Cube = rig.Class(Object)
+local Scene = rig.Class(Object)
+local App = rig.Class(animator.App)
 
 local vertex_shader_source = [[
 #version 330 core

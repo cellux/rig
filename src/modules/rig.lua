@@ -6,7 +6,7 @@ local schema = require("schema")
 M.repr = repr.repr
 M.set = prelude.set
 M.is_class = prelude.is_class
-M.class = prelude.class
+M.Class = prelude.Class
 M.raise = prelude.raise
 
 local raise = M.raise
@@ -94,7 +94,7 @@ end
 
 --[ ResourceScope ]
 
-M.ResourceScope = M.class()
+M.ResourceScope = M.Class()
 
 local function add_scope_entry(scope, resource, release_fn)
    local entry = {
@@ -193,7 +193,7 @@ local string_to_string_map_schema = schema.map(
    non_empty_string_schema
 )
 
-M.ServiceRegistry = M.class()
+M.ServiceRegistry = M.Class()
 
 function M.ServiceRegistry:init()
    self._by_id = {}
@@ -410,7 +410,6 @@ end
 
 --[ App ]
 
-M.App = M.class()
 
 function M.App:build_hooks(allowed_phases)
    if type(allowed_phases) ~= "table" then
@@ -447,10 +446,11 @@ function M.App:build_event_handlers(allowed_events)
 
    return handlers
 end
+M.App = M.Class()
 
 --[ Runtime ]
 
-M.Runtime = M.class()
+M.Runtime = M.Class()
 
 function M.Runtime:allowed_phase_map()
    local allowed_phases = M.set(core_phase_names)

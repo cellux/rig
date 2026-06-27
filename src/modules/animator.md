@@ -33,7 +33,7 @@ Call `scene_animator:start()` once the object tree is ready, `scene_animator:tic
 ```lua
 local animator = require("animator")
 
-local App = rig.class(animator.App)
+local App = rig.Class(animator.App)
 
 function App:init()
    self:super().init(self)

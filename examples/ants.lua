@@ -20,11 +20,11 @@ local max_turn_step = 0.12
 local ant_scale = 1.0
 
 local Object = scenegraph.Object
-local Ant = rig.class(Object)
-local Slider = rig.class(Object)
-local ProfilerOverlay = rig.class(Object)
-local Scene = rig.class(Object)
-local App = rig.class(animator.App)
+local Ant = rig.Class(Object)
+local Slider = rig.Class(Object)
+local ProfilerOverlay = rig.Class(Object)
+local Scene = rig.Class(Object)
+local App = rig.Class(animator.App)
 
 local rect = ffi.new("SDL_FRect[1]")
 local clamp = mathx.clamp

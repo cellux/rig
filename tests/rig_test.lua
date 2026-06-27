@@ -409,7 +409,7 @@ end)
 
 test.case("rig.run executes app-defined hook phases after app activation", function()
    local observed = {}
-   local TestApp = rig.class(rig.App)
+   local TestApp = rig.Class(rig.App)
 
    rig.register_runtime_driver("rig_test_hook_driver", {
       driver_phases = {
@@ -450,7 +450,7 @@ test.case("rig.run rejects prebuilt app instances", function()
       loop = function() end,
    })
 
-   local TestApp = rig.class(rig.App)
+   local TestApp = rig.Class(rig.App)
    local app = TestApp()
 
    local ok, err = pcall(function()
@@ -467,7 +467,7 @@ end)
 test.case("rig.run instantiates app classes and runs app hooks", function()
    local observed = {}
    local setup_complete = false
-   local TestApp = rig.class(rig.App)
+   local TestApp = rig.Class(rig.App)
 
    function TestApp:init(options)
       test.truthy(setup_complete)
@@ -512,7 +512,7 @@ end)
 
 test.case("rig.run uses app event handlers", function()
    local observed = {}
-   local TestApp = rig.class(rig.App)
+   local TestApp = rig.Class(rig.App)
 
    function TestApp:on_key(key_info)
       table.insert(observed, "app:" .. key_info.key)

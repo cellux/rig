@@ -256,8 +256,8 @@ local function on_resize_common(self, resize_info)
    self.pixel_height = resize_info.pixel_height or 0
 end
 
-local App = rig.class(rig.App)
-local SceneApp = rig.class(animator.App)
+local App = rig.Class(rig.App)
+local SceneApp = rig.Class(animator.App)
 
 M.App = App
 M.SceneApp = SceneApp

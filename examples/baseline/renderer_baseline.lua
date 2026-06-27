@@ -7,10 +7,10 @@ local sdl3 = require("sdl3")
 local ffi = require("ffi")
 
 local Object = scenegraph.Object
-local MovingSquare = rig.class(Object)
-local ProfilerOverlay = rig.class(Object)
-local Scene = rig.class(Object)
-local App = rig.class(animator.App)
+local MovingSquare = rig.Class(Object)
+local ProfilerOverlay = rig.Class(Object)
+local Scene = rig.Class(Object)
+local App = rig.Class(animator.App)
 
 local window_width
 local window_height
