@@ -179,7 +179,7 @@ function Animator:set_enabled(enabled)
       local scheduler = sched.active_scheduler()
       if scheduler ~= nil then
          for i = 1, #self.drive_tasks do
-            scheduler:wake(self.drive_tasks[i])
+            scheduler:wake_task(self.drive_tasks[i])
          end
       end
    end
@@ -254,7 +254,7 @@ function Animator:tick()
    local scheduler = sched.active_scheduler()
    if scheduler ~= nil then
       for i = 1, #self.drive_tasks do
-         scheduler:wake(self.drive_tasks[i])
+         scheduler:wake_task(self.drive_tasks[i])
       end
    end
 end

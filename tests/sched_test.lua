@@ -8,6 +8,77 @@ test.case("sched.Scheduler constructs scheduler instances", function()
    test.equal(scheduler._label, "test scheduler")
 end)
 
+test.case("scheduler:start_async rejects task-shaped tables", function()
+   local scheduler = sched.Scheduler("task validation scheduler")
+   local imposter = {
+      co = coroutine.create(function() end),
+      _state = "ready",
+      _waiters = {},
+   }
+
+   local ok, err = pcall(function()
+      scheduler:start_async(imposter)
+   end)
+
+   test.falsey(ok)
+   test.match(err, "scheduler:start_async expects a scheduler task")
+end)
+
+test.case("scheduler:start_async rejects tasks from another scheduler", function()
+   local scheduler_a = sched.Scheduler("scheduler a")
+   local scheduler_b = sched.Scheduler("scheduler b")
+
+   scheduler_a:activate()
+   local task = sched.spawn(function()
+      sched.park()
+   end)
+   scheduler_a:drain()
+   scheduler_a:deactivate()
+
+   local ok, err = pcall(function()
+      scheduler_b:start_async(task)
+   end)
+
+   test.falsey(ok)
+   test.match(err, "scheduler:start_async expects a task owned by the scheduler")
+end)
+
+test.case("scheduler:wake_task rejects tasks from another scheduler", function()
+   local scheduler_a = sched.Scheduler("scheduler a")
+   local scheduler_b = sched.Scheduler("scheduler b")
+
+   scheduler_a:activate()
+   local task = sched.spawn(function()
+      sched.park()
+   end)
+   scheduler_a:drain()
+   scheduler_a:deactivate()
+
+   local ok, err = pcall(function()
+      scheduler_b:wake_task(task)
+   end)
+
+   test.falsey(ok)
+   test.match(err, "scheduler:wake_task expects a task owned by the scheduler")
+end)
+
+test.case("scheduler:wake_task rejects tasks that are not suspended", function()
+   local scheduler = sched.Scheduler("wake state scheduler")
+
+   scheduler:activate()
+   local task = sched.spawn(function()
+      sched.park()
+   end)
+
+   local ok, err = pcall(function()
+      scheduler:wake_task(task)
+   end)
+   scheduler:deactivate()
+
+   test.falsey(ok)
+   test.match(err, "cannot make scheduler task ready from state 'ready'")
+end)
+
 test.case("sched.yield resumes on the next scheduler drain", function()
    local scheduler = sched.Scheduler("yield scheduler")
    local events = {}
@@ -30,15 +101,15 @@ test.case("sched.yield resumes on the next scheduler drain", function()
    test.equal(#events, 2)
    test.equal(events[1], "a1")
    test.equal(events[2], "b1")
-   test.falsey(task_a._done)
-   test.truthy(task_b._done)
+   test.falsey(task_a:is_done())
+   test.truthy(task_b:is_done())
 
    scheduler:drain()
    scheduler:deactivate()
 
    test.equal(#events, 3)
    test.equal(events[3], "a2")
-   test.truthy(task_a._done)
+   test.truthy(task_a:is_done())
 end)
 
 test.case("sched.yield is not starved by completions on the next drain", function()
@@ -62,7 +133,7 @@ test.case("sched.yield is not starved by completions on the next drain", functio
    end)
 
    scheduler:drain()
-   scheduler:wake(parked_task)
+   scheduler:wake_task(parked_task)
    scheduler:drain()
    scheduler:deactivate()
 
@@ -71,8 +142,8 @@ test.case("sched.yield is not starved by completions on the next drain", functio
    test.equal(events[2], "park before")
    test.equal(events[3], "park after")
    test.equal(events[4], "yield after")
-   test.truthy(yielded_task._done)
-   test.truthy(parked_task._done)
+   test.truthy(yielded_task:is_done())
+   test.truthy(parked_task:is_done())
 end)
 
 test.case("sched.sleep can be implemented with deadline wakeups", function()
@@ -159,7 +230,7 @@ test.case("async tickets surface failures and complete tasks", function()
 
    test.falsey(ok)
    test.match(err, "async ticket failed")
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:pending_async(), 0)
    test.equal(scheduler:has_active_tasks(), false)
 end)
@@ -186,7 +257,7 @@ test.case("async tickets reject double completion", function()
 
    test.falsey(ok)
    test.match(err, "async ticket already completed")
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:pending_async(), 0)
    test.equal(scheduler:has_active_tasks(), false)
 end)
@@ -207,7 +278,7 @@ test.case("sched.sleep reports missing runtime support", function()
 
    test.falsey(ok)
    test.match(err, "no scheduler handler is registered for 'sched%.sleep'")
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:has_active_tasks(), false)
 end)
 
@@ -216,7 +287,7 @@ test.case("register_handler registers fresh kinds", function()
 
    sched.register_handler("sched_test.auto_registered", function(scheduler, task, payload)
       observed = payload
-      scheduler:wake(task, "ok")
+      scheduler:wake_task(task, "ok")
    end)
 
    local scheduler = sched.Scheduler("auto-registered handler scheduler")
@@ -255,7 +326,7 @@ test.case("sched.join resumes when a parked task is woken", function()
    test.equal(events[1], "parked before")
    test.equal(events[2], "join before")
 
-   scheduler:wake(parked_task, "x", nil, "z")
+   scheduler:wake_task(parked_task, "x", nil, "z")
    scheduler:drain()
    scheduler:deactivate()
 
@@ -266,7 +337,36 @@ test.case("sched.join resumes when a parked task is woken", function()
    test.equal(events[3][4], "z")
    test.equal(events[4][1], "join after")
    test.equal(events[4][2], true)
-   test.truthy(join_task._done)
+   test.truthy(join_task:is_done())
+end)
+
+test.case("sched.join rejects tasks from another scheduler", function()
+   local scheduler_a = sched.Scheduler("join scheduler a")
+   local scheduler_b = sched.Scheduler("join scheduler b")
+   local task
+
+   scheduler_a:activate()
+   task = sched.spawn(function()
+      sched.park()
+   end)
+   scheduler_a:drain()
+   scheduler_a:deactivate()
+
+   scheduler_b:activate()
+   sched.spawn(function()
+      sched.join { task }
+   end)
+
+   local ok, err = pcall(function()
+      scheduler_b:drain()
+   end)
+   scheduler_b:deactivate()
+
+   test.falsey(ok)
+   test.match(
+      err,
+      "sched.join expects tasks%[1%] to belong to the active scheduler"
+   )
 end)
 
 test.case("sched.join returns immediately for already completed tasks", function()
@@ -295,8 +395,8 @@ test.case("sched.join returns immediately for already completed tasks", function
    test.equal(events[2], "join before")
    test.equal(events[3][1], "join after")
    test.equal(events[3][2], true)
-   test.truthy(task._done)
-   test.truthy(join_task._done)
+   test.truthy(task:is_done())
+   test.truthy(join_task:is_done())
 end)
 
 test.case("scheduler surfaces missing handler errors and still completes the task", function()
@@ -318,7 +418,7 @@ test.case("scheduler surfaces missing handler errors and still completes the tas
       err,
       "no scheduler handler is registered for 'missing%.handler'"
    )
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:has_active_tasks(), false)
 end)
 
@@ -342,7 +442,7 @@ test.case("scheduler surfaces handler errors and completes the task", function()
 
    test.falsey(ok)
    test.match(err, "handler failed")
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:has_active_tasks(), false)
 end)
 
@@ -362,7 +462,7 @@ test.case("scheduler rejects non-request yields and completes the task", functio
 
    test.falsey(ok)
    test.match(err, "scheduler task yielded a non%-request value")
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:has_active_tasks(), false)
 end)
 
@@ -382,6 +482,6 @@ test.case("scheduler reports coroutine errors and completes the task", function(
 
    test.falsey(ok)
    test.match(err, "task exploded")
-   test.truthy(task._done)
+   test.truthy(task:is_done())
    test.equal(scheduler:has_active_tasks(), false)
 end)

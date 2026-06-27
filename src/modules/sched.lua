@@ -6,6 +6,7 @@ local _active_scheduler = nil
 local _current_task = nil
 
 local Request = rig.Class()
+local Task = rig.Class()
 local AsyncTicket = rig.Class()
 
 local function is_request(value)
@@ -13,7 +14,16 @@ local function is_request(value)
 end
 
 local function is_task(value)
-   return type(value) == "table" and type(value.co) == "thread"
+   return Task:is_instance(value)
+end
+
+local function expect_owned_task(scheduler, task, method_name)
+   if not is_task(task) then
+      rig.raise("%s expects a scheduler task", method_name)
+   end
+   if task:owner() ~= scheduler then
+      rig.raise("%s expects a task owned by the scheduler", method_name)
+   end
 end
 
 local function begin_async(scheduler)
@@ -34,7 +44,6 @@ local function finish_async_ticket(ticket)
 
    ticket._done = true
    end_async(ticket._scheduler)
-   return ticket._scheduler, ticket._task
 end
 
 local function enqueue_item(queue, item)
@@ -57,6 +66,114 @@ function Request:init(kind, payload)
    self.payload = payload
 end
 
+function Task:init(scheduler, fn)
+   if type(fn) ~= "function" then
+      rig.raise("sched task expects a function")
+   end
+
+   self._scheduler = scheduler
+   self.co = coroutine.create(fn)
+   self._state = "ready"
+   self._waiters = {}
+end
+
+function Task:is_done()
+   return self._state == "done"
+end
+
+function Task:owner()
+   return self._scheduler
+end
+
+function Task:_expect_state(expected, action)
+   if self._state ~= expected then
+      rig.raise(
+         "cannot %s scheduler task in state '%s'",
+         action,
+         self._state
+      )
+   end
+   return self
+end
+
+function Task:resume(...)
+   self:_expect_state("ready", "resume")
+   self._state = "running"
+   return coroutine.resume(self.co, ...)
+end
+
+function Task:yield_next()
+   self:_expect_state("running", "yield")
+   self._state = "ready"
+end
+
+function Task:park()
+   self:_expect_state("running", "park")
+   self._state = "parked"
+end
+
+function Task:begin_wait()
+   self:_expect_state("running", "wait with")
+   self._state = "waiting"
+end
+
+function Task:begin_sleep()
+   self:_expect_state("waiting", "put to sleep")
+   self._state = "sleeping"
+end
+
+function Task:begin_async()
+   self:_expect_state("waiting", "start async work for")
+   self._state = "pending_async"
+end
+
+function Task:wake(...)
+   local state = self._state
+   if state ~= "running"
+      and state ~= "waiting"
+      and state ~= "parked"
+      and state ~= "sleeping"
+      and state ~= "pending_async" then
+      rig.raise("cannot make scheduler task ready from state '%s'", state)
+   end
+
+   self._state = "ready"
+   self:owner():_enqueue_completion(self, ...)
+end
+
+function Task:is_dead()
+   return coroutine.status(self.co) == "dead"
+end
+
+function Task:add_waiter(waiter)
+   if self._waiters == nil then
+      rig.raise("cannot add a waiter to a completed scheduler task")
+   end
+
+   table.insert(self._waiters, waiter)
+end
+
+function Task:complete()
+   if self:is_done() then
+      return
+   end
+
+   self._state = "done"
+   local waiters = self._waiters
+   if waiters == nil then
+      return
+   end
+
+   for i = 1, #waiters do
+      local waiter = waiters[i]
+      waiter.remaining = waiter.remaining - 1
+      if waiter.remaining == 0 then
+         waiter.task:wake(true)
+      end
+   end
+   self._waiters = nil
+end
+
 function AsyncTicket:init(scheduler, task)
    self._scheduler = scheduler
    self._task = task
@@ -69,15 +186,13 @@ function AsyncTicket:is_done()
 end
 
 function AsyncTicket:wake(...)
-   local scheduler, task = finish_async_ticket(self)
-   scheduler:wake(task, ...)
+   finish_async_ticket(self)
+   self._scheduler:wake_task(self._task, ...)
 end
 
 function AsyncTicket:fail(err)
-   local scheduler, task = finish_async_ticket(self)
-   scheduler._active_tasks = scheduler._active_tasks - 1
-   scheduler:_complete_task(task)
-   scheduler:_set_pending_error(err)
+   finish_async_ticket(self)
+   self._scheduler:_fail_task(self._task, err)
 end
 
 M.Scheduler = rig.Class()
@@ -105,56 +220,47 @@ function M.Scheduler:_set_pending_error(err)
 end
 
 function M.Scheduler:_complete_task(task)
-   if task._done then
-      return
-   end
+   task:complete()
+end
 
-   task._done = true
-   local waiters = task._waiters
-   if waiters == nil then
-      return
-   end
+function M.Scheduler:_fail_task(task, err)
+   self._active_tasks = self._active_tasks - 1
+   self:_complete_task(task)
+   self:_set_pending_error(err)
+end
 
-   for i = 1, #waiters do
-      local waiter = waiters[i]
-      waiter.remaining = waiter.remaining - 1
-      if waiter.remaining == 0 and not waiter.resumed then
-         waiter.resumed = true
-         self:wake(waiter.task, true)
-      end
-   end
-   task._waiters = nil
+function M.Scheduler:_enqueue_completion(task, ...)
+   enqueue_item(self._completions, {
+      task = task,
+      argc = select("#", ...),
+      values = { ... },
+   })
 end
 
 function M.Scheduler:_resume_task(task, ...)
    _current_task = task
-   local ok, yielded_or_err = coroutine.resume(task.co, ...)
+   local ok, yielded_or_err = task:resume(...)
    _current_task = nil
 
    if not ok then
-      self._active_tasks = self._active_tasks - 1
-      self:_complete_task(task)
-      self:_set_pending_error(yielded_or_err)
+      self:_fail_task(task, yielded_or_err)
       return
    end
 
-   if coroutine.status(task.co) == "dead" then
+   if task:is_dead() then
       self._active_tasks = self._active_tasks - 1
       self:_complete_task(task)
       return
    end
 
    if not is_request(yielded_or_err) then
-      self._active_tasks = self._active_tasks - 1
-      self:_complete_task(task)
-      self:_set_pending_error(
-         "scheduler task yielded a non-request value"
-      )
+      self:_fail_task(task, "scheduler task yielded a non-request value")
       return
    end
 
    local request = yielded_or_err
    if request.kind == "sched.yield" then
+      task:yield_next()
       enqueue_item(self._next_ready, {
          task = task,
          argc = 0,
@@ -163,14 +269,15 @@ function M.Scheduler:_resume_task(task, ...)
       return
    end
    if request.kind == "sched.park" then
+      task:park()
       return
    end
 
+   task:begin_wait()
    local handler = self._handlers[request.kind]
    if type(handler) ~= "function" then
-      self._active_tasks = self._active_tasks - 1
-      self:_complete_task(task)
-      self:_set_pending_error(
+      self:_fail_task(
+         task,
          ("no scheduler handler is registered for '%s'"):format(
             request.kind
          )
@@ -185,9 +292,7 @@ function M.Scheduler:_resume_task(task, ...)
       request.payload
    )
    if not handler_ok then
-      self._active_tasks = self._active_tasks - 1
-      self:_complete_task(task)
-      self:_set_pending_error(handler_err)
+      self:_fail_task(task, handler_err)
    end
 end
 
@@ -196,11 +301,7 @@ function M.Scheduler:spawn(fn, ...)
       rig.raise("sched.spawn expects a function")
    end
 
-   local task = {
-      co = coroutine.create(fn),
-      _done = false,
-      _waiters = {},
-   }
+   local task = Task(self, fn)
    self._active_tasks = self._active_tasks + 1
    enqueue_item(self._ready, {
       task = task,
@@ -221,28 +322,23 @@ function M.Scheduler:set_handler(kind, handler)
 end
 
 function M.Scheduler:start_async(task)
-   if not is_task(task) then
-      rig.raise("scheduler:start_async expects a scheduler task")
-   end
+   expect_owned_task(self, task, "scheduler:start_async")
+   task:begin_async()
    return AsyncTicket(self, task)
 end
 
-function M.Scheduler:wake(task, ...)
-   enqueue_item(self._completions, {
-      task = task,
-      argc = select("#", ...),
-      values = { ... },
-   })
+function M.Scheduler:wake_task(task, ...)
+   expect_owned_task(self, task, "scheduler:wake_task")
+   task:wake(...)
 end
 
 function M.Scheduler:sleep_until(task, deadline)
-   if not is_task(task) then
-      rig.raise("scheduler:sleep_until expects a scheduler task")
-   end
+   expect_owned_task(self, task, "scheduler:sleep_until")
    if type(deadline) ~= "number" then
       rig.raise("scheduler:sleep_until expects deadline to be a number")
    end
 
+   task:begin_sleep()
    enqueue_item(self._sleeping, {
       task = task,
       deadline = deadline,
@@ -260,7 +356,7 @@ function M.Scheduler:wake_due_sleepers(now)
    for i = 1, #sleeping do
       local entry = sleeping[i]
       if entry.deadline <= now then
-         self:wake(entry.task)
+         self:wake_task(entry.task)
       else
          table.insert(remaining, entry)
       end
@@ -399,7 +495,13 @@ function M.join(tasks)
       if not is_task(task) then
          rig.raise("sched.join expects tasks[%d] to be a scheduler task", i)
       end
-      if not task._done then
+      if task:owner() ~= _active_scheduler then
+         rig.raise(
+            "sched.join expects tasks[%d] to belong to the active scheduler",
+            i
+         )
+      end
+      if not task:is_done() then
          table.insert(pending, task)
       end
    end
@@ -408,13 +510,12 @@ function M.join(tasks)
       return true
    end
 
-   local waiter = {
+   local pending_join = {
       task = _current_task,
       remaining = #pending,
-      resumed = false,
    }
    for i = 1, #pending do
-      table.insert(pending[i]._waiters, waiter)
+      pending[i]:add_waiter(pending_join)
    end
 
    return M.park()
