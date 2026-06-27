@@ -114,7 +114,7 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Ordered list of script loader functions.
   - Built in with Lua first and Fennel second.
   - Each loader receives `(script_path, source)` and should return either a compiled chunk or `nil, err`.
-- `rig.load_script(script_path, source)`
+- `rig.load_script(source, script_path)`
   - Runs `rig.script_loaders` in order until one returns a compiled chunk.
   - Executes the first accepted chunk.
   - Raises a combined error if no loader accepts the source.

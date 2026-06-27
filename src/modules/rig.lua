@@ -780,6 +780,8 @@ local function resolve_runtime(options)
    }
 end
 
+-- [ rig.run ]
+
 function M.run(options)
    if type(options) ~= "table" then
       raise("rig.run expects a table")
@@ -815,7 +817,9 @@ function M.run(options)
    end
 end
 
-local function load_lua_script(script_path, source)
+--[ script loaders ]
+
+local function load_lua_script(source, script_path)
    local chunk, err = loadstring(source, script_path)
    if chunk ~= nil then
       return chunk
@@ -823,7 +827,7 @@ local function load_lua_script(script_path, source)
    return nil, "Lua: " .. tostring(err or "unknown error")
 end
 
-local function load_fennel_script(script_path, source)
+local function load_fennel_script(source, script_path)
    local fennel_mod = _G.fennel
    if type(fennel_mod) ~= "table" then
       return nil, "Fennel: global 'fennel' module is not available"
@@ -858,12 +862,12 @@ M.script_loaders = {
    load_fennel_script,
 }
 
-function M.load_script(script_path, source)
-   if type(script_path) ~= "string" then
-      raise("rig.load_script expects script_path to be a string")
-   end
+function M.load_script(source, script_path)
    if type(source) ~= "string" then
       error("rig.load_script expects source to be a string")
+   end
+   if type(script_path) ~= "string" then
+      raise("rig.load_script expects script_path to be a string")
    end
 
    local loader_errors = {}
@@ -872,7 +876,7 @@ function M.load_script(script_path, source)
       if type(loader) ~= "function" then
          loader_errors[i] = "script loader entry is not a function"
       else
-         local chunk, err = loader(script_path, source)
+         local chunk, err = loader(source, script_path)
          if type(chunk) == "function" then
             return chunk()
          end
@@ -912,7 +916,7 @@ function M.run_script_file(script_path)
       )
    end
 
-   local result = M.load_script(script_path, source)
+   local result = M.load_script(source, script_path)
 
    if script_path:match("_test%.lua$")
       or script_path:match("_test%.fnl$") then
