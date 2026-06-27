@@ -1,10 +1,14 @@
 # Notes
 
 - Do not run `make` and any `./build/rig ...` smoke tests in parallel.
-- Build first, wait for it to finish, then run smoke tests.
-- Run the full Rig test suite via `make test`.
-- If you only change a Lua or Fennel script such as an example or test file, you do not need to rebuild `rig`.
-  - Rebuild only when changing C code, build files, or embedded builtin module sources that are compiled into the executable.
+- You must build first, wait for the build to finish, and only then run any `./build/rig ...` smoke tests.
+- You must use `make test` for final verification.
+- `./build/rig ...` smoke tests are supplemental only. They must not be used as a substitute for `make test`.
+- Any change to C code, build files, or embedded builtin module sources requires rebuilding `rig` before running `./build/rig ...`.
+- Any Lua or Fennel file under `src/modules/` counts as an embedded builtin module source unless the task explicitly proves otherwise.
+- Any change under `scripts/` requires rebuilding `rig` before running tests or `./build/rig ...`.
+- The only Lua/Fennel changes that do not require rebuilding `rig` are standalone scripts under `tests/` or `examples/`.
+- When in doubt, run `make test`.
 - For repo-wide pattern searches or mechanical cleanups, search the full relevant tree, not just `src/`.
   - Include `tests/`, `examples/`, and `scripts/` unless the task is explicitly scoped more narrowly.
 - This project is used only by its sole author, so backward compatibility is not a concern.
