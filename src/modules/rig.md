@@ -93,11 +93,11 @@ Core runtime helpers that are always loaded at interpreter startup.
   - When both `options.app` and `options.hooks` provide the same phase, app hooks run first except for `before_shutdown`, where `options.hooks.before_shutdown` runs before app cleanup.
   - When both `options.app` and `options.event_handlers` provide the same event, app handlers run first.
   - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the merged app/per-run hooks for the same phase.
-- `rig.create_service(service_id, method_names)`
-  - Creates a named runtime service definition.
+- `rig.register_service(service_id, method_names)`
+  - Registers a named runtime service definition.
   - `service_id` is a string.
   - `method_names` is an array of required method names.
-  - Raises if the service already exists.
+  - Raises if a service with this name has been already registered.
 - `rig.register_service_provider(service_id, provider_id, provider)`
   - Registers one provider table for a service id.
   - Completeness is checked at registration time.

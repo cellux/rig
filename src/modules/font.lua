@@ -807,7 +807,7 @@ function M.atlas_get_glyph(atlas, glyph_id)
    return packed
 end
 
-rig.create_service("font.renderer", {
+rig.register_service("font.renderer", {
    "create_text_renderer",
    "release_text_renderer",
    "draw_packed_glyph",

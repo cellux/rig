@@ -171,7 +171,7 @@ function M.compile(options)
    }
 end
 
-rig.create_service("shader.stage", {
+rig.register_service("shader.stage", {
    "create_stage",
    "destroy_stage",
 })

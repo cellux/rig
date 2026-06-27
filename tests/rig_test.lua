@@ -211,13 +211,13 @@ test.case("rig.ResourceScope constructs scope instances", function()
 end)
 
 test.case("service registry validates providers and resolves by active providers", function()
-   rig.create_service("rig_test_service", {
+   rig.register_service("rig_test_service", {
       "ping",
       "pong",
    })
 
    local duplicate_ok, duplicate_err = pcall(function()
-      rig.create_service("rig_test_service", {
+      rig.register_service("rig_test_service", {
          "ping",
          "pong",
       })

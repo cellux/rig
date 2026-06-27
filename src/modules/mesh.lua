@@ -82,7 +82,7 @@ local function append_vertex(values, corner, scale, face_color)
    values[#values + 1] = b
 end
 
-rig.create_service("mesh.vertex_input", {
+rig.register_service("mesh.vertex_input", {
    "build_vertex_input",
 })
 

@@ -174,6 +174,123 @@ function M.ResourceScope:release()
    self._released = true
 end
 
+local non_empty_string_schema = schema.non_empty_string()
+local unique_non_empty_string_array_schema = schema.array(
+   non_empty_string_schema,
+   { unique = true }
+)
+local string_to_string_map_schema = schema.map(
+   non_empty_string_schema,
+   non_empty_string_schema
+)
+
+M.ServiceRegistry = M.class()
+
+function M.ServiceRegistry:init()
+   self._by_id = {}
+end
+
+function M.ServiceRegistry:get_service(service_id)
+   return self._by_id[service_id]
+end
+
+function M.ServiceRegistry:register_service(service_id, method_names)
+   if type(service_id) ~= "string" or service_id == "" then
+      raise("rig.register_service expects service_id to be a non-empty string")
+   end
+
+   local methods = schema.assert(
+      unique_non_empty_string_array_schema,
+      method_names,
+      "rig.register_service method_names"
+   )
+   local existing = self:get_service(service_id)
+   if existing ~= nil then
+      raise("rig.register_service already has a service '%s'", service_id)
+   end
+
+   local service = {
+      id = service_id,
+      methods = methods,
+      providers = {},
+   }
+   self._by_id[service_id] = service
+   return service
+end
+
+function M.ServiceRegistry:register_service_provider(service_id, provider_id, provider)
+   if type(service_id) ~= "string" or service_id == "" then
+      raise("rig.register_service_provider expects service_id to be a non-empty string")
+   end
+   if type(provider_id) ~= "string" or provider_id == "" then
+      raise("rig.register_service_provider expects provider_id to be a non-empty string")
+   end
+   if type(provider) ~= "table" then
+      raise("rig.register_service_provider expects provider to be a table")
+   end
+
+   local service = self:get_service(service_id)
+   if service == nil then
+      raise("rig.register_service_provider does not know service '%s'", service_id)
+   end
+   if service.providers[provider_id] ~= nil then
+      raise(
+         "rig.register_service_provider already has a provider for service '%s' with id '%s'",
+         service_id,
+         provider_id
+      )
+   end
+
+   for i = 1, #service.methods do
+      local method_name = service.methods[i]
+      if type(provider[method_name]) ~= "function" then
+         raise(
+            "rig.register_service_provider requires provider '%s' for service '%s' to implement method '%s'",
+            provider_id,
+            service_id,
+            method_name
+         )
+      end
+   end
+
+   service.providers[provider_id] = provider
+   return provider
+end
+
+function M.ServiceRegistry:resolve_service_providers(providers)
+   local service_providers = {}
+
+   for service_id, provider_id in pairs(providers) do
+      local service = self:get_service(service_id)
+      if service == nil then
+         raise("references unknown service '%s'", service_id)
+      end
+
+      local provider = service.providers[provider_id]
+      if provider == nil then
+         raise(
+            "selects provider '%s' for service '%s', but no such provider is registered",
+            provider_id,
+            service_id
+         )
+      end
+
+      service_providers[service_id] = provider
+   end
+
+   return service_providers
+end
+
+local _service_registry = M.ServiceRegistry()
+
+function M.register_service(service_id, method_names)
+   return _service_registry:register_service(service_id, method_names)
+end
+
+function M.register_service_provider(service_id, provider_id, provider)
+   return _service_registry:register_service_provider(service_id, provider_id, provider)
+end
+
 M.App = M.class()
 
 function M.App:build_hooks(allowed_phases)
@@ -353,115 +470,6 @@ local function merge_event_handlers(app_handlers, option_handlers)
    return merged
 end
 
-local non_empty_string_schema = schema.non_empty_string()
-local unique_non_empty_string_array_schema = schema.array(
-   non_empty_string_schema,
-   { unique = true }
-)
-local string_to_string_map_schema = schema.map(
-   non_empty_string_schema,
-   non_empty_string_schema
-)
-
-M.ServiceRegistry = M.class()
-
-function M.ServiceRegistry:init()
-   self._by_id = {}
-end
-
-function M.ServiceRegistry:get(service_id)
-   return self._by_id[service_id]
-end
-
-function M.ServiceRegistry:create_service(service_id, method_names)
-   if type(service_id) ~= "string" or service_id == "" then
-      raise("rig.create_service expects service_id to be a non-empty string")
-   end
-
-   local methods = schema.assert(
-      unique_non_empty_string_array_schema,
-      method_names,
-      "rig.create_service method_names"
-   )
-   local existing = self:get(service_id)
-   if existing ~= nil then
-      raise("rig.create_service already has a service '%s'", service_id)
-   end
-
-   local service = {
-      id = service_id,
-      methods = methods,
-      providers = {},
-   }
-   self._by_id[service_id] = service
-   return service
-end
-
-function M.ServiceRegistry:register_service_provider(service_id, provider_id, provider)
-   if type(service_id) ~= "string" or service_id == "" then
-      raise("rig.register_service_provider expects service_id to be a non-empty string")
-   end
-   if type(provider_id) ~= "string" or provider_id == "" then
-      raise("rig.register_service_provider expects provider_id to be a non-empty string")
-   end
-   if type(provider) ~= "table" then
-      raise("rig.register_service_provider expects provider to be a table")
-   end
-
-   local service = self:get(service_id)
-   if service == nil then
-      raise("rig.register_service_provider does not know service '%s'", service_id)
-   end
-   if service.providers[provider_id] ~= nil then
-      raise(
-         "rig.register_service_provider already has a provider for service '%s' with id '%s'",
-         service_id,
-         provider_id
-      )
-   end
-
-   for i = 1, #service.methods do
-      local method_name = service.methods[i]
-      if type(provider[method_name]) ~= "function" then
-         raise(
-            "rig.register_service_provider requires provider '%s' for service '%s' to implement method '%s'",
-            provider_id,
-            service_id,
-            method_name
-         )
-      end
-   end
-
-   service.providers[provider_id] = provider
-   return provider
-end
-
-function M.ServiceRegistry:resolve_service_providers(providers)
-   local service_providers = {}
-
-   for service_id, provider_id in pairs(providers) do
-      local service = self:get(service_id)
-      if service == nil then
-         raise("references unknown service '%s'", service_id)
-      end
-
-      local provider = service.providers[provider_id]
-      if provider == nil then
-         raise(
-            "selects provider '%s' for service '%s', but no such provider is registered",
-            provider_id,
-            service_id
-         )
-      end
-
-      service_providers[service_id] = provider
-   end
-
-   return service_providers
-end
-
-local _service_registry = M.ServiceRegistry()
-
 function M.register_runtime_hook(phase, hook)
    if type(phase) ~= "string" or phase == "" then
       raise("rig.register_runtime_hook expects phase to be a non-empty string")
@@ -634,14 +642,6 @@ function M.Runtime:activate_app(options)
 end
 
 local _active_runtime = nil
-
-function M.create_service(service_id, method_names)
-   return _service_registry:create_service(service_id, method_names)
-end
-
-function M.register_service_provider(service_id, provider_id, provider)
-   return _service_registry:register_service_provider(service_id, provider_id, provider)
-end
 
 function M.require_service(service_id)
    if type(service_id) ~= "string" or service_id == "" then

@@ -1,6 +1,6 @@
 local M = ... or {}
 
-rig.create_service("time", {
+rig.register_service("time", {
    "now",
    "monotonic",
 })
