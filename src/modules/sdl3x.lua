@@ -693,7 +693,7 @@ function M.build_vertex_input_state(layout)
       end
    end
 
-   local bundle = schema.assert(
+   local vertex_input_state = schema.assert(
       gpu_vertex_input_state_schema,
       {
          vertex_buffer_descriptions = buffer_specs,
@@ -701,9 +701,9 @@ function M.build_vertex_input_state(layout)
       },
       "sdl3x.build_vertex_input_state state"
    )
-   bundle.vertex_buffer_descriptions = bundle.cdata[0].vertex_buffer_descriptions
-   bundle.vertex_attributes = bundle.cdata[0].vertex_attributes
-   return bundle
+   vertex_input_state.vertex_buffer_descriptions = vertex_input_state.cdata[0].vertex_buffer_descriptions
+   vertex_input_state.vertex_attributes = vertex_input_state.cdata[0].vertex_attributes
+   return vertex_input_state
 end
 
 function M.build_color_target_descriptions(specs)
