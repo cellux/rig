@@ -373,40 +373,6 @@ function Window:release()
    self._released = true
 end
 
-local function install_default_window_factories(options)
-   if type(options) ~= "table" then
-      return
-   end
-
-   local driver_config = options.driver_config
-   if driver_config == nil then
-      driver_config = {}
-      options.driver_config = driver_config
-   elseif type(driver_config) ~= "table" then
-      return
-   end
-
-   local driver_ids = {
-      "sdl3",
-      "sdl3_gpu",
-      "sdl3_gl",
-   }
-
-   for i = 1, #driver_ids do
-      local driver_id = driver_ids[i]
-      local config = driver_config[driver_id]
-      if config == nil then
-         config = {}
-         driver_config[driver_id] = config
-      end
-      if type(config) == "table" and config.create_window == nil then
-         config.create_window = M.Window
-      end
-   end
-end
-
-rig.register_runtime_hook("before_setup", install_default_window_factories)
-
 local VERTEX_INPUT_RATES = {
    vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
    instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
@@ -1225,36 +1191,15 @@ local function initialize_windowed_sdl(options)
 end
 
 local function create_window_or_fail(options, owned_init_flags)
-   local create_window = options.create_window
-   local is_callable_table = type(create_window) == "table"
-      and type(getmetatable(create_window)) == "table"
-      and type(rawget(getmetatable(create_window), "__call")) == "function"
-   if type(create_window) ~= "function" and not is_callable_table then
+   local ok, window_or_err = pcall(Window, options)
+   if not ok then
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
-      rig.raise("sdl3 create_window must be callable; require('sdl3x') or provide one explicitly")
+      error(window_or_err, 0)
    end
 
-   local window, window_err = create_window(options)
-   if window == nil then
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      error(format_factory_error(
-         "sdl3 create_window",
-         window_err,
-         "expected sdl3x.Window"
-      ))
-   end
-   if not Window:is_instance(window) then
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      rig.raise("sdl3 create_window must return sdl3x.Window")
-   end
-
-   return window, owned_init_flags
+   return window_or_err, owned_init_flags
 end
 
 local function setup(options)
@@ -2564,7 +2509,6 @@ rig.register_runtime_driver("sdl3_gpu", {
       setup_gpu {
          init_flags = sdl3_options.init_flags,
          window_props = sdl3_options.window_props,
-         create_window = sdl3_options.create_window,
          shader_formats = sdl3_options.shader_formats,
          debug_mode = sdl3_options.debug_mode,
          backend_name = sdl3_options.backend_name,

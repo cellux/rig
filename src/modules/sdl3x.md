@@ -65,11 +65,8 @@ Shared fields accepted by the SDL runtime modes as applicable:
 - `init_flags`
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
 - `window_props`
-  - Passed through to `create_window(...)`.
+  - Passed through to `sdl3x.Window(...)`.
   - The builtin `sdl3x.Window(...)` path accepts a plain table or `sdl3x.Properties`.
-- `create_window(options) -> window | nil, err`
-  - Overrides window creation.
-  - Defaults to `sdl3x.Window` once `sdl3x` is required.
 - `create_renderer(window) -> renderer_ptr | nil, err`
   - Overrides renderer creation for `mode = "sdl3"`.
   - `window` is an `sdl3x.Window`.
