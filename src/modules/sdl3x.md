@@ -27,8 +27,8 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.get_error([fallback])`
 - `sdl3x.free(ptr)`
 - `sdl3x.normalize_properties_id(props)`
-- `sdl3x.create_window(options)`
 - `sdl3x.Properties`
+- `sdl3x.Window`
 - `sdl3x.get_window()`
 - `sdl3x.get_renderer()`
 - `sdl3x.get_gpu_device()`
@@ -66,12 +66,13 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
 - `window_props`
   - Passed through to `create_window(...)`.
-  - The builtin `sdl3x.create_window(...)` path accepts a plain table or `sdl3x.Properties`.
-- `create_window(options) -> window_ptr | nil, err`
+  - The builtin `sdl3x.Window(...)` path accepts a plain table or `sdl3x.Properties`.
+- `create_window(options) -> window | nil, err`
   - Overrides window creation.
-  - Defaults to `sdl3x.create_window(...)` once `sdl3x` is required.
-- `create_renderer(window_ptr) -> renderer_ptr | nil, err`
+  - Defaults to `sdl3x.Window` once `sdl3x` is required.
+- `create_renderer(window) -> renderer_ptr | nil, err`
   - Overrides renderer creation for `mode = "sdl3"`.
+  - `window` is an `sdl3x.Window`.
 - `render`
   - Required unless `options.app` provides `render(...)` or `invoke_render(...)`.
 
@@ -98,8 +99,6 @@ Additional `sdl3_gpu` fields:
 - `sdl3x.normalize_properties_id(props)`
   - Accepts `nil`, a raw numeric/cdata `SDL_PropertiesID`, or an `sdl3x.Properties` instance.
   - Returns the normalized SDL properties handle.
-- `sdl3x.create_window(options)`
-  - Builds a temporary `sdl3x.Properties`, merges builtin default window properties with `options.window_props`, fills default width/height when omitted, and calls `SDL_CreateWindowWithProperties(...)`.
 - `sdl3x.resource_scope(device)`
   - Creates an SDL GPU-specific wrapper over `rig.ResourceScope(...)`.
   - Supports generic `adopt`, `replace`, and `release`, plus:
@@ -133,6 +132,29 @@ Supported value types:
 - integer or floating-point `number`
 - `string`
 - pointer-like `cdata`
+
+## `sdl3x.Window`
+
+`sdl3x.Window` is an owning wrapper around `SDL_Window *`.
+
+Instantiate windows through:
+
+- `local window = sdl3x.Window(options)`
+
+Instances expose the live SDL handle directly as:
+
+- `window.ptr`
+
+Methods:
+
+- `window:get_size()`
+- `window:get_size_in_pixels()`
+- `window:set_fullscreen(enabled)`
+- `window:sync()`
+- `window:swap()`
+- `window:release()`
+
+Construction uses temporary `sdl3x.Properties`, merges builtin default window properties with `options.window_props`, fills default width/height when omitted, and calls `SDL_CreateWindowWithProperties(...)`.
 
 ## `sdl3x.App`
 

@@ -134,7 +134,7 @@ function Cube:activate()
          shader.destroy_stage(resource)
       end
    )
-   local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)
+   local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
    self.depth_format = sdl3x.choose_depth_format(device)
 
    self.vertex_buffer = scope:create_gpu_buffer {

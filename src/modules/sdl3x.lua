@@ -35,6 +35,7 @@ end
 --[ properties ]
 
 local Properties = rig.Class()
+local Window = rig.Class()
 
 function M.normalize_properties_id(props)
    if props == nil then
@@ -46,7 +47,7 @@ function M.normalize_properties_id(props)
       return props
    end
 
-   if getmetatable(props) == Properties then
+   if Properties:is_instance(props) then
       return props.id
    end
 
@@ -54,7 +55,7 @@ function M.normalize_properties_id(props)
 end
 
 local function ensure_properties(properties)
-   if getmetatable(properties) ~= Properties then
+   if not Properties:is_instance(properties) then
       rig.raise("sdl3x.Properties operation expects an sdl3x.Properties instance")
    end
    if properties._released then
@@ -136,7 +137,7 @@ function Properties:init(values)
    self._values = {}
 
    local initial_values = values
-   if getmetatable(values) == Properties then
+   if Properties:is_instance(values) then
       initial_values = values._values
    end
 
@@ -164,7 +165,7 @@ function Properties:merge(values)
    ensure_properties(self)
 
    local source = values
-   if getmetatable(values) == Properties then
+   if Properties:is_instance(values) then
       source = values._values
    elseif type(values) ~= "table" then
       rig.raise("sdl3x.Properties:merge expects a table or sdl3x.Properties")
@@ -213,6 +214,17 @@ function Properties:release()
    self._values = {}
    self._released = true
 end
+
+local function ensure_window(window)
+   if not Window:is_instance(window) then
+      rig.raise("sdl3x.Window operation expects an sdl3x.Window instance")
+   end
+   if window._released then
+      rig.raise("sdl3x.Window has been released")
+   end
+end
+
+M.Window = Window
 
 local DEFAULT_WINDOW_WIDTH = 640
 local DEFAULT_WINDOW_HEIGHT = 360
@@ -272,24 +284,93 @@ local function build_window_properties(options)
    return props
 end
 
-function M.create_window(options)
+function Window:init(options)
    if options ~= nil and type(options) ~= "table" then
-      rig.raise("sdl3x.create_window expects a table if provided")
+      rig.raise("sdl3x.Window expects a table if initialized with options")
    end
 
    local props, props_err = build_window_properties(options or {})
    if props == nil then
-      return nil, props_err
+      rig.raise(props_err)
    end
 
    local window_ptr = sdl3.CreateWindowWithProperties(props.id)
    props:release()
 
    if window_ptr == nil then
-      return nil, M.get_error()
+      rig.raise("failed to create SDL window: " .. M.get_error())
    end
 
-   return window_ptr
+   self.ptr = window_ptr
+   self._released = false
+end
+
+function Window:get_size()
+   ensure_window(self)
+
+   local width_out = ffi.new("int[1]")
+   local height_out = ffi.new("int[1]")
+   if not sdl3.GetWindowSize(self.ptr, width_out, height_out) then
+      rig.raise("failed to query window size: " .. M.get_error())
+   end
+
+   return tonumber(width_out[0]) or 0,
+      tonumber(height_out[0]) or 0
+end
+
+function Window:get_size_in_pixels()
+   ensure_window(self)
+
+   local width_out = ffi.new("int[1]")
+   local height_out = ffi.new("int[1]")
+   if not sdl3.GetWindowSizeInPixels(self.ptr, width_out, height_out) then
+      rig.raise("failed to query window size in pixels: " .. M.get_error())
+   end
+
+   return tonumber(width_out[0]) or 0,
+      tonumber(height_out[0]) or 0
+end
+
+function Window:set_fullscreen(enabled)
+   ensure_window(self)
+   if type(enabled) ~= "boolean" then
+      rig.raise("sdl3x.Window:set_fullscreen expects enabled to be a boolean")
+   end
+
+   if not sdl3.SetWindowFullscreen(self.ptr, enabled) then
+      rig.raise("failed to set window fullscreen: " .. M.get_error())
+   end
+
+   return enabled
+end
+
+function Window:sync()
+   ensure_window(self)
+
+   if not sdl3.SyncWindow(self.ptr) then
+      rig.raise("failed to synchronize window state: " .. M.get_error())
+   end
+end
+
+function Window:swap()
+   ensure_window(self)
+
+   if not sdl3.GL_SwapWindow(self.ptr) then
+      rig.raise("failed to swap OpenGL window: " .. M.get_error())
+   end
+end
+
+function Window:release()
+   if self._released then
+      return
+   end
+
+   if self.ptr ~= nil and self.ptr ~= ffi.NULL then
+      sdl3.DestroyWindow(self.ptr)
+   end
+
+   self.ptr = nil
+   self._released = true
 end
 
 local function install_default_window_factories(options)
@@ -319,7 +400,7 @@ local function install_default_window_factories(options)
          driver_config[driver_id] = config
       end
       if type(config) == "table" and config.create_window == nil then
-         config.create_window = M.create_window
+         config.create_window = M.Window
       end
    end
 end
@@ -910,8 +991,8 @@ local function merge_props(base_props, override_props)
    return merged
 end
 
-local function default_create_renderer(window_ptr)
-   local renderer_ptr = sdl3.CreateRenderer(window_ptr, nil)
+local function default_create_renderer(window)
+   local renderer_ptr = sdl3.CreateRenderer(window.ptr, nil)
    if renderer_ptr == nil then
       return nil, M.get_error()
    end
@@ -1080,11 +1161,7 @@ end
 
 local shutdown
 local destroy_gl_font_backend_state
-local window_size_width = ffi.new("int[1]")
-local window_size_height = ffi.new("int[1]")
 local gl_font_quad_vertices = ffi.new("float[24]")
-local gl_font_window_width = ffi.new("int[1]")
-local gl_font_window_height = ffi.new("int[1]")
 local gl_font_backend_state = nil
 local resize_state = nil
 
@@ -1122,12 +1199,7 @@ local function get_window_size()
       rig.raise("an SDL window must exist before querying window size")
    end
 
-   if not sdl3.GetWindowSize(runtime_window, window_size_width, window_size_height) then
-      rig.raise("failed to query window size: " .. get_error_string())
-   end
-
-   return tonumber(window_size_width[0]) or 0,
-      tonumber(window_size_height[0]) or 0
+   return runtime_window:get_size()
 end
 
 local function initialize_windowed_sdl(options)
@@ -1154,50 +1226,53 @@ end
 
 local function create_window_or_fail(options, owned_init_flags)
    local create_window = options.create_window
-   if type(create_window) ~= "function" then
+   local is_callable_table = type(create_window) == "table"
+      and type(getmetatable(create_window)) == "table"
+      and type(rawget(getmetatable(create_window), "__call")) == "function"
+   if type(create_window) ~= "function" and not is_callable_table then
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
-      rig.raise("sdl3 create_window must be a function; require('sdl3x') or provide one explicitly")
+      rig.raise("sdl3 create_window must be callable; require('sdl3x') or provide one explicitly")
    end
 
-   local window_ptr, window_err = create_window(options)
-   if window_ptr == nil then
+   local window, window_err = create_window(options)
+   if window == nil then
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
       error(format_factory_error(
          "sdl3 create_window",
          window_err,
-         "expected SDL_Window* cdata"
+         "expected sdl3x.Window"
       ))
    end
-   if type(window_ptr) ~= "cdata" then
+   if not Window:is_instance(window) then
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
-      rig.raise("sdl3 create_window must return SDL_Window* cdata")
+      rig.raise("sdl3 create_window must return sdl3x.Window")
    end
 
-   return window_ptr, owned_init_flags
+   return window, owned_init_flags
 end
 
 local function setup(options)
    local owned_init_flags = nil
    options, owned_init_flags = initialize_windowed_sdl(options)
-   local window_ptr = create_window_or_fail(options, owned_init_flags)
+   local window = create_window_or_fail(options, owned_init_flags)
    local create_renderer = options.create_renderer or default_create_renderer
    if type(create_renderer) ~= "function" then
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
       rig.raise("sdl3 create_renderer must be a function")
    end
 
-   local renderer_ptr, renderer_err = create_renderer(window_ptr)
+   local renderer_ptr, renderer_err = create_renderer(window)
    if renderer_ptr == nil then
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
@@ -1208,14 +1283,14 @@ local function setup(options)
       ))
    end
    if type(renderer_ptr) ~= "cdata" then
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
       rig.raise("sdl3 create_renderer must return SDL_Renderer* cdata")
    end
 
-   runtime_window = window_ptr
+   runtime_window = window
    runtime_renderer = renderer_ptr
    runtime_owned_init_flags = owned_init_flags
    resize_state = nil
@@ -1228,7 +1303,7 @@ local function setup_gpu(options)
 
    local owned_init_flags = nil
    options, owned_init_flags = initialize_windowed_sdl(options)
-   local window_ptr = create_window_or_fail(options, owned_init_flags)
+   local window = create_window_or_fail(options, owned_init_flags)
 
    local format_flags = options and options.shader_formats
    if format_flags == nil then
@@ -1238,7 +1313,7 @@ local function setup_gpu(options)
    local backend_name = options and options.backend_name or nil
 
    if not sdl3.GPUSupportsShaderFormats(format_flags, backend_name) then
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
@@ -1251,7 +1326,7 @@ local function setup_gpu(options)
 
    local gpu_device = sdl3.CreateGPUDevice(format_flags, debug_mode, backend_name)
    if gpu_device == nil then
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
@@ -1262,16 +1337,16 @@ local function setup_gpu(options)
       ))
    end
 
-   if not sdl3.ClaimWindowForGPUDevice(gpu_device, window_ptr) then
+   if not sdl3.ClaimWindowForGPUDevice(gpu_device, window.ptr) then
       sdl3.DestroyGPUDevice(gpu_device)
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
       error("failed to claim SDL window for GPU device: " .. get_error_string())
    end
 
-   runtime_window = window_ptr
+   runtime_window = window
    runtime_gpu_device = gpu_device
    runtime_owned_init_flags = owned_init_flags
    resize_state = nil
@@ -1387,19 +1462,19 @@ local function setup_gl(options)
    local owned_init_flags = nil
    window_options, owned_init_flags = initialize_windowed_sdl(window_options)
    apply_gl_attributes(options.gl_attributes)
-   local window_ptr = create_window_or_fail(window_options, owned_init_flags)
-   local gl_context = sdl3.GL_CreateContext(window_ptr)
+   local window = create_window_or_fail(window_options, owned_init_flags)
+   local gl_context = sdl3.GL_CreateContext(window.ptr)
    if gl_context == nil then
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
       rig.raise("failed to create OpenGL context: " .. get_error_string())
    end
 
-   if not sdl3.GL_MakeCurrent(window_ptr, gl_context) then
+   if not sdl3.GL_MakeCurrent(window.ptr, gl_context) then
       sdl3.GL_DestroyContext(gl_context)
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
@@ -1412,14 +1487,14 @@ local function setup_gl(options)
    end
    if not sdl3.GL_SetSwapInterval(gl_attribute_int(swap_interval)) then
       sdl3.GL_DestroyContext(gl_context)
-      sdl3.DestroyWindow(window_ptr)
+      window:release()
       if owned_init_flags ~= nil then
          sdl3.QuitSubSystem(owned_init_flags)
       end
       rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
    end
 
-   runtime_window = window_ptr
+   runtime_window = window
    runtime_gl_context = gl_context
    runtime_owned_init_flags = owned_init_flags
    resize_state = nil
@@ -1434,7 +1509,7 @@ shutdown = function()
    if runtime_gpu_device ~= nil then
       sdl3.WaitForGPUIdle(runtime_gpu_device)
       if runtime_window ~= nil then
-         sdl3.ReleaseWindowFromGPUDevice(runtime_gpu_device, runtime_window)
+         sdl3.ReleaseWindowFromGPUDevice(runtime_gpu_device, runtime_window.ptr)
       end
       sdl3.DestroyGPUDevice(runtime_gpu_device)
       runtime_gpu_device = nil
@@ -1444,7 +1519,7 @@ shutdown = function()
       runtime_renderer = nil
    end
    if runtime_window ~= nil then
-      sdl3.DestroyWindow(runtime_window)
+      runtime_window:release()
       runtime_window = nil
    end
    resize_state = nil
@@ -1467,9 +1542,7 @@ local function present_gl()
    if runtime_window == nil or runtime_gl_context == nil then
       rig.raise("an OpenGL window and context must be initialized before presenting")
    end
-   if not sdl3.GL_SwapWindow(runtime_window) then
-      rig.raise("failed to swap OpenGL window: " .. get_error_string())
-   end
+   runtime_window:swap()
 end
 
 local font_src_rect = ffi.new("SDL_FRect[1]")
@@ -1585,12 +1658,7 @@ local function get_window_size_in_pixels()
       rig.raise("an SDL window must exist before querying pixel size")
    end
 
-   if not sdl3.GetWindowSizeInPixels(runtime_window, gl_font_window_width, gl_font_window_height) then
-      rig.raise("failed to query window size in pixels: " .. get_error_string())
-   end
-
-   return tonumber(gl_font_window_width[0]) or 0,
-      tonumber(gl_font_window_height[0]) or 0
+   return runtime_window:get_size_in_pixels()
 end
 
 local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
@@ -2221,7 +2289,7 @@ local function render_gpu_frame(render_fn)
    local height_out = ffi.new("Uint32[1]")
    if not sdl3.WaitAndAcquireGPUSwapchainTexture(
       command_buffer,
-      runtime_window,
+      runtime_window.ptr,
       swapchain_texture_out,
       width_out,
       height_out
@@ -2725,12 +2793,8 @@ local function set_fullscreen_common(self, enabled)
    if window == nil then
       rig.raise("sdl3 runtime did not provide a window")
    end
-   if not sdl3.SetWindowFullscreen(window, enabled) then
-      rig.raise("failed to set window fullscreen: " .. M.get_error())
-   end
-   if not sdl3.SyncWindow(window) then
-      rig.raise("failed to synchronize fullscreen state: " .. M.get_error())
-   end
+   window:set_fullscreen(enabled)
+   window:sync()
 
    self.fullscreen_enabled = enabled
    return enabled

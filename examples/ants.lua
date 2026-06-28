@@ -832,14 +832,7 @@ function App:after_setup()
       rig.raise("sdl3 runtime did not provide a window")
    end
 
-   local width_out = ffi.new("int[1]")
-   local height_out = ffi.new("int[1]")
-   if not sdl3.GetWindowSize(window, width_out, height_out) then
-      rig.raise("failed to query window size: " .. sdl3x.get_error())
-   end
-
-   window_width = tonumber(width_out[0]) or 0
-   window_height = tonumber(height_out[0]) or 0
+   window_width, window_height = window:get_size()
    self.root:on_resize({
       width = window_width,
       height = window_height,

@@ -254,7 +254,7 @@ test.case("sdl3x.normalize_properties_id rejects ad hoc props tables", function(
    )
 end)
 
-test.case("sdl3x.create_window builds temporary SDL properties", function()
+test.case("sdl3x.Window builds temporary SDL properties", function()
    local old_create_window = sdl3.CreateWindowWithProperties
    local old_get_primary_display = sdl3.GetPrimaryDisplay
    local old_get_display_usable_bounds = sdl3.GetDisplayUsableBounds
@@ -274,7 +274,7 @@ test.case("sdl3x.create_window builds temporary SDL properties", function()
          return expected_window
       end
 
-      local window = sdl3x.create_window({
+      local window = sdl3x.Window({
          window_props = {
             [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "hello",
             [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 320,
@@ -282,7 +282,8 @@ test.case("sdl3x.create_window builds temporary SDL properties", function()
          },
       })
 
-      test.equal(window, expected_window)
+      test.truthy(sdl3x.Window:is_instance(window))
+      test.equal(window.ptr, expected_window)
       test.equal(seen_props_id, 101)
       test.truthy(list_contains(observed, "create:101"))
       test.truthy(list_contains(
@@ -303,6 +304,91 @@ test.case("sdl3x.create_window builds temporary SDL properties", function()
    sdl3.CreateWindowWithProperties = old_create_window
    sdl3.GetPrimaryDisplay = old_get_primary_display
    sdl3.GetDisplayUsableBounds = old_get_display_usable_bounds
+end)
+
+test.case("sdl3x.Window exposes size, fullscreen, sync, swap, and release", function()
+   local old_create_window = sdl3.CreateWindowWithProperties
+   local old_get_primary_display = sdl3.GetPrimaryDisplay
+   local old_get_display_usable_bounds = sdl3.GetDisplayUsableBounds
+   local old_get_window_size = sdl3.GetWindowSize
+   local old_get_window_size_in_pixels = sdl3.GetWindowSizeInPixels
+   local old_set_window_fullscreen = sdl3.SetWindowFullscreen
+   local old_sync_window = sdl3.SyncWindow
+   local old_gl_swap_window = sdl3.GL_SwapWindow
+   local old_destroy_window = sdl3.DestroyWindow
+
+   with_sdl3_property_stubs(function()
+      local expected_window = ffi.cast("SDL_Window *", 0x1234)
+      local observed_fullscreen = nil
+      local observed_sync = false
+      local observed_swap = false
+      local observed_destroy = nil
+
+      sdl3.GetPrimaryDisplay = function()
+         return 0
+      end
+      sdl3.GetDisplayUsableBounds = function()
+         return false
+      end
+      sdl3.CreateWindowWithProperties = function()
+         return expected_window
+      end
+      sdl3.GetWindowSize = function(_, width_out, height_out)
+         width_out[0] = 320
+         height_out[0] = 180
+         return true
+      end
+      sdl3.GetWindowSizeInPixels = function(_, width_out, height_out)
+         width_out[0] = 640
+         height_out[0] = 360
+         return true
+      end
+      sdl3.SetWindowFullscreen = function(_, enabled)
+         observed_fullscreen = enabled
+         return true
+      end
+      sdl3.SyncWindow = function()
+         observed_sync = true
+         return true
+      end
+      sdl3.GL_SwapWindow = function()
+         observed_swap = true
+         return true
+      end
+      sdl3.DestroyWindow = function(ptr)
+         observed_destroy = ptr
+      end
+
+      local window = sdl3x.Window()
+      local width, height = window:get_size()
+      local pixel_width, pixel_height = window:get_size_in_pixels()
+
+      test.equal(width, 320)
+      test.equal(height, 180)
+      test.equal(pixel_width, 640)
+      test.equal(pixel_height, 360)
+
+      window:set_fullscreen(true)
+      window:sync()
+      window:swap()
+      window:release()
+
+      test.truthy(observed_fullscreen)
+      test.truthy(observed_sync)
+      test.truthy(observed_swap)
+      test.equal(observed_destroy, expected_window)
+      test.equal(window.ptr, nil)
+   end)
+
+   sdl3.CreateWindowWithProperties = old_create_window
+   sdl3.GetPrimaryDisplay = old_get_primary_display
+   sdl3.GetDisplayUsableBounds = old_get_display_usable_bounds
+   sdl3.GetWindowSize = old_get_window_size
+   sdl3.GetWindowSizeInPixels = old_get_window_size_in_pixels
+   sdl3.SetWindowFullscreen = old_set_window_fullscreen
+   sdl3.SyncWindow = old_sync_window
+   sdl3.GL_SwapWindow = old_gl_swap_window
+   sdl3.DestroyWindow = old_destroy_window
 end)
 
 test.case("sdl3x GPU builders accept sdl3x.Properties", function()
@@ -447,28 +533,26 @@ end)
 test.case("sdl3x.App toggles fullscreen through SDL", function()
    local app = sdl3x.App()
    local old_get_window = sdl3x.get_window
-   local old_set_window_fullscreen = sdl3.SetWindowFullscreen
-   local old_sync_window = sdl3.SyncWindow
    local observed_enabled = nil
+   local observed_sync = false
 
    sdl3x.get_window = function()
-      return {}
-   end
-   sdl3.SetWindowFullscreen = function(_, enabled)
-      observed_enabled = enabled
-      return true
-   end
-   sdl3.SyncWindow = function()
-      return true
+      return {
+         set_fullscreen = function(_, enabled)
+            observed_enabled = enabled
+         end,
+         sync = function()
+            observed_sync = true
+         end,
+      }
    end
 
    app:set_fullscreen(true)
    test.truthy(observed_enabled)
+   test.truthy(observed_sync)
    test.truthy(app.fullscreen_enabled)
 
    sdl3x.get_window = old_get_window
-   sdl3.SetWindowFullscreen = old_set_window_fullscreen
-   sdl3.SyncWindow = old_sync_window
 end)
 
 test.case("sdl3x.App owns loaded font faces and releases them on shutdown", function()

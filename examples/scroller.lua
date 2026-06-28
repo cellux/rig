@@ -851,12 +851,8 @@ local function set_fullscreen_enabled(enabled)
    if window == nil then
       rig.raise("sdl3 runtime did not provide a window")
    end
-   if not sdl3.SetWindowFullscreen(window, enabled) then
-      rig.raise("failed to set window fullscreen: " .. sdl3x.get_error())
-   end
-   if not sdl3.SyncWindow(window) then
-      rig.raise("failed to synchronize fullscreen state: " .. sdl3x.get_error())
-   end
+   window:set_fullscreen(enabled)
+   window:sync()
    fullscreen_enabled = enabled
 end
 
