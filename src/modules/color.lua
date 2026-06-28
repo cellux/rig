@@ -13,10 +13,6 @@ local component_offsets = {
    g = 1,
    b = 2,
    a = 3,
-   [1] = 0,
-   [2] = 1,
-   [3] = 2,
-   [4] = 3,
 }
 
 local function normalize_byte(value, label, default_value)

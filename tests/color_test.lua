@@ -14,10 +14,7 @@ test.case("color module constructs rgba8 colors", function()
    test.equal(value.g, 8)
    test.equal(value.b, 18)
    test.equal(value.a, 255)
-   test.equal(value[1], 6)
-   test.equal(value[2], 8)
-   test.equal(value[3], 18)
-   test.equal(value[4], 255)
+   test.equal(value[1], nil)
    test.truthy(color.is(value))
    test.equal(color.WHITE, color.from_rgb(255, 255, 255))
    test.equal(color.BLACK, color.from_rgb(0, 0, 0))
@@ -108,8 +105,12 @@ test.case("color module supports mutation, copies, and buffer writes", function(
    local value = color.Color("#060812")
    local copy = value:copy():with_alpha(80)
    local buffer = ffi.new("uint8_t[8]")
+   local ok = pcall(function()
+      value[2] = 9
+   end)
 
-   value[2] = 9
+   test.falsey(ok)
+   value.g = 9
    value.a = 64
    value:setf(0.5, 0.25, 0.0, 1.0)
    value:write_rgba8(buffer, 2)

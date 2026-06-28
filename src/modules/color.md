@@ -99,6 +99,5 @@
 
 ## Component Access
 
-- Components are available as both named and numeric fields:
+- Components are available as named fields:
   - `value.r`, `value.g`, `value.b`, `value.a`
-  - `value[1]`, `value[2]`, `value[3]`, `value[4]`
