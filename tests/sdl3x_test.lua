@@ -306,7 +306,7 @@ test.case("sdl3x.Window builds temporary SDL properties", function()
    sdl3.GetDisplayUsableBounds = old_get_display_usable_bounds
 end)
 
-test.case("sdl3x.Window exposes size, fullscreen, sync, swap, and release", function()
+test.case("sdl3x.Window exposes size, fullscreen, sync, and release", function()
    local old_create_window = sdl3.CreateWindowWithProperties
    local old_get_primary_display = sdl3.GetPrimaryDisplay
    local old_get_display_usable_bounds = sdl3.GetDisplayUsableBounds
@@ -314,14 +314,12 @@ test.case("sdl3x.Window exposes size, fullscreen, sync, swap, and release", func
    local old_get_window_size_in_pixels = sdl3.GetWindowSizeInPixels
    local old_set_window_fullscreen = sdl3.SetWindowFullscreen
    local old_sync_window = sdl3.SyncWindow
-   local old_gl_swap_window = sdl3.GL_SwapWindow
    local old_destroy_window = sdl3.DestroyWindow
 
    with_sdl3_property_stubs(function()
       local expected_window = ffi.cast("SDL_Window *", 0x1234)
       local observed_fullscreen = nil
       local observed_sync = false
-      local observed_swap = false
       local observed_destroy = nil
 
       sdl3.GetPrimaryDisplay = function()
@@ -351,10 +349,6 @@ test.case("sdl3x.Window exposes size, fullscreen, sync, swap, and release", func
          observed_sync = true
          return true
       end
-      sdl3.GL_SwapWindow = function()
-         observed_swap = true
-         return true
-      end
       sdl3.DestroyWindow = function(ptr)
          observed_destroy = ptr
       end
@@ -370,12 +364,10 @@ test.case("sdl3x.Window exposes size, fullscreen, sync, swap, and release", func
 
       window:set_fullscreen(true)
       window:sync()
-      window:swap()
       window:release()
 
       test.truthy(observed_fullscreen)
       test.truthy(observed_sync)
-      test.truthy(observed_swap)
       test.equal(observed_destroy, expected_window)
       test.equal(window.ptr, nil)
    end)
@@ -387,7 +379,6 @@ test.case("sdl3x.Window exposes size, fullscreen, sync, swap, and release", func
    sdl3.GetWindowSizeInPixels = old_get_window_size_in_pixels
    sdl3.SetWindowFullscreen = old_set_window_fullscreen
    sdl3.SyncWindow = old_sync_window
-   sdl3.GL_SwapWindow = old_gl_swap_window
    sdl3.DestroyWindow = old_destroy_window
 end)
 

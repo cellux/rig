@@ -215,6 +215,8 @@ function Properties:release()
    self._released = true
 end
 
+--[ Window ]
+
 local function ensure_window(window)
    if not Window:is_instance(window) then
       rig.raise("sdl3x.Window operation expects an sdl3x.Window instance")
@@ -349,14 +351,6 @@ function Window:sync()
 
    if not sdl3.SyncWindow(self.ptr) then
       rig.raise("failed to synchronize window state: " .. M.get_error())
-   end
-end
-
-function Window:swap()
-   ensure_window(self)
-
-   if not sdl3.GL_SwapWindow(self.ptr) then
-      rig.raise("failed to swap OpenGL window: " .. M.get_error())
    end
 end
 
@@ -1487,7 +1481,9 @@ local function present_gl()
    if runtime_window == nil or runtime_gl_context == nil then
       rig.raise("an OpenGL window and context must be initialized before presenting")
    end
-   runtime_window:swap()
+   if not sdl3.GL_SwapWindow(runtime_window.ptr) then
+      rig.raise("failed to swap OpenGL window: " .. M.get_error())
+   end
 end
 
 local font_src_rect = ffi.new("SDL_FRect[1]")

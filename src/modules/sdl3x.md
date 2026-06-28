@@ -148,7 +148,6 @@ Methods:
 - `window:get_size_in_pixels()`
 - `window:set_fullscreen(enabled)`
 - `window:sync()`
-- `window:swap()`
 - `window:release()`
 
 Construction uses temporary `sdl3x.Properties`, merges builtin default window properties with `options.window_props`, fills default width/height when omitted, and calls `SDL_CreateWindowWithProperties(...)`.
