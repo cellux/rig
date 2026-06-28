@@ -526,6 +526,20 @@ local gpu_color_target_descriptions_schema = schema.ffi.array(
    gpu_color_target_description_schema
 )
 
+local gpu_vertex_input_state_schema = schema.ffi.struct(
+   "SDL_GPUVertexInputState",
+   {
+      vertex_buffer_descriptions = {
+         schema = gpu_vertex_buffer_descriptions_schema,
+         count_field = "num_vertex_buffers",
+      },
+      vertex_attributes = {
+         schema = gpu_vertex_attributes_schema,
+         count_field = "num_vertex_attributes",
+      },
+   }
+)
+
 local gpu_buffer_create_info_schema = schema.ffi.struct(
    "SDL_GPUBufferCreateInfo",
    {
@@ -592,8 +606,8 @@ local graphics_pipeline_create_info_schema = schema.ffi.struct(
       vertex_input = {
          schema = schema.any():optional(),
          assign = function(dst, value, bundle)
-            if type(value) == "table" and value.state ~= nil then
-               dst.vertex_input_state = value.state[0]
+            if type(value) == "table" and value.cdata ~= nil and value.value ~= nil then
+               dst.vertex_input_state = value.value
                bundle:retain(value)
                return
             end
@@ -687,28 +701,16 @@ function M.build_vertex_input_state(layout)
       end
    end
 
-   local descriptions = schema.assert(
-      gpu_vertex_buffer_descriptions_schema,
-      buffer_specs,
-      "sdl3x.build_vertex_input_state buffers"
+   local bundle = schema.assert(
+      gpu_vertex_input_state_schema,
+      {
+         vertex_buffer_descriptions = buffer_specs,
+         vertex_attributes = attribute_specs,
+      },
+      "sdl3x.build_vertex_input_state state"
    )
-   local attributes = schema.assert(
-      gpu_vertex_attributes_schema,
-      attribute_specs,
-      "sdl3x.build_vertex_input_state attributes"
-   )
-   local state = ffi.new("SDL_GPUVertexInputState[1]")
-   state[0].vertex_buffer_descriptions = descriptions.cdata
-   state[0].num_vertex_buffers = descriptions.length
-   state[0].vertex_attributes = attributes.cdata
-   state[0].num_vertex_attributes = attributes.length
-
-   local bundle = schema.ffi.Bundle("struct", state, state[0], 1)
-   bundle.state = state
-   bundle.vertex_buffer_descriptions = descriptions.cdata
-   bundle.vertex_attributes = attributes.cdata
-   bundle:retain(descriptions)
-   bundle:retain(attributes)
+   bundle.vertex_buffer_descriptions = bundle.cdata[0].vertex_buffer_descriptions
+   bundle.vertex_attributes = bundle.cdata[0].vertex_attributes
    return bundle
 end
 

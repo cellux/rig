@@ -443,10 +443,10 @@ test.case("sdl3x vertex input state builder retains descriptor storage", functio
       },
    })
 
-   test.equal(tonumber(bundle.state[0].num_vertex_buffers), 1)
-   test.equal(tonumber(bundle.state[0].num_vertex_attributes), 1)
-   test.equal(bundle.state[0].vertex_buffer_descriptions, bundle.vertex_buffer_descriptions)
-   test.equal(bundle.state[0].vertex_attributes, bundle.vertex_attributes)
+   test.equal(tonumber(bundle.cdata[0].num_vertex_buffers), 1)
+   test.equal(tonumber(bundle.cdata[0].num_vertex_attributes), 1)
+   test.equal(bundle.cdata[0].vertex_buffer_descriptions, bundle.vertex_buffer_descriptions)
+   test.equal(bundle.cdata[0].vertex_attributes, bundle.vertex_attributes)
    test.equal(#bundle.keepalive, 2)
 end)
 

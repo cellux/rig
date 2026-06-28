@@ -34,11 +34,11 @@ test.case("mesh.build_vertex_input resolves through the active provider", functi
 
    local vertex_input = mesh_test_vertex_input
    test.truthy(type(vertex_input) == "table")
-   test.truthy(vertex_input.state ~= nil)
+   test.truthy(vertex_input.cdata ~= nil)
    test.truthy(vertex_input.vertex_buffer_descriptions ~= nil)
    test.truthy(vertex_input.vertex_attributes ~= nil)
-   test.equal(tonumber(vertex_input.state[0].num_vertex_buffers), 1)
-   test.equal(tonumber(vertex_input.state[0].num_vertex_attributes), 2)
+   test.equal(tonumber(vertex_input.cdata[0].num_vertex_buffers), 1)
+   test.equal(tonumber(vertex_input.cdata[0].num_vertex_attributes), 2)
 end)
 
 test.case("mesh.make_cube accepts Color face colors", function()
