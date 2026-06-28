@@ -248,13 +248,7 @@ local function build_window_properties(options)
    local ok, result_or_err = pcall(function()
       local window_props = options.window_props
       if window_props ~= nil then
-         if getmetatable(window_props) == Properties then
-            props:merge(window_props)
-         elseif type(window_props) == "table" then
-            props:merge(window_props)
-         else
-            rig.raise("window_props must be a table or sdl3x.Properties if set")
-         end
+         props:merge(window_props)
       end
 
       local width_key = sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER
