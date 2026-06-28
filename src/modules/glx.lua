@@ -7,11 +7,13 @@ local Shader = rig.Class()
 local Program = rig.Class()
 local Buffer = rig.Class()
 local VertexArray = rig.Class()
+local Texture2D = rig.Class()
 
 M.Shader = Shader
 M.Program = Program
 M.Buffer = Buffer
 M.VertexArray = VertexArray
+M.Texture2D = Texture2D
 
 local function ensure_shader(value)
    if getmetatable(value) ~= Shader then
@@ -34,6 +36,12 @@ end
 local function ensure_vertex_array(value)
    if getmetatable(value) ~= VertexArray then
       rig.raise("glx operation expects a glx.VertexArray")
+   end
+end
+
+local function ensure_texture_2d(value)
+   if getmetatable(value) ~= Texture2D then
+      rig.raise("glx operation expects a glx.Texture2D")
    end
 end
 
@@ -65,6 +73,13 @@ local function ensure_vertex_array_live(vertex_array)
    end
 end
 
+local function ensure_texture_2d_live(texture)
+   ensure_texture_2d(texture)
+   if texture.id == 0 then
+      rig.raise("OpenGL texture has been released")
+   end
+end
+
 local function normalize_size(label, value)
    local size = tonumber(value)
    if size == nil then
@@ -85,6 +100,14 @@ local function normalize_usage(value)
       rig.raise("OpenGL buffer usage must be numeric")
    end
    return usage
+end
+
+local function normalize_gl_enum(label, value)
+   local normalized = tonumber(value)
+   if normalized == nil then
+      rig.raise("%s must be numeric", label)
+   end
+   return normalized
 end
 
 local function normalize_gl_boolean(label, value)
@@ -114,6 +137,15 @@ local function normalize_pointer(value)
    end
 
    return value
+end
+
+local function normalize_texture_unit(unit)
+   if unit == nil then
+      return nil
+   end
+
+   local normalized = normalize_size("OpenGL texture unit", unit)
+   return normalized
 end
 
 local function shader_stage_constant(stage)
@@ -498,6 +530,79 @@ function VertexArray:release()
    local arrays = ffi.new("GLuint[1]")
    arrays[0] = self.id
    gl.DeleteVertexArrays(1, arrays)
+   self.id = 0
+end
+
+function Texture2D:init()
+   local textures = ffi.new("GLuint[1]")
+   gl.GenTextures(1, textures)
+
+   self.id = tonumber(textures[0]) or 0
+   if self.id == 0 then
+      rig.raise("failed to create OpenGL 2D texture")
+   end
+end
+
+function Texture2D:bind(unit)
+   ensure_texture_2d_live(self)
+
+   local resolved_unit = normalize_texture_unit(unit)
+   if resolved_unit ~= nil then
+      gl.ActiveTexture(gl.TEXTURE0 + resolved_unit)
+   end
+   gl.BindTexture(gl.TEXTURE_2D, self.id)
+   return self
+end
+
+function Texture2D:parameter(pname, param)
+   ensure_texture_2d_live(self)
+
+   local resolved_pname = normalize_gl_enum("OpenGL texture parameter name", pname)
+   local resolved_param = normalize_gl_enum("OpenGL texture parameter value", param)
+   self:bind()
+   gl.TexParameteri(gl.TEXTURE_2D, resolved_pname, resolved_param)
+   return self
+end
+
+function Texture2D:image(level, internalformat, width, height, format, value_type, pixels, border)
+   ensure_texture_2d_live(self)
+
+   local resolved_level = tonumber(level)
+   if resolved_level == nil then
+      rig.raise("OpenGL texture image level must be numeric")
+   end
+
+   local resolved_internalformat = normalize_gl_enum("OpenGL texture internalformat", internalformat)
+   local resolved_width = normalize_size("OpenGL texture width", width)
+   local resolved_height = normalize_size("OpenGL texture height", height)
+   local resolved_format = normalize_gl_enum("OpenGL texture format", format)
+   local resolved_type = normalize_gl_enum("OpenGL texture type", value_type)
+   local resolved_border = border == nil and 0 or normalize_size("OpenGL texture border", border)
+
+   self:bind()
+   gl.TexImage2D(
+      gl.TEXTURE_2D,
+      resolved_level,
+      resolved_internalformat,
+      resolved_width,
+      resolved_height,
+      resolved_border,
+      resolved_format,
+      resolved_type,
+      pixels
+   )
+   return self
+end
+
+function Texture2D:release()
+   ensure_texture_2d(self)
+   if self.id == 0 then
+      return
+   end
+
+   local textures = ffi.new("GLuint[1]")
+   textures[0] = self.id
+   gl.DeleteTextures(1, textures)
    self.id = 0
 end
 

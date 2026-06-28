@@ -43,6 +43,15 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
     - `vao:bind()`
     - `vao:attribute(index, size, type, normalized?, stride?, pointer?)`
     - `vao:release()`
+- `glx.Texture2D()`
+  - Creates a 2D texture object.
+  - Fields:
+    - `id`
+  - Methods:
+    - `texture:bind(unit?)`
+    - `texture:parameter(pname, param)`
+    - `texture:image(level, internalformat, width, height, format, type, pixels, border?)`
+    - `texture:release()`
 - `glx.get_version_string()`
 
 ## Notes

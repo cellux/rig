@@ -1449,7 +1449,6 @@ local shutdown
 local destroy_gl_font_backend_state
 local window_size_width = ffi.new("int[1]")
 local window_size_height = ffi.new("int[1]")
-local gl_font_textures = ffi.new("unsigned int[1]")
 local gl_font_quad_vertices = ffi.new("float[24]")
 local gl_font_window_width = ffi.new("int[1]")
 local gl_font_window_height = ffi.new("int[1]")
@@ -1997,8 +1996,6 @@ local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
 end
 
 local function upload_gl_font_page_texture(page, texture)
-   local state = ensure_gl_font_backend_state()
-   local gl = state.gl
    local pixel_count = page.width * page.height
    local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
 
@@ -2011,34 +2008,29 @@ local function upload_gl_font_page_texture(page, texture)
       rgba[base + 3] = alpha
    end
 
-   local texture_id = texture
-   if texture_id == nil or texture_id == 0 then
-      gl.GenTextures(1, gl_font_textures)
-      texture_id = tonumber(gl_font_textures[0]) or 0
-      if texture_id == 0 then
-         rig.raise("failed to create OpenGL font texture")
-      end
+   local gl = require("gl")
+   local texture_2d = texture
+   if texture_2d == nil then
+      texture_2d = require("glx").Texture2D()
    end
 
-   gl.ActiveTexture(gl.TEXTURE0)
-   gl.BindTexture(gl.TEXTURE_2D, texture_id)
-   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-   gl.TexImage2D(
-      gl.TEXTURE_2D,
+   texture_2d:bind(0)
+   texture_2d:parameter(gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+   texture_2d:parameter(gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+   texture_2d:parameter(gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+   texture_2d:parameter(gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+   texture_2d:image(
       0,
       gl.RGBA,
       page.width,
       page.height,
-      0,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      rgba
+      rgba,
+      0
    )
 
-   return texture_id
+   return texture_2d
 end
 
 local function ensure_gl_font_page_texture(text_renderer, page_index)
@@ -2254,9 +2246,8 @@ function sdl3_gl_font_provider.release_text_renderer(text_renderer)
    local gl = backend_state.gl
    for i = 1, #state.textures do
       local texture = state.textures[i]
-      if texture ~= nil and texture ~= 0 then
-         gl_font_textures[0] = texture
-         gl.DeleteTextures(1, gl_font_textures)
+      if texture ~= nil then
+         texture:release()
       end
       state.textures[i] = nil
       state.revisions[i] = nil
@@ -2290,8 +2281,7 @@ function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, dr
       glyph_color.b / 255.0,
       glyph_color.a / 255.0
    )
-   gl.ActiveTexture(gl.TEXTURE0)
-   gl.BindTexture(gl.TEXTURE_2D, texture)
+   texture:bind(0)
    backend_state.vao:bind()
    backend_state.vbo:set_data(gl_font_quad_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)

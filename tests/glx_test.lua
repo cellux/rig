@@ -12,6 +12,7 @@ local next_shader_id
 local next_program_id
 local next_buffer_id
 local next_vertex_array_id
+local next_texture_id
 
 local callbacks = {}
 
@@ -181,7 +182,59 @@ callbacks.glVertexAttribPointer = ffi.cast("rig_gl__VertexAttribPointer", functi
    }
 end)
 
-test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-array helpers", function()
+callbacks.glGenTextures = ffi.cast("rig_gl__GenTextures", function(n, textures)
+   for i = 0, tonumber(n) - 1 do
+      textures[i] = next_texture_id
+      observed.generated_textures[#observed.generated_textures + 1] = next_texture_id
+      next_texture_id = next_texture_id + 1
+   end
+end)
+
+callbacks.glBindTexture = ffi.cast("rig_gl__BindTexture", function(target, texture)
+   observed.bound_textures[#observed.bound_textures + 1] = {
+      target = tonumber(target),
+      texture = tonumber(texture),
+   }
+end)
+
+callbacks.glTexParameteri = ffi.cast("rig_gl__TexParameteri", function(target, pname, param)
+   observed.texture_parameters[#observed.texture_parameters + 1] = {
+      target = tonumber(target),
+      pname = tonumber(pname),
+      param = tonumber(param),
+   }
+end)
+
+callbacks.glDeleteTextures = ffi.cast("rig_gl__DeleteTextures", function(n, textures)
+   for i = 0, tonumber(n) - 1 do
+      observed.deleted_textures[#observed.deleted_textures + 1] = tonumber(textures[i])
+   end
+end)
+
+callbacks.glActiveTexture = ffi.cast("rig_gl__ActiveTexture", function(texture)
+   observed.active_textures[#observed.active_textures + 1] = tonumber(texture)
+end)
+
+callbacks.glTexImage2D = ffi.cast("rig_gl__TexImage2D", function(target, level, internalformat, width, height, border, format, value_type, pixels)
+   local entry = {
+      target = tonumber(target),
+      level = tonumber(level),
+      internalformat = tonumber(internalformat),
+      width = tonumber(width),
+      height = tonumber(height),
+      border = tonumber(border),
+      format = tonumber(format),
+      value_type = tonumber(value_type),
+      has_pixels = pixels ~= nil and pixels ~= ffi.NULL,
+   }
+   if entry.has_pixels and entry.width > 0 and entry.height > 0 then
+      local byte_count = entry.width * entry.height * 4
+      entry.bytes = ffi.string(ffi.cast("const char *", pixels), byte_count)
+   end
+   observed.texture_images[#observed.texture_images + 1] = entry
+end)
+
+test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array, and texture helpers", function()
    resolved_names = {}
    observed = {
       created_shaders = {},
@@ -206,11 +259,18 @@ test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-ar
       deleted_vertex_arrays = {},
       enabled_vertex_attributes = {},
       vertex_attributes = {},
+      generated_textures = {},
+      bound_textures = {},
+      texture_parameters = {},
+      deleted_textures = {},
+      active_textures = {},
+      texture_images = {},
    }
    next_shader_id = 101
    next_program_id = 201
    next_buffer_id = 301
    next_vertex_array_id = 401
+   next_texture_id = 501
 
    rig.register_service_provider("gl.resolver", "glx_test_provider", {
       get_gl_proc_address = function(name)
@@ -277,6 +337,20 @@ test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-ar
          vertex_array:attribute(3, 2, gl.FLOAT, gl.TRUE, 24, 12)
          vertex_array:release()
          observed.vertex_array_id_after_release = vertex_array.id
+
+         local texture = glx.Texture2D()
+         local pixels = ffi.new("uint8_t[16]", {
+            1, 2, 3, 4,
+            5, 6, 7, 8,
+            9, 10, 11, 12,
+            13, 14, 15, 16,
+         })
+         observed.texture_id = texture.id
+         texture:bind(2)
+         texture:parameter(gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+         texture:image(0, gl.RGBA, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+         texture:release()
+         observed.texture_id_after_release = texture.id
       end,
    })
 
@@ -301,6 +375,7 @@ test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-ar
    test.equal(observed.adopted_program_id_after_release, 0)
    test.equal(observed.buffer_id_after_release, 0)
    test.equal(observed.vertex_array_id_after_release, 0)
+   test.equal(observed.texture_id_after_release, 0)
 
    test.equal(observed.buffer_uploads[1].bytes, "ABCD")
    test.equal(observed.buffer_uploads[1].size, 4)
@@ -314,6 +389,19 @@ test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-ar
    test.equal(observed.vertex_attributes[1].normalized, gl.TRUE)
    test.equal(observed.vertex_attributes[1].stride, 24)
    test.equal(observed.vertex_attributes[1].pointer, 12)
+   test.equal(observed.active_textures[1], gl.TEXTURE0 + 2)
+   test.equal(observed.texture_parameters[1].target, gl.TEXTURE_2D)
+   test.equal(observed.texture_parameters[1].pname, gl.TEXTURE_MIN_FILTER)
+   test.equal(observed.texture_parameters[1].param, gl.LINEAR)
+   test.equal(observed.texture_images[1].target, gl.TEXTURE_2D)
+   test.equal(observed.texture_images[1].width, 2)
+   test.equal(observed.texture_images[1].height, 2)
+   test.equal(observed.texture_images[1].format, gl.RGBA)
+   test.equal(observed.texture_images[1].value_type, gl.UNSIGNED_BYTE)
+   test.equal(
+      observed.texture_images[1].bytes,
+      string.char(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+   )
 
    local resolved = {}
    for i = 1, #resolved_names do
@@ -325,5 +413,10 @@ test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-ar
    test.truthy(resolved.glGetUniformLocation ~= nil)
    test.truthy(resolved.glGenBuffers ~= nil)
    test.truthy(resolved.glGenVertexArrays ~= nil)
+   test.truthy(resolved.glGenTextures ~= nil)
+   test.truthy(resolved.glBindTexture ~= nil)
+   test.truthy(resolved.glTexParameteri ~= nil)
+   test.truthy(resolved.glTexImage2D ~= nil)
+   test.truthy(resolved.glActiveTexture ~= nil)
    test.truthy(resolved.glGetString ~= nil)
 end)
