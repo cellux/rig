@@ -6,6 +6,6 @@
   (rig.println key-info))
 
 (fn App.render [self]
-  (sdl3.clear 0 0 0 1))
+  (sdl3x.clear 0 0 0 1))
 
 (rig.run {:mode "sdl3" :app App})

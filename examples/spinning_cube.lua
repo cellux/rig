@@ -6,6 +6,7 @@ local mathx = require("mathx")
 local mesh = require("mesh")
 local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
+local sdl3x = require("sdl3x")
 local shader = require("shader")
 
 local Object = scenegraph.Object
@@ -107,14 +108,14 @@ function Cube:build_mvp(out, aspect)
 end
 
 function Cube:activate()
-   local device = sdl3.get_gpu_device()
-   local window = sdl3.get_window()
+   local device = sdl3x.get_gpu_device()
+   local window = sdl3x.get_window()
    if device == nil or window == nil then
       rig.raise("sdl3_gpu runtime mode did not produce a device and window")
    end
 
    local scope = self:replace_owned("gpu_resources",
-      sdl3.resource_scope(device),
+      sdl3x.resource_scope(device),
       function(_, owned_scope)
          owned_scope:release()
       end)
@@ -134,14 +135,14 @@ function Cube:activate()
       end
    )
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window)
-   self.depth_format = sdl3.choose_depth_format(device)
+   self.depth_format = sdl3x.choose_depth_format(device)
 
    self.vertex_buffer = scope:create_gpu_buffer {
       usage = sdl3.GPU_BUFFERUSAGE_VERTEX,
       size = #cube_mesh.vertex_blob,
       props = 0,
    }
-   sdl3.upload_to_gpu_buffer(device, self.vertex_buffer, cube_mesh.vertex_blob)
+   sdl3x.upload_to_gpu_buffer(device, self.vertex_buffer, cube_mesh.vertex_blob)
 
    self.pipeline = scope:create_graphics_pipeline {
       vertex_shader = vertex_shader,
@@ -187,7 +188,7 @@ function Cube:ensure_depth_texture(width, height)
    end
 
    self.depth_texture = self.gpu_resources:replace("depth_texture",
-      sdl3.create_depth_texture(sdl3.get_gpu_device(), width, height, self.depth_format),
+      sdl3x.create_depth_texture(sdl3x.get_gpu_device(), width, height, self.depth_format),
       function(scope_device, resource)
          sdl3.ReleaseGPUTexture(scope_device, resource)
       end)

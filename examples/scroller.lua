@@ -834,7 +834,7 @@ draw_profiler = function(renderer, scene, style, frame_profiler)
 end
 
 local function set_vsync(enabled)
-   local renderer = sdl3.get_renderer()
+   local renderer = sdl3x.get_renderer()
    local interval = enabled and 1 or 0
    if not sdl3.SetRenderVSync(renderer, interval) then
       rig.raise("failed to set renderer vsync: " .. sdl3x.get_error())
@@ -847,7 +847,7 @@ toggle_vsync = function()
 end
 
 local function set_fullscreen_enabled(enabled)
-   local window = sdl3.get_window()
+   local window = sdl3x.get_window()
    if window == nil then
       rig.raise("sdl3 runtime did not provide a window")
    end
@@ -867,7 +867,7 @@ end
 function App:init()
    self:super().init(self)
 
-   local renderer = sdl3.get_renderer()
+   local renderer = sdl3x.get_renderer()
    if renderer == nil then
       rig.raise("sdl3 runtime did not provide a renderer")
    end
@@ -914,7 +914,7 @@ end
 
 function App:render()
    self.frame_profiler:begin_cpu()
-   local renderer = sdl3.get_renderer()
+   local renderer = sdl3x.get_renderer()
    local layout = current_layout()
    if self.root ~= nil then
       self.root:draw_tree({

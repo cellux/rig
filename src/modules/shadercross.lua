@@ -261,27 +261,6 @@ local compile_compute_pipeline_options_schema = schema.record({
    allow_extra = true,
 })
 
-local function normalize_properties_id(props)
-   if props == nil then
-      return 0
-   end
-
-   local value_type = type(props)
-   if value_type == "number" or value_type == "cdata" then
-      return props
-   end
-
-   if value_type == "table" then
-      local id = rawget(props, "id")
-      local id_type = type(id)
-      if id_type == "number" or id_type == "cdata" then
-         return id
-      end
-   end
-
-   error("props must be a number, cdata SDL_PropertiesID, or table with numeric id")
-end
-
 local function normalize_shader_stage(shader_stage)
    local value = shader_stage
 
@@ -362,7 +341,7 @@ local function build_hlsl_info(options)
    info[0].include_dir = options.include_dir
    info[0].defines = define_array
    info[0].shader_stage = normalize_shader_stage(options.shader_stage)
-   info[0].props = normalize_properties_id(options.props)
+   info[0].props = sdl3x.normalize_properties_id(options.props)
 
    return info, keepalive
 end
@@ -387,7 +366,7 @@ local function build_spirv_info(options)
    info[0].bytecode_size = #options.bytecode
    info[0].entrypoint = options.entrypoint
    info[0].shader_stage = normalize_shader_stage(options.shader_stage)
-   info[0].props = normalize_properties_id(options.props)
+   info[0].props = sdl3x.normalize_properties_id(options.props)
 
    return info, {
       bytecode_buffer,
@@ -532,7 +511,7 @@ function M.reflect_graphics_spirv(bytecode, props)
    local metadata_ptr = load_shadercross_library().SDL_ShaderCross_ReflectGraphicsSPIRV(
       bytecode_buffer,
       #bytecode,
-      normalize_properties_id(props)
+      sdl3x.normalize_properties_id(props)
    )
 
    if metadata_ptr == nil then
@@ -559,7 +538,7 @@ function M.reflect_compute_spirv(bytecode, props)
    local metadata_ptr = load_shadercross_library().SDL_ShaderCross_ReflectComputeSPIRV(
       bytecode_buffer,
       #bytecode,
-      normalize_properties_id(props)
+      sdl3x.normalize_properties_id(props)
    )
 
    if metadata_ptr == nil then
@@ -592,7 +571,7 @@ function M.compile_graphics_shader_from_spirv(options)
       ffi.cast("SDL_GPUDevice *", normalized.device),
       info,
       resource_info,
-      normalize_properties_id(normalized.shader_props)
+      sdl3x.normalize_properties_id(normalized.shader_props)
    )
 
    if shader_ptr == nil then
@@ -623,7 +602,7 @@ function M.compile_compute_pipeline_from_spirv(options)
       ffi.cast("SDL_GPUDevice *", normalized.device),
       info,
       metadata,
-      normalize_properties_id(normalized.pipeline_props)
+      sdl3x.normalize_properties_id(normalized.pipeline_props)
    )
 
    if pipeline_ptr == nil then

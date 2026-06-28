@@ -114,6 +114,22 @@ test.case("sdl3x.App stores resize events in app fields", function()
    test.equal(app.pixel_height, 400)
 end)
 
+test.case("sdl3x runtime options validate driver config shapes", function()
+   local bad_config_ok, bad_config_err = pcall(function()
+      rig.run {
+         driver = "sdl3",
+         driver_config = {
+            sdl3 = "bad",
+         },
+      }
+   end)
+   test.falsey(bad_config_ok)
+   test.match(
+      tostring(bad_config_err),
+      "rig%.run options%.driver_config%.sdl3 expects a table"
+   )
+end)
+
 test.case("sdl3x.get_error returns SDL error text or fallback", function()
    local old_get_error = sdl3.GetError
    local ok, err = pcall(function()
@@ -213,17 +229,138 @@ test.case("sdl3x.Properties exposes a live props.id and owns SDL properties", fu
    end)
 end)
 
+test.case("sdl3x.normalize_properties_id accepts raw ids and sdl3x.Properties", function()
+   test.equal(sdl3x.normalize_properties_id(nil), 0)
+   test.equal(sdl3x.normalize_properties_id(55), 55)
+   test.equal(sdl3x.normalize_properties_id({
+      id = 77,
+   }), 77)
+
+   with_sdl3_property_stubs(function()
+      local props = sdl3x.Properties()
+      test.equal(sdl3x.normalize_properties_id(props), 101)
+      props:release()
+   end)
+end)
+
+test.case("sdl3x.create_window builds temporary SDL properties", function()
+   local old_create_window = sdl3.CreateWindowWithProperties
+   local old_get_primary_display = sdl3.GetPrimaryDisplay
+   local old_get_display_usable_bounds = sdl3.GetDisplayUsableBounds
+
+   with_sdl3_property_stubs(function(observed)
+      local seen_props_id = nil
+      local expected_window = ffi.cast("SDL_Window *", 0x1234)
+
+      sdl3.GetPrimaryDisplay = function()
+         return 0
+      end
+      sdl3.GetDisplayUsableBounds = function()
+         return false
+      end
+      sdl3.CreateWindowWithProperties = function(props_id)
+         seen_props_id = props_id
+         return expected_window
+      end
+
+      local window = sdl3x.create_window({
+         window_props = {
+            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "hello",
+            [sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER] = 320,
+            [sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER] = 180,
+         },
+      })
+
+      test.equal(window, expected_window)
+      test.equal(seen_props_id, 101)
+      test.truthy(list_contains(observed, "create:101"))
+      test.truthy(list_contains(
+         observed,
+         "string:101:" .. sdl3.PROP_WINDOW_CREATE_TITLE_STRING .. ":hello"
+      ))
+      test.truthy(list_contains(
+         observed,
+         "number:101:" .. sdl3.PROP_WINDOW_CREATE_WIDTH_NUMBER .. ":320"
+      ))
+      test.truthy(list_contains(
+         observed,
+         "number:101:" .. sdl3.PROP_WINDOW_CREATE_HEIGHT_NUMBER .. ":180"
+      ))
+      test.truthy(list_contains(observed, "destroy:101"))
+   end)
+
+   sdl3.CreateWindowWithProperties = old_create_window
+   sdl3.GetPrimaryDisplay = old_get_primary_display
+   sdl3.GetDisplayUsableBounds = old_get_display_usable_bounds
+end)
+
 test.case("sdl3 GPU builders accept sdl3x.Properties", function()
    local props = {
       id = 55,
    }
-   local buffer_info = sdl3.build_gpu_buffer_create_info({
+   local buffer_info = sdl3x.build_gpu_buffer_create_info({
       usage = 5,
       size = 64,
       props = props,
    })
 
    test.equal(tonumber(buffer_info[0].props), 55)
+end)
+
+test.case("sdl3x GPU descriptor builders populate FFI structs", function()
+   local vertex_buffers = sdl3x.build_vertex_buffer_descriptions({
+      {
+         pitch = 24,
+      },
+   })
+   test.equal(tonumber(vertex_buffers[0].slot), 0)
+   test.equal(tonumber(vertex_buffers[0].pitch), 24)
+
+   local attributes = sdl3x.build_vertex_attributes({
+      {
+         location = 3,
+         format = "float3",
+         offset = 12,
+      },
+   })
+   test.equal(tonumber(attributes[0].location), 3)
+   test.equal(tonumber(attributes[0].offset), 12)
+
+   local color_targets = sdl3x.build_color_target_descriptions({
+      {
+         format = 9,
+         blend_state = {
+            enable_blend = true,
+         },
+      },
+   })
+   test.equal(tonumber(color_targets[0].format), 9)
+   test.truthy(color_targets[0].blend_state.enable_blend)
+end)
+
+test.case("sdl3x graphics pipeline builder populates FFI structs", function()
+   local bundle = sdl3x.build_graphics_pipeline_create_info({
+      primitive_type = 3,
+      props = 22,
+      target_info = {
+         depth_stencil_format = 7,
+         has_depth_stencil_target = true,
+         color_target_descriptions = {
+            {
+               format = 9,
+            },
+         },
+      },
+   })
+
+   test.equal(tonumber(bundle.create_info[0].primitive_type), 3)
+   test.equal(tonumber(bundle.create_info[0].props), 22)
+   test.equal(
+      tonumber(bundle.create_info[0].target_info.depth_stencil_format),
+      7
+   )
+   test.equal(tonumber(bundle.create_info[0].target_info.num_color_targets), 1)
+   test.truthy(bundle.create_info[0].target_info.has_depth_stencil_target)
 end)
 
 test.case("sdl3x.App wraps render calls with profiler hooks when enabled", function()
@@ -270,15 +407,15 @@ end)
 
 test.case("sdl3x.App toggles renderer vsync through SDL", function()
    local app = sdl3x.App()
-   local old_get_renderer = sdl3.get_renderer
-   local old_get_gl_context = sdl3.get_gl_context
+   local old_get_renderer = sdl3x.get_renderer
+   local old_get_gl_context = sdl3x.get_gl_context
    local old_set_render_vsync = sdl3.SetRenderVSync
    local observed_interval = nil
 
-   sdl3.get_renderer = function()
+   sdl3x.get_renderer = function()
       return {}
    end
-   sdl3.get_gl_context = function()
+   sdl3x.get_gl_context = function()
       return nil
    end
    sdl3.SetRenderVSync = function(_, interval)
@@ -290,19 +427,19 @@ test.case("sdl3x.App toggles renderer vsync through SDL", function()
    test.equal(observed_interval, 0)
    test.falsey(app.vsync_enabled)
 
-   sdl3.get_renderer = old_get_renderer
-   sdl3.get_gl_context = old_get_gl_context
+   sdl3x.get_renderer = old_get_renderer
+   sdl3x.get_gl_context = old_get_gl_context
    sdl3.SetRenderVSync = old_set_render_vsync
 end)
 
 test.case("sdl3x.App toggles fullscreen through SDL", function()
    local app = sdl3x.App()
-   local old_get_window = sdl3.get_window
+   local old_get_window = sdl3x.get_window
    local old_set_window_fullscreen = sdl3.SetWindowFullscreen
    local old_sync_window = sdl3.SyncWindow
    local observed_enabled = nil
 
-   sdl3.get_window = function()
+   sdl3x.get_window = function()
       return {}
    end
    sdl3.SetWindowFullscreen = function(_, enabled)
@@ -317,7 +454,7 @@ test.case("sdl3x.App toggles fullscreen through SDL", function()
    test.truthy(observed_enabled)
    test.truthy(app.fullscreen_enabled)
 
-   sdl3.get_window = old_get_window
+   sdl3x.get_window = old_get_window
    sdl3.SetWindowFullscreen = old_set_window_fullscreen
    sdl3.SyncWindow = old_sync_window
 end)

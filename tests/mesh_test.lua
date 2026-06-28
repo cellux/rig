@@ -2,7 +2,7 @@ local test = require("test")
 local color = require("color")
 local ffi = require("ffi")
 local mesh = require("mesh")
-require("sdl3")
+require("sdl3x")
 
 test.case("mesh.make_cube returns a provider-neutral mesh layout", function()
    local cube = mesh.make_cube()

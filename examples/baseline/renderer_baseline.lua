@@ -78,7 +78,7 @@ local function draw_label(style, renderer, text, x, baseline_y, draw_color)
 end
 
 local function set_vsync(enabled)
-   local renderer = sdl3.get_renderer()
+   local renderer = sdl3x.get_renderer()
    local interval = enabled and 1 or 0
    if not sdl3.SetRenderVSync(renderer, interval) then
       rig.raise("failed to set renderer vsync: " .. sdl3x.get_error())
@@ -237,7 +237,7 @@ end
 
 function App:render()
    self.frame_profiler:begin_cpu()
-   local renderer = sdl3.get_renderer()
+   local renderer = sdl3x.get_renderer()
    if self.root ~= nil then
       self.root:draw_tree({
          renderer = renderer,

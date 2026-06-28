@@ -789,7 +789,7 @@ function Scene:init()
 end
 
 function Scene:draw(context)
-   sdl3.clear(self.background_color:to_rgbaf())
+   sdl3x.clear(self.background_color:to_rgbaf())
 end
 
 function Scene:activate()
@@ -827,7 +827,7 @@ function App:init()
 end
 
 function App:after_setup()
-   local window = sdl3.get_window()
+   local window = sdl3x.get_window()
    if window == nil then
       rig.raise("sdl3 runtime did not provide a window")
    end
@@ -870,7 +870,7 @@ function App:on_resize(info)
 end
 
 function App:render()
-   local renderer = sdl3.get_renderer()
+   local renderer = sdl3x.get_renderer()
    if renderer == nil then
       rig.raise("sdl3 runtime did not provide a renderer")
    end

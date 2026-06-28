@@ -7,6 +7,7 @@ local mesh = require("mesh")
 local scenegraph = require("scenegraph")
 local shader = require("shader")
 local sdl3 = require("sdl3")
+local sdl3x = require("sdl3x")
 
 local Object = scenegraph.Object
 local Cube = rig.Class(Object)

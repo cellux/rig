@@ -1,29 +1,91 @@
 # `sdl3x`
 
-Higher-level SDL app helpers layered on top of the `sdl3` runtime drivers.
+Higher-level SDL helpers layered on top of `sdl3`.
 
-Unlike `sdl3`, this module is not a raw binding surface. It provides app classes and convenience lifecycle behavior for SDL-backed Rig apps.
+Unlike `sdl3`, this module owns Rig-specific runtime integration and Lua-side convenience APIs.
+
+## Scope
+
+`sdl3x` currently owns:
+
+- `rig.run(...)` SDL runtime drivers and presets
+  - `mode = "sdl3"`
+  - `mode = "sdl3_gl"`
+  - `mode = "sdl3_gpu"`
+- default SDL window creation
+- `sdl3x.Properties`
+- SDL error/string helpers
+- SDL renderer and window convenience accessors
+- SDL GPU builders and resource scopes
+- SDL/OpenGL font renderer providers
+- SDL GPU and OpenGL runtime support helpers
+
+Requiring `sdl3x` installs the default SDL runtime window factory used by those modes.
 
 ## Exports
 
 - `sdl3x.get_error([fallback])`
 - `sdl3x.free(ptr)`
+- `sdl3x.default_window_props`
+- `sdl3x.normalize_properties_id(props)`
+- `sdl3x.create_window(options)`
 - `sdl3x.Properties`
+- `sdl3x.get_window()`
+- `sdl3x.get_renderer()`
+- `sdl3x.get_gpu_device()`
+- `sdl3x.get_gl_context()`
+- `sdl3x.get_gl_proc_address(name)`
+- `sdl3x.clear(r, g, b, a)`
+- `sdl3x.get_gpu_driver_names()`
+- `sdl3x.upload_to_gpu_buffer(device, buffer, data_string)`
+- `sdl3x.choose_depth_format(device)`
+- `sdl3x.create_depth_texture(device, width, height[, format])`
+- `sdl3x.build_vertex_buffer_descriptions(buffers)`
+- `sdl3x.build_vertex_attributes(attributes)`
+- `sdl3x.build_vertex_input_state(layout)`
+- `sdl3x.build_color_target_descriptions(specs)`
+- `sdl3x.build_gpu_buffer_create_info(spec)`
+- `sdl3x.build_graphics_pipeline_create_info(spec)`
+- `sdl3x.create_gpu_shader(device, compiled[, props])`
+- `sdl3x.resource_scope(device)`
 - `sdl3x.App`
 - `sdl3x.SceneApp`
 
-## Module Configuration
+## Runtime Integration
 
-Use `rig.run { module_config = { sdl3x = { ... } } }` for optional SDL app defaults:
+This module registers the SDL runtime drivers and presets used by `rig.run(...)`.
 
-- `frame_profiler`
-  - `true` to create a default `profiler.FrameProfiler`.
-  - A table to pass through to `profiler.FrameProfiler(...)`.
-- `vsync`
-  - Optional boolean initial state applied during `after_setup()`.
-  - Currently supported by `mode = "sdl3"` and `mode = "sdl3_gl"`.
-- `fullscreen`
-  - Optional boolean initial fullscreen state applied during `after_setup()`.
+Use SDL-specific runtime configuration under:
+
+- `options.driver_config.sdl3` for `mode = "sdl3"`
+- `options.driver_config.sdl3_gl` for `mode = "sdl3_gl"`
+- `options.driver_config.sdl3_gpu` for `mode = "sdl3_gpu"`
+
+Shared fields accepted by the SDL runtime modes as applicable:
+
+- `init_flags`
+  - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
+- `window_props`
+  - Passed through to `create_window(...)`.
+  - The builtin `sdl3x.create_window(...)` path accepts a plain table or `sdl3x.Properties`.
+- `create_window(options) -> window_ptr | nil, err`
+  - Overrides window creation.
+  - Defaults to `sdl3x.create_window(...)` once `sdl3x` is required.
+- `create_renderer(window_ptr) -> renderer_ptr | nil, err`
+  - Overrides renderer creation for `mode = "sdl3"`.
+- `render`
+  - Required unless `options.app` provides `render(...)` or `invoke_render(...)`.
+
+Additional `sdl3_gl` fields:
+
+- `gl_attributes`
+- `swap_interval`
+
+Additional `sdl3_gpu` fields:
+
+- `shader_formats`
+- `debug_mode`
+- `backend_name`
 
 ## Helpers
 
@@ -34,10 +96,21 @@ Use `rig.run { module_config = { sdl3x = { ... } } }` for optional SDL app defau
 - `sdl3x.free(ptr)`
   - Frees SDL-owned memory returned by SDL APIs that require `SDL_free(...)`.
   - Ignores `nil` and `ffi.NULL`.
+- `sdl3x.default_window_props`
+  - Default property table merged by `sdl3x.create_window(...)`.
+- `sdl3x.create_window(options)`
+  - Builds a temporary `sdl3x.Properties`, merges `sdl3x.default_window_props` with `options.window_props`, fills default width/height when omitted, and calls `SDL_CreateWindowWithProperties(...)`.
+- `sdl3x.resource_scope(device)`
+  - Creates an SDL GPU-specific wrapper over `rig.ResourceScope(...)`.
+  - Supports generic `adopt`, `replace`, and `release`, plus:
+    - `scope:create_gpu_shader(...)`
+    - `scope:create_gpu_buffer(...)`
+    - `scope:create_graphics_pipeline(...)`
+    - `scope:create_depth_texture(...)`
 
 ## `sdl3x.Properties`
 
-`sdl3x.Properties` is a higher-level owning wrapper around `SDL_PropertiesID`.
+`sdl3x.Properties` is an owning wrapper around `SDL_PropertiesID`.
 
 Instances expose the live SDL handle directly as:
 
@@ -54,7 +127,7 @@ Methods:
 - `props:clone()`
 - `props:release()`
 
-Supported value types mirror the current SDL property setter surface in `sdl3.lua`:
+Supported value types:
 
 - `boolean`
 - integer or floating-point `number`
@@ -92,32 +165,9 @@ Methods:
 - `app:get_font_face(name)`
 - `app:invoke_render(...)`
 
-Optional overridable methods:
-
-- `app:render(...)`
-- `app:on_key(key_info)`
-- `app:on_mouse(mouse_info)`
-- `app:on_resize(resize_info)`
-
-The default `on_resize(...)` implementation stores the latest logical and pixel window sizes on the app instance.
-
-When frame profiling is enabled:
-
-- `before_frame()` calls `frame_profiler:begin_frame()`
-- `after_frame()` calls `frame_profiler:end_frame()`
-- `invoke_render(...)` brackets `render(...)` with `begin_cpu()` / `end_cpu()`
-
 ## `sdl3x.SceneApp`
 
 `sdl3x.SceneApp` extends `animator.App` with the same SDL/window/render conveniences as `sdl3x.App`.
-
-It is intended for apps that combine:
-
-- SDL window and event handling
-- a render loop
-- a scenegraph root
-- an `animator.Animator`
-- app-owned resources such as font faces or render assets
 
 Typical usage:
 
@@ -126,18 +176,10 @@ local sdl3x = require("sdl3x")
 
 local App = rig.Class(sdl3x.SceneApp)
 
-function App:init(options)
-   self:super().init(self, options)
-end
-
-function App:create_root()
-   return Scene()
-end
-
 function App:render()
    if self.root ~= nil then
       self.root:draw_tree({
-         renderer = sdl3.get_renderer(),
+         renderer = sdl3x.get_renderer(),
       })
    end
 end
