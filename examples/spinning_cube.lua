@@ -115,7 +115,7 @@ function Cube:activate()
    end
 
    local scope = self:replace_owned("gpu_resources",
-      sdl3x.resource_scope(device),
+      sdl3x.ResourceScope(device),
       function(_, owned_scope)
          owned_scope:release()
       end)

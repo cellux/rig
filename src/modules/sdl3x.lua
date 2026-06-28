@@ -897,16 +897,21 @@ function M.create_gpu_shader(device, compiled, props)
    return shader_handle
 end
 
-local sdl3x_resource_scope_methods = {}
+local ResourceScope = rig.Class(rig.ResourceScope)
+M.ResourceScope = ResourceScope
 
-function sdl3x_resource_scope_methods:create_gpu_shader(compiled, props)
+function ResourceScope:init(context, label)
+   self:super().init(self, context, label or "sdl3x resource scope")
+end
+
+function ResourceScope:create_gpu_shader(compiled, props)
    local shader_handle = M.create_gpu_shader(self.context, compiled, props)
    return self:adopt(shader_handle, function(device, resource)
       sdl3.ReleaseGPUShader(device, resource)
    end)
 end
 
-function sdl3x_resource_scope_methods:create_gpu_buffer(create_info)
+function ResourceScope:create_gpu_buffer(create_info)
    local normalized = create_info
    if type(create_info) == "table" then
       normalized = M.build_gpu_buffer_create_info(create_info)
@@ -922,7 +927,7 @@ function sdl3x_resource_scope_methods:create_gpu_buffer(create_info)
    end)
 end
 
-function sdl3x_resource_scope_methods:create_graphics_pipeline(create_info)
+function ResourceScope:create_graphics_pipeline(create_info)
    local normalized = create_info
    if type(create_info) == "table" then
       local bundle = M.build_graphics_pipeline_create_info(create_info)
@@ -939,25 +944,13 @@ function sdl3x_resource_scope_methods:create_graphics_pipeline(create_info)
    end)
 end
 
-function sdl3x_resource_scope_methods:create_depth_texture(width, height, format)
+function ResourceScope:create_depth_texture(width, height, format)
    local texture, chosen_format =
       M.create_depth_texture(self.context, width, height, format)
    self:adopt(texture, function(device, resource)
       sdl3.ReleaseGPUTexture(device, resource)
    end)
    return texture, chosen_format
-end
-
-function M.resource_scope(device)
-   if device == nil then
-      rig.raise("sdl3x.resource_scope requires an SDL_GPUDevice*")
-   end
-
-   local scope = rig.ResourceScope(device, "sdl3x resource scope")
-   for name, method in pairs(sdl3x_resource_scope_methods) do
-      scope[name] = method
-   end
-   return scope
 end
 
 --[ Runtime state ]

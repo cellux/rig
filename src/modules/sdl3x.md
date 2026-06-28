@@ -29,6 +29,7 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.normalize_properties_id(props)`
 - `sdl3x.Properties`
 - `sdl3x.Window`
+- `sdl3x.ResourceScope`
 - `sdl3x.get_window()`
 - `sdl3x.get_renderer()`
 - `sdl3x.get_gpu_device()`
@@ -46,7 +47,6 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.build_gpu_buffer_create_info(spec)`
 - `sdl3x.build_graphics_pipeline_create_info(spec)`
 - `sdl3x.create_gpu_shader(device, compiled[, props])`
-- `sdl3x.resource_scope(device)`
 - `sdl3x.App`
 - `sdl3x.SceneApp`
 
@@ -96,13 +96,21 @@ Additional `sdl3_gpu` fields:
 - `sdl3x.normalize_properties_id(props)`
   - Accepts `nil`, a raw numeric/cdata `SDL_PropertiesID`, or an `sdl3x.Properties` instance.
   - Returns the normalized SDL properties handle.
-- `sdl3x.resource_scope(device)`
-  - Creates an SDL GPU-specific wrapper over `rig.ResourceScope(...)`.
-  - Supports generic `adopt`, `replace`, and `release`, plus:
-    - `scope:create_gpu_shader(...)`
-    - `scope:create_gpu_buffer(...)`
-    - `scope:create_graphics_pipeline(...)`
-    - `scope:create_depth_texture(...)`
+
+## `sdl3x.ResourceScope`
+
+`sdl3x.ResourceScope` is a subclass of `rig.ResourceScope` specialized for SDL GPU resources.
+
+Instantiate it as:
+
+- `local scope = sdl3x.ResourceScope(device[, label])`
+
+It supports generic `adopt`, `replace`, and `release`, plus:
+
+- `scope:create_gpu_shader(...)`
+- `scope:create_gpu_buffer(...)`
+- `scope:create_graphics_pipeline(...)`
+- `scope:create_depth_texture(...)`
 
 ## `sdl3x.Properties`
 

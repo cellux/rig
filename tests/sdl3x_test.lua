@@ -396,6 +396,17 @@ test.case("sdl3x GPU builders accept sdl3x.Properties", function()
    end)
 end)
 
+test.case("sdl3x.ResourceScope constructs an SDL GPU scope", function()
+   local device = ffi.cast("SDL_GPUDevice *", 0x1234)
+   local scope = sdl3x.ResourceScope(device)
+
+   test.truthy(sdl3x.ResourceScope:is_instance(scope))
+   test.truthy(rig.ResourceScope:is_instance(scope))
+   test.equal(getmetatable(scope), sdl3x.ResourceScope)
+   test.equal(scope.context, device)
+   test.equal(scope._scope_label, "sdl3x resource scope")
+end)
+
 test.case("sdl3x GPU descriptor builders populate FFI structs", function()
    local vertex_buffers = sdl3x.build_vertex_buffer_descriptions({
       {
