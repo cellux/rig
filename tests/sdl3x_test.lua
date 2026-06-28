@@ -427,6 +427,29 @@ test.case("sdl3x GPU descriptor builders populate FFI structs", function()
    test.truthy(color_targets[0].blend_state.enable_blend)
 end)
 
+test.case("sdl3x vertex input state builder retains descriptor storage", function()
+   local bundle = sdl3x.build_vertex_input_state({
+      buffers = {
+         {
+            pitch = 24,
+            attributes = {
+               {
+                  location = 0,
+                  format = "float3",
+                  offset = 0,
+               },
+            },
+         },
+      },
+   })
+
+   test.equal(tonumber(bundle.state[0].num_vertex_buffers), 1)
+   test.equal(tonumber(bundle.state[0].num_vertex_attributes), 1)
+   test.equal(bundle.state[0].vertex_buffer_descriptions, bundle.vertex_buffer_descriptions)
+   test.equal(bundle.state[0].vertex_attributes, bundle.vertex_attributes)
+   test.equal(#bundle.keepalive, 2)
+end)
+
 test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    local bundle = sdl3x.build_graphics_pipeline_create_info({
       primitive_type = 3,

@@ -407,322 +407,345 @@ local function normalize_vertex_attribute_format(value)
    return value
 end
 
-local GPUVertexBufferDescription = ffi.metatype("SDL_GPUVertexBufferDescription", {
-   __new = function(ct, spec)
-      if type(spec) ~= "table" then
-         rig.raise("vertex buffer descriptions must be tables")
-      end
-
-      local description = ffi.new(ct)
-      description.slot = tonumber(spec.slot or 0) or 0
-      description.pitch =
-         assert(tonumber(spec.pitch), "vertex buffer pitch must be a number")
-      description.input_rate = normalize_vertex_input_rate(
-         spec.input_rate or "vertex"
-      )
-      description.instance_step_rate =
-         tonumber(spec.instance_step_rate or 0) or 0
-      return description
-   end,
-})
-
-local GPUVertexAttribute = ffi.metatype("SDL_GPUVertexAttribute", {
-   __new = function(ct, spec)
-      if type(spec) ~= "table" then
-         rig.raise("vertex attributes must be tables")
-      end
-
-      local attribute = ffi.new(ct)
-      attribute.location =
-         assert(tonumber(spec.location), "vertex attribute location must be a number")
-      attribute.buffer_slot =
-         tonumber(spec.buffer_slot or spec.slot or 0) or 0
-      attribute.format = normalize_vertex_attribute_format(spec.format)
-      attribute.offset =
-         assert(tonumber(spec.offset), "vertex attribute offset must be a number")
-      return attribute
-   end,
-})
-
-local function apply_color_target_blend_state(state, blend_state)
-   if type(blend_state) ~= "table" then
-      return
+local function schema_path_label(path)
+   if type(path) == "string" and path ~= "" then
+      return path
    end
-
-   if blend_state.src_color_blendfactor ~= nil then
-      state.src_color_blendfactor =
-         tonumber(blend_state.src_color_blendfactor) or 0
-   end
-   if blend_state.dst_color_blendfactor ~= nil then
-      state.dst_color_blendfactor =
-         tonumber(blend_state.dst_color_blendfactor) or 0
-   end
-   if blend_state.color_blend_op ~= nil then
-      state.color_blend_op = tonumber(blend_state.color_blend_op) or 0
-   end
-   if blend_state.src_alpha_blendfactor ~= nil then
-      state.src_alpha_blendfactor =
-         tonumber(blend_state.src_alpha_blendfactor) or 0
-   end
-   if blend_state.dst_alpha_blendfactor ~= nil then
-      state.dst_alpha_blendfactor =
-         tonumber(blend_state.dst_alpha_blendfactor) or 0
-   end
-   if blend_state.alpha_blend_op ~= nil then
-      state.alpha_blend_op = tonumber(blend_state.alpha_blend_op) or 0
-   end
-   if blend_state.color_write_mask ~= nil then
-      state.color_write_mask = tonumber(blend_state.color_write_mask) or 0
-   end
-   if blend_state.enable_blend ~= nil then
-      state.enable_blend = not not blend_state.enable_blend
-   end
-   if blend_state.enable_color_write_mask ~= nil then
-      state.enable_color_write_mask =
-         not not blend_state.enable_color_write_mask
-   end
+   return "value"
 end
 
-local GPUColorTargetDescription = ffi.metatype("SDL_GPUColorTargetDescription", {
-   __new = function(ct, spec)
-      if type(spec) ~= "table" then
-         rig.raise("color target descriptions must be tables")
-      end
+local function shallow_copy_table(values)
+   local copy = {}
+   for key, value in pairs(values) do
+      copy[key] = value
+   end
+   return copy
+end
 
-      local description = ffi.new(ct)
-      description.format =
-         assert(tonumber(spec.format), "color target format must be a number")
-      apply_color_target_blend_state(
-         description.blend_state,
-         spec.blend_state
-      )
-      return description
-   end,
+local number_like_schema = schema.number({
+   coerce = true,
+})
+
+local non_negative_integer_schema = schema.integer({
+   coerce = true,
+   min = 0,
+})
+
+local properties_instance_schema = schema.instance_of(
+   Properties,
+   "an sdl3x.Properties"
+)
+
+local properties_id_schema = schema.optional(schema.any(), 0):transform(function(value, path)
+   if value == 0 then
+      return 0
+   end
+
+   local value_type = type(value)
+   if value_type == "number" or value_type == "cdata" then
+      return value
+   end
+   if properties_instance_schema:check(value) then
+      return value.id
+   end
+
+   rig.raise(
+      schema_path_label(path)
+         .. " expects a number, cdata SDL_PropertiesID, or sdl3x.Properties"
+   )
+end)
+
+local vertex_input_rate_schema = schema.one_of({
+   schema.non_empty_string():transform(function(value)
+      return normalize_vertex_input_rate(value)
+   end),
+   number_like_schema,
+}, "a string or number")
+
+local vertex_attribute_format_schema = schema.one_of({
+   schema.non_empty_string():transform(function(value)
+      return normalize_vertex_attribute_format(value)
+   end),
+   number_like_schema,
+}, "a string or number")
+
+local gpu_vertex_buffer_description_schema = schema.ffi.struct(
+   "SDL_GPUVertexBufferDescription",
+   {
+      slot = non_negative_integer_schema,
+      pitch = non_negative_integer_schema,
+      input_rate = vertex_input_rate_schema:optional(
+         normalize_vertex_input_rate("vertex")
+      ),
+      instance_step_rate = non_negative_integer_schema:optional(0),
+   }
+)
+
+local gpu_vertex_attribute_source_schema = schema.record({
+   location = non_negative_integer_schema,
+   buffer_slot = non_negative_integer_schema:optional(),
+   slot = non_negative_integer_schema:optional(),
+   format = vertex_attribute_format_schema,
+   offset = non_negative_integer_schema,
+}):transform(function(value)
+   value.buffer_slot = value.buffer_slot or value.slot or 0
+   value.slot = nil
+   return value
+end)
+
+local gpu_vertex_attribute_schema = schema.ffi.struct("SDL_GPUVertexAttribute", {
+   location = non_negative_integer_schema,
+   buffer_slot = non_negative_integer_schema:optional(0),
+   format = vertex_attribute_format_schema,
+   offset = non_negative_integer_schema,
+})
+
+local gpu_color_target_blend_state_schema = schema.ffi.struct(
+   "SDL_GPUColorTargetBlendState",
+   {
+      src_color_blendfactor = number_like_schema:optional(),
+      dst_color_blendfactor = number_like_schema:optional(),
+      color_blend_op = number_like_schema:optional(),
+      src_alpha_blendfactor = number_like_schema:optional(),
+      dst_alpha_blendfactor = number_like_schema:optional(),
+      alpha_blend_op = number_like_schema:optional(),
+      color_write_mask = number_like_schema:optional(),
+      enable_blend = schema.boolean():optional(),
+      enable_color_write_mask = schema.boolean():optional(),
+   }
+)
+
+local gpu_color_target_description_schema = schema.ffi.struct(
+   "SDL_GPUColorTargetDescription",
+   {
+      format = number_like_schema,
+      blend_state = gpu_color_target_blend_state_schema:optional(),
+   }
+)
+
+local gpu_vertex_buffer_descriptions_schema = schema.ffi.array(
+   "SDL_GPUVertexBufferDescription",
+   gpu_vertex_buffer_description_schema
+)
+
+local gpu_vertex_attributes_schema = schema.ffi.array(
+   "SDL_GPUVertexAttribute",
+   gpu_vertex_attribute_schema
+)
+
+local gpu_color_target_descriptions_schema = schema.ffi.array(
+   "SDL_GPUColorTargetDescription",
+   gpu_color_target_description_schema
+)
+
+local gpu_buffer_create_info_schema = schema.ffi.struct(
+   "SDL_GPUBufferCreateInfo",
+   {
+      usage = number_like_schema,
+      size = non_negative_integer_schema,
+      props = properties_id_schema,
+   }
+)
+
+local graphics_pipeline_rasterizer_state_schema = schema.ffi.struct(
+   "SDL_GPURasterizerState",
+   {
+      fill_mode = number_like_schema:optional(),
+      cull_mode = number_like_schema:optional(),
+      front_face = number_like_schema:optional(),
+      depth_bias_constant_factor = number_like_schema:optional(),
+      depth_bias_clamp = number_like_schema:optional(),
+      depth_bias_slope_factor = number_like_schema:optional(),
+      enable_depth_bias = schema.boolean():optional(),
+      enable_depth_clip = schema.boolean():optional(),
+   }
+)
+
+local graphics_pipeline_multisample_state_schema = schema.ffi.struct(
+   "SDL_GPUMultisampleState",
+   {
+      sample_count = number_like_schema:optional(),
+      sample_mask = number_like_schema:optional(),
+      enable_mask = schema.boolean():optional(),
+      enable_alpha_to_coverage = schema.boolean():optional(),
+   }
+)
+
+local graphics_pipeline_depth_stencil_state_schema = schema.ffi.struct(
+   "SDL_GPUDepthStencilState",
+   {
+      compare_op = number_like_schema:optional(),
+      enable_depth_test = schema.boolean():optional(),
+      enable_depth_write = schema.boolean():optional(),
+      enable_stencil_test = schema.boolean():optional(),
+      compare_mask = number_like_schema:optional(),
+      write_mask = number_like_schema:optional(),
+   }
+)
+
+local graphics_pipeline_target_info_schema = schema.ffi.struct(
+   "SDL_GPUGraphicsPipelineTargetInfo",
+   {
+      color_target_descriptions = {
+         schema = gpu_color_target_descriptions_schema:optional(),
+         count_field = "num_color_targets",
+      },
+      depth_stencil_format = number_like_schema:optional(),
+      has_depth_stencil_target = schema.boolean():optional(),
+   }
+)
+
+local graphics_pipeline_create_info_schema = schema.ffi.struct(
+   "SDL_GPUGraphicsPipelineCreateInfo",
+   {
+      vertex_shader = schema.any():optional(),
+      fragment_shader = schema.any():optional(),
+      primitive_type = number_like_schema,
+      vertex_input = {
+         schema = schema.any():optional(),
+         assign = function(dst, value, bundle)
+            if type(value) == "table" and value.state ~= nil then
+               dst.vertex_input_state = value.state[0]
+               bundle:retain(value)
+               return
+            end
+            dst.vertex_input_state = value
+         end,
+      },
+      rasterizer_state = graphics_pipeline_rasterizer_state_schema:optional(),
+      multisample_state = graphics_pipeline_multisample_state_schema:optional(),
+      depth_stencil_state = graphics_pipeline_depth_stencil_state_schema:optional(),
+      target_info = graphics_pipeline_target_info_schema:optional(),
+      props = properties_id_schema,
+   }
+)
+
+local vertex_input_layout_buffer_schema = schema.record({
+   slot = non_negative_integer_schema:optional(),
+   pitch = non_negative_integer_schema,
+   input_rate = vertex_input_rate_schema:optional(
+      normalize_vertex_input_rate("vertex")
+   ),
+   instance_step_rate = non_negative_integer_schema:optional(0),
+   attributes = schema.array(gpu_vertex_attribute_source_schema),
+})
+
+local vertex_input_layout_schema = schema.record({
+   buffers = schema.array(vertex_input_layout_buffer_schema),
 })
 
 function M.build_vertex_buffer_descriptions(buffers)
-   if type(buffers) ~= "table" then
-      error("sdl3x.build_vertex_buffer_descriptions expects a table")
-   end
+   local raw_buffers = schema.assert(
+      schema.array(schema.table()),
+      buffers,
+      "sdl3x.build_vertex_buffer_descriptions buffers"
+   )
+   local normalized = {}
 
-   local descriptions = ffi.new("SDL_GPUVertexBufferDescription[?]", #buffers)
-   for i, buffer in ipairs(buffers) do
-      local spec = {}
-      for key, value in pairs(buffer) do
-         spec[key] = value
-      end
+   for i = 1, #raw_buffers do
+      local spec = shallow_copy_table(raw_buffers[i])
       if spec.slot == nil then
          spec.slot = i - 1
       end
-      descriptions[i - 1] = GPUVertexBufferDescription(spec)
+      normalized[i] = spec
    end
 
-   return descriptions
+   return schema.assert(
+      gpu_vertex_buffer_descriptions_schema,
+      normalized,
+      "sdl3x.build_vertex_buffer_descriptions buffers"
+   ).cdata
 end
 
 function M.build_vertex_attributes(attributes)
-   if type(attributes) ~= "table" then
-      error("sdl3x.build_vertex_attributes expects a table")
-   end
+   local normalized = schema.assert(
+      schema.array(gpu_vertex_attribute_source_schema),
+      attributes,
+      "sdl3x.build_vertex_attributes attributes"
+   )
 
-   local ffi_attributes = ffi.new("SDL_GPUVertexAttribute[?]", #attributes)
-   for i, attribute in ipairs(attributes) do
-      ffi_attributes[i - 1] = GPUVertexAttribute(attribute)
-   end
-
-   return ffi_attributes
+   return schema.assert(
+      gpu_vertex_attributes_schema,
+      normalized,
+      "sdl3x.build_vertex_attributes attributes"
+   ).cdata
 end
 
 function M.build_vertex_input_state(layout)
-   if type(layout) ~= "table" then
-      error("sdl3x.build_vertex_input_state expects a table")
-   end
-   if type(layout.buffers) ~= "table" then
-      error("sdl3x.build_vertex_input_state requires a buffers table")
-   end
+   local decoded = schema.assert(
+      vertex_input_layout_schema,
+      layout,
+      "sdl3x.build_vertex_input_state layout"
+   )
 
    local attribute_specs = {}
-   for i, buffer in ipairs(layout.buffers) do
-      if type(buffer) ~= "table" then
-         rig.raise("vertex input buffers must be tables")
+   local buffer_specs = {}
+   for i = 1, #decoded.buffers do
+      local buffer = shallow_copy_table(decoded.buffers[i])
+      local buffer_slot = buffer.slot
+      if buffer_slot == nil then
+         buffer_slot = i - 1
+         buffer.slot = buffer_slot
       end
-      local buffer_slot = tonumber(buffer.slot or (i - 1)) or 0
-      local attributes = buffer.attributes
-      if type(attributes) ~= "table" then
-         rig.raise("each vertex input buffer requires an attributes table")
-      end
-      for _, attribute in ipairs(attributes) do
-         local spec = {}
-         for key, value in pairs(attribute) do
-            spec[key] = value
-         end
+      buffer.attributes = nil
+      buffer_specs[i] = buffer
+
+      for j = 1, #decoded.buffers[i].attributes do
+         local spec = shallow_copy_table(decoded.buffers[i].attributes[j])
          spec.buffer_slot = buffer_slot
-         table.insert(attribute_specs, spec)
+         attribute_specs[#attribute_specs + 1] = spec
       end
    end
 
-   local descriptions = M.build_vertex_buffer_descriptions(layout.buffers)
-   local attributes = M.build_vertex_attributes(attribute_specs)
+   local descriptions = schema.assert(
+      gpu_vertex_buffer_descriptions_schema,
+      buffer_specs,
+      "sdl3x.build_vertex_input_state buffers"
+   )
+   local attributes = schema.assert(
+      gpu_vertex_attributes_schema,
+      attribute_specs,
+      "sdl3x.build_vertex_input_state attributes"
+   )
    local state = ffi.new("SDL_GPUVertexInputState[1]")
-   state[0].vertex_buffer_descriptions = descriptions
-   state[0].num_vertex_buffers = #layout.buffers
-   state[0].vertex_attributes = attributes
-   state[0].num_vertex_attributes = #attribute_specs
+   state[0].vertex_buffer_descriptions = descriptions.cdata
+   state[0].num_vertex_buffers = descriptions.length
+   state[0].vertex_attributes = attributes.cdata
+   state[0].num_vertex_attributes = attributes.length
 
-   return {
-      state = state,
-      vertex_buffer_descriptions = descriptions,
-      vertex_attributes = attributes,
-   }
+   local bundle = schema.ffi.Bundle("struct", state, state[0], 1)
+   bundle.state = state
+   bundle.vertex_buffer_descriptions = descriptions.cdata
+   bundle.vertex_attributes = attributes.cdata
+   bundle:retain(descriptions)
+   bundle:retain(attributes)
+   return bundle
 end
 
 function M.build_color_target_descriptions(specs)
-   if type(specs) ~= "table" then
-      rig.raise("sdl3x.build_color_target_descriptions expects a table")
-   end
-
-   local descriptions = ffi.new("SDL_GPUColorTargetDescription[?]", #specs)
-   for i, spec in ipairs(specs) do
-      descriptions[i - 1] = GPUColorTargetDescription(spec)
-   end
-
-   return descriptions
+   return schema.assert(
+      gpu_color_target_descriptions_schema,
+      specs,
+      "sdl3x.build_color_target_descriptions specs"
+   ).cdata
 end
 
 function M.build_gpu_buffer_create_info(spec)
-   if type(spec) ~= "table" then
-      rig.raise("sdl3x.build_gpu_buffer_create_info expects a table")
-   end
-
-   local create_info = ffi.new("SDL_GPUBufferCreateInfo[1]")
-   create_info[0].usage =
-      assert(tonumber(spec.usage), "GPU buffer usage must be a number")
-   create_info[0].size =
-      assert(tonumber(spec.size), "GPU buffer size must be a number")
-   create_info[0].props = M.normalize_properties_id(spec.props)
-   return create_info
+   return schema.assert(
+      gpu_buffer_create_info_schema,
+      spec,
+      "sdl3x.build_gpu_buffer_create_info spec"
+   ).cdata
 end
 
 function M.build_graphics_pipeline_create_info(spec)
-   if type(spec) ~= "table" then
-      rig.raise("sdl3x.build_graphics_pipeline_create_info expects a table")
-   end
-
-   local create_info = ffi.new("SDL_GPUGraphicsPipelineCreateInfo[1]")
-   create_info[0].vertex_shader = spec.vertex_shader
-   create_info[0].fragment_shader = spec.fragment_shader
-   create_info[0].primitive_type =
-      assert(tonumber(spec.primitive_type), "graphics pipeline primitive_type must be a number")
-
-   local vertex_input = spec.vertex_input
-   if vertex_input ~= nil then
-      if type(vertex_input) == "table" and vertex_input.state ~= nil then
-         create_info[0].vertex_input_state = vertex_input.state[0]
-      else
-         create_info[0].vertex_input_state = vertex_input
-      end
-   end
-
-   local rasterizer_state = spec.rasterizer_state
-   if type(rasterizer_state) == "table" then
-      local state = create_info[0].rasterizer_state
-      if rasterizer_state.fill_mode ~= nil then
-         state.fill_mode = tonumber(rasterizer_state.fill_mode) or 0
-      end
-      if rasterizer_state.cull_mode ~= nil then
-         state.cull_mode = tonumber(rasterizer_state.cull_mode) or 0
-      end
-      if rasterizer_state.front_face ~= nil then
-         state.front_face = tonumber(rasterizer_state.front_face) or 0
-      end
-      if rasterizer_state.depth_bias_constant_factor ~= nil then
-         state.depth_bias_constant_factor =
-            tonumber(rasterizer_state.depth_bias_constant_factor) or 0
-      end
-      if rasterizer_state.depth_bias_clamp ~= nil then
-         state.depth_bias_clamp =
-            tonumber(rasterizer_state.depth_bias_clamp) or 0
-      end
-      if rasterizer_state.depth_bias_slope_factor ~= nil then
-         state.depth_bias_slope_factor =
-            tonumber(rasterizer_state.depth_bias_slope_factor) or 0
-      end
-      if rasterizer_state.enable_depth_bias ~= nil then
-         state.enable_depth_bias = not not rasterizer_state.enable_depth_bias
-      end
-      if rasterizer_state.enable_depth_clip ~= nil then
-         state.enable_depth_clip = not not rasterizer_state.enable_depth_clip
-      end
-   end
-
-   local multisample_state = spec.multisample_state
-   if type(multisample_state) == "table" then
-      local state = create_info[0].multisample_state
-      if multisample_state.sample_count ~= nil then
-         state.sample_count = tonumber(multisample_state.sample_count) or 0
-      end
-      if multisample_state.sample_mask ~= nil then
-         state.sample_mask = tonumber(multisample_state.sample_mask) or 0
-      end
-      if multisample_state.enable_mask ~= nil then
-         state.enable_mask = not not multisample_state.enable_mask
-      end
-      if multisample_state.enable_alpha_to_coverage ~= nil then
-         state.enable_alpha_to_coverage =
-            not not multisample_state.enable_alpha_to_coverage
-      end
-   end
-
-   local depth_stencil_state = spec.depth_stencil_state
-   if type(depth_stencil_state) == "table" then
-      local state = create_info[0].depth_stencil_state
-      if depth_stencil_state.compare_op ~= nil then
-         state.compare_op = tonumber(depth_stencil_state.compare_op) or 0
-      end
-      if depth_stencil_state.enable_depth_test ~= nil then
-         state.enable_depth_test = not not depth_stencil_state.enable_depth_test
-      end
-      if depth_stencil_state.enable_depth_write ~= nil then
-         state.enable_depth_write = not not depth_stencil_state.enable_depth_write
-      end
-      if depth_stencil_state.enable_stencil_test ~= nil then
-         state.enable_stencil_test = not not depth_stencil_state.enable_stencil_test
-      end
-      if depth_stencil_state.compare_mask ~= nil then
-         state.compare_mask = tonumber(depth_stencil_state.compare_mask) or 0
-      end
-      if depth_stencil_state.write_mask ~= nil then
-         state.write_mask = tonumber(depth_stencil_state.write_mask) or 0
-      end
-   end
-
-   local color_target_descriptions = nil
-   local target_info = spec.target_info
-   if type(target_info) == "table" then
-      if type(target_info.color_target_descriptions) == "table" then
-         color_target_descriptions =
-            M.build_color_target_descriptions(target_info.color_target_descriptions)
-         create_info[0].target_info.color_target_descriptions =
-            color_target_descriptions
-         create_info[0].target_info.num_color_targets =
-            #target_info.color_target_descriptions
-      end
-      if target_info.depth_stencil_format ~= nil then
-         create_info[0].target_info.depth_stencil_format =
-            tonumber(target_info.depth_stencil_format) or 0
-      end
-      if target_info.has_depth_stencil_target ~= nil then
-         create_info[0].target_info.has_depth_stencil_target =
-            not not target_info.has_depth_stencil_target
-      end
-   end
-
-   create_info[0].props = M.normalize_properties_id(spec.props)
-
-   return {
-      create_info = create_info,
-      color_target_descriptions = color_target_descriptions,
-   }
+   local bundle = schema.assert(
+      graphics_pipeline_create_info_schema,
+      spec,
+      "sdl3x.build_graphics_pipeline_create_info spec"
+   )
+   bundle.create_info = bundle.cdata
+   return bundle
 end
 
 local STAGE_TO_SDL = {
@@ -1339,37 +1362,61 @@ local function normalize_gl_profile(value)
    return gl_attribute_int(value)
 end
 
+local gl_attribute_value_schema = schema.one_of({
+   schema.boolean(),
+   number_like_schema,
+}, "a boolean or number"):transform(function(value)
+   return gl_attribute_int(value)
+end)
+
+local gl_context_profile_schema = schema.one_of({
+   schema.non_empty_string():transform(function(value)
+      return normalize_gl_profile(value)
+   end),
+   gl_attribute_value_schema,
+}, "a supported OpenGL context profile or boolean/number")
+
+local gl_attributes_schema = schema.record({
+   red_size = gl_attribute_value_schema:optional(),
+   green_size = gl_attribute_value_schema:optional(),
+   blue_size = gl_attribute_value_schema:optional(),
+   alpha_size = gl_attribute_value_schema:optional(),
+   buffer_size = gl_attribute_value_schema:optional(),
+   doublebuffer = gl_attribute_value_schema:optional(),
+   depth_size = gl_attribute_value_schema:optional(),
+   stencil_size = gl_attribute_value_schema:optional(),
+   multisamplebuffers = gl_attribute_value_schema:optional(),
+   multisamplesamples = gl_attribute_value_schema:optional(),
+   accelerated_visual = gl_attribute_value_schema:optional(),
+   context_major_version = gl_attribute_value_schema:optional(),
+   context_minor_version = gl_attribute_value_schema:optional(),
+   context_flags = gl_attribute_value_schema:optional(),
+   context_profile = gl_context_profile_schema:optional(),
+   share_with_current_context = gl_attribute_value_schema:optional(),
+   framebuffer_srgb_capable = gl_attribute_value_schema:optional(),
+})
+
+local default_gl_attributes = {
+   context_major_version = 3,
+   context_minor_version = 3,
+   context_profile = "core",
+   doublebuffer = true,
+   depth_size = 24,
+}
+
 local function apply_gl_attributes(attributes)
    sdl3.GL_ResetAttributes()
 
-   local requested = attributes
-   if requested == nil then
-      requested = {
-         context_major_version = 3,
-         context_minor_version = 3,
-         context_profile = "core",
-         doublebuffer = true,
-         depth_size = 24,
-      }
-   end
-   if type(requested) ~= "table" then
-      rig.raise("sdl3_gl gl_attributes must be a table")
-   end
+   local requested = schema.assert(
+      gl_attributes_schema,
+      attributes or default_gl_attributes,
+      "sdl3_gl gl_attributes"
+   )
 
    for key, value in pairs(requested) do
       local field = GL_ATTRIBUTE_VALUES[key]
-      if field == nil then
-         rig.raise("unsupported OpenGL attribute '%s'", key)
-      end
 
-      local normalized = value
-      if key == "context_profile" then
-         normalized = normalize_gl_profile(value)
-      else
-         normalized = gl_attribute_int(value)
-      end
-
-      if not sdl3.GL_SetAttribute(sdl3[field], normalized) then
+      if not sdl3.GL_SetAttribute(sdl3[field], value) then
          error(
             ("failed to set OpenGL attribute '%s': %s"):format(
                key,
