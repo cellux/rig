@@ -486,11 +486,41 @@ test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    test.truthy(bundle.create_info[0].target_info.has_depth_stencil_target)
 end)
 
-test.case("sdl3x.create_gpu_shader builds SDL_GPUShaderCreateInfo through schema", function()
+test.case("sdl3x graphics pipeline builder accepts sdl3x.GPUShader objects", function()
+   local vertex_shader_ptr = ffi.cast("SDL_GPUShader *", 0x1234)
+   local fragment_shader_ptr = ffi.cast("SDL_GPUShader *", 0x5678)
+   local vertex_shader = setmetatable({
+      device = ffi.cast("SDL_GPUDevice *", 0x1111),
+      ptr = vertex_shader_ptr,
+      _released = false,
+   }, sdl3x.GPUShader)
+   local fragment_shader = setmetatable({
+      device = ffi.cast("SDL_GPUDevice *", 0x1111),
+      ptr = fragment_shader_ptr,
+      _released = false,
+   }, sdl3x.GPUShader)
+
+   local bundle = sdl3x.build_graphics_pipeline_create_info({
+      primitive_type = 3,
+      vertex_shader = vertex_shader,
+      fragment_shader = fragment_shader,
+      props = 0,
+   })
+
+   test.equal(bundle.create_info[0].vertex_shader, vertex_shader_ptr)
+   test.equal(bundle.create_info[0].fragment_shader, fragment_shader_ptr)
+   test.equal(#bundle.keepalive, 2)
+   test.truthy(list_contains(bundle.keepalive, vertex_shader))
+   test.truthy(list_contains(bundle.keepalive, fragment_shader))
+end)
+
+test.case("sdl3x.create_gpu_shader returns an sdl3x.GPUShader", function()
    local old_create_gpu_shader = sdl3.CreateGPUShader
+   local old_release_gpu_shader = sdl3.ReleaseGPUShader
    local observed = nil
+   local released = nil
    local device = ffi.cast("SDL_GPUDevice *", 0x1234)
-   local shader = ffi.cast("SDL_GPUShader *", 0x5678)
+   local shader_ptr = ffi.cast("SDL_GPUShader *", 0x5678)
 
    local ok, err = pcall(function()
       sdl3.CreateGPUShader = function(seen_device, create_info)
@@ -507,7 +537,13 @@ test.case("sdl3x.create_gpu_shader builds SDL_GPUShaderCreateInfo through schema
             num_uniform_buffers = tonumber(create_info[0].num_uniform_buffers),
             props = tonumber(create_info[0].props),
          }
-         return shader
+         return shader_ptr
+      end
+      sdl3.ReleaseGPUShader = function(seen_device, seen_shader)
+         released = {
+            device = seen_device,
+            shader = seen_shader,
+         }
       end
 
       local result = sdl3x.create_gpu_shader(device, {
@@ -530,10 +566,18 @@ test.case("sdl3x.create_gpu_shader builds SDL_GPUShaderCreateInfo through schema
          },
       }, 77)
 
-      test.equal(result, shader)
+      test.truthy(sdl3x.GPUShader:is_instance(result))
+      test.equal(result.device, device)
+      test.equal(result.ptr, shader_ptr)
+      test.equal(result.stage, "vertex")
+      test.equal(result.entrypoint, "vs_main")
+
+      result:release()
+      test.equal(result.ptr, nil)
    end)
 
    sdl3.CreateGPUShader = old_create_gpu_shader
+   sdl3.ReleaseGPUShader = old_release_gpu_shader
    if not ok then
       error(err)
    end
@@ -549,6 +593,8 @@ test.case("sdl3x.create_gpu_shader builds SDL_GPUShaderCreateInfo through schema
    test.equal(observed.num_storage_buffers, 0)
    test.equal(observed.num_uniform_buffers, 2)
    test.equal(observed.props, 77)
+   test.equal(released.device, device)
+   test.equal(released.shader, shader_ptr)
 end)
 
 test.case("sdl3x.App wraps render calls with profiler hooks when enabled", function()

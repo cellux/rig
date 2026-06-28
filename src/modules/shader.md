@@ -29,4 +29,5 @@ High-level shader helper layered on top of `dxc`, `shaderc`, and `spirvcross`.
 - `shader` owns the `shader.stage` service namespace.
 - Runtime-specific stage creation stays in service providers, not in the `gl` or `sdl3` module namespaces.
 - Under the `sdl3_gl` runtime mode, `shader.create_stage(...)` returns `glx.Shader` objects that can be linked through `glx.Program { shaders = { ... } }`.
+- Under the `sdl3_gpu` runtime mode, `shader.create_stage(...)` returns `sdl3x.GPUShader` objects.
 - SDL GPU descriptor-set validation happens when the SDL GPU runtime creates shader objects, not during generic SPIR-V compilation.

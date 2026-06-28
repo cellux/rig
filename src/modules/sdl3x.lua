@@ -393,6 +393,24 @@ function Window:release()
    self._released = true
 end
 
+--[ GPUShader ]
+
+local GPUShader = rig.Class()
+M.GPUShader = GPUShader
+
+local function ensure_gpu_shader(shader)
+   if not GPUShader:is_instance(shader) then
+      rig.raise("sdl3x.GPUShader operation expects an sdl3x.GPUShader instance")
+   end
+end
+
+local function ensure_gpu_shader_live(shader)
+   ensure_gpu_shader(shader)
+   if shader._released then
+      rig.raise("sdl3x.GPUShader has been released")
+   end
+end
+
 --[ GPU schemas ]
 
 local VERTEX_INPUT_RATES = {
@@ -623,8 +641,30 @@ local graphics_pipeline_target_info_schema = schema.ffi.struct(
 local graphics_pipeline_create_info_schema = schema.ffi.struct(
    "SDL_GPUGraphicsPipelineCreateInfo",
    {
-      vertex_shader = schema.any():optional(),
-      fragment_shader = schema.any():optional(),
+      vertex_shader = {
+         schema = schema.any():optional(),
+         assign = function(dst, value, bundle)
+            if GPUShader:is_instance(value) then
+               ensure_gpu_shader_live(value)
+               dst.vertex_shader = value.ptr
+               bundle:retain(value)
+               return
+            end
+            dst.vertex_shader = value
+         end,
+      },
+      fragment_shader = {
+         schema = schema.any():optional(),
+         assign = function(dst, value, bundle)
+            if GPUShader:is_instance(value) then
+               ensure_gpu_shader_live(value)
+               dst.fragment_shader = value.ptr
+               bundle:retain(value)
+               return
+            end
+            dst.fragment_shader = value
+         end,
+      },
       primitive_type = number_like_schema,
       vertex_input = {
          schema = schema.any():optional(),
@@ -843,11 +883,15 @@ local function validate_graphics_spirv_layout(compiled)
 end
 
 function M.create_gpu_shader(device, compiled, props)
+   return GPUShader(device, compiled, props)
+end
+
+function GPUShader:init(device, compiled, props)
    if device == nil then
-      rig.raise("sdl3x.create_gpu_shader requires an SDL_GPUDevice*")
+      rig.raise("sdl3x.GPUShader requires an SDL_GPUDevice*")
    end
    if type(compiled) ~= "table" then
-      error("sdl3x.create_gpu_shader requires a compiled shader table")
+      error("sdl3x.GPUShader requires a compiled shader table")
    end
 
    local shader_stage = STAGE_TO_SDL[compiled.stage]
@@ -894,7 +938,26 @@ function M.create_gpu_shader(device, compiled, props)
       rig.raise(M.get_error())
    end
 
-   return shader_handle
+   self.device = device
+   self.ptr = shader_handle
+   self.stage = compiled.stage
+   self.format = normalize_gpu_shader_format(compiled)
+   self.entrypoint = compiled.entrypoint or "main"
+   self._released = false
+end
+
+function GPUShader:release()
+   ensure_gpu_shader(self)
+   if self._released then
+      return
+   end
+
+   if self.ptr ~= nil and self.ptr ~= ffi.NULL then
+      sdl3.ReleaseGPUShader(self.device, self.ptr)
+   end
+
+   self.ptr = nil
+   self._released = true
 end
 
 local ResourceScope = rig.Class(rig.ResourceScope)
@@ -906,8 +969,8 @@ end
 
 function ResourceScope:create_gpu_shader(compiled, props)
    local shader_handle = M.create_gpu_shader(self.context, compiled, props)
-   return self:adopt(shader_handle, function(device, resource)
-      sdl3.ReleaseGPUShader(device, resource)
+   return self:adopt(shader_handle, function(_, resource)
+      resource:release()
    end)
 end
 
@@ -2435,6 +2498,11 @@ local shader_stage_service_sdl3_gpu = {
       return M.create_gpu_shader(device, artifact, spec.props)
    end,
    destroy_stage = function(stage)
+      if GPUShader:is_instance(stage) then
+         stage:release()
+         return
+      end
+
       local device = M.get_gpu_device()
       if device == nil then
          rig.raise("shader.destroy_stage requires an active SDL GPU device")

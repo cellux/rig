@@ -29,6 +29,7 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.normalize_properties_id(props)`
 - `sdl3x.Properties`
 - `sdl3x.Window`
+- `sdl3x.GPUShader`
 - `sdl3x.ResourceScope`
 - `sdl3x.get_window()`
 - `sdl3x.get_renderer()`
@@ -111,6 +112,29 @@ It supports generic `adopt`, `replace`, and `release`, plus:
 - `scope:create_gpu_buffer(...)`
 - `scope:create_graphics_pipeline(...)`
 - `scope:create_depth_texture(...)`
+
+`scope:create_gpu_shader(...)` returns an `sdl3x.GPUShader`.
+
+## `sdl3x.GPUShader`
+
+`sdl3x.GPUShader` is an owning wrapper around `SDL_GPUShader *`.
+
+Instantiate it through:
+
+- `local shader = sdl3x.GPUShader(device, compiled[, props])`
+- `local shader = sdl3x.create_gpu_shader(device, compiled[, props])`
+
+Instances expose:
+
+- `shader.device`
+- `shader.ptr`
+- `shader.stage`
+- `shader.format`
+- `shader.entrypoint`
+
+Methods:
+
+- `shader:release()`
 
 ## `sdl3x.Properties`
 
