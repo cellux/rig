@@ -58,6 +58,12 @@ function M.get_error(fallback)
    return ffi.string(err)
 end
 
+function M.free(ptr)
+   if ptr ~= nil and ptr ~= ffi.NULL then
+      sdl3.free(ffi.cast("void *", ptr))
+   end
+end
+
 local Properties = rig.Class()
 
 local function ensure_properties(properties)

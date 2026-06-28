@@ -138,6 +138,32 @@ test.case("sdl3x.get_error returns SDL error text or fallback", function()
    end
 end)
 
+test.case("sdl3x.free ignores nil and forwards non-null pointers to SDL", function()
+   local old_free = sdl3.free
+   local observed = {}
+
+   local ok, err = pcall(function()
+      sdl3.free = function(ptr)
+         table.insert(observed, ptr)
+      end
+
+      sdl3x.free(nil)
+      sdl3x.free(ffi.NULL)
+
+      local pointer = ffi.new("uint8_t[1]")
+      sdl3x.free(pointer)
+
+      test.equal(#observed, 1)
+      test.truthy(observed[1] ~= nil)
+      test.truthy(observed[1] ~= ffi.NULL)
+   end)
+
+   sdl3.free = old_free
+   if not ok then
+      error(err)
+   end
+end)
+
 test.case("sdl3x.Properties exposes a live props.id and owns SDL properties", function()
    with_sdl3_property_stubs(function(observed)
       local pointer = ffi.new("int[1]")

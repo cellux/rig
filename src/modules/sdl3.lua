@@ -132,6 +132,7 @@ void SDL_DestroyWindow(SDL_Window *window);
 bool SDL_Init(Uint32 flags);
 void SDL_QuitSubSystem(Uint32 flags);
 Uint32 SDL_WasInit(Uint32 flags);
+void SDL_free(void *mem);
 SDL_PropertiesID SDL_CreateProperties(void);
 void SDL_DestroyProperties(SDL_PropertiesID props);
 bool SDL_SetPointerProperty(SDL_PropertiesID props, const char *name, void *value);
@@ -469,6 +470,7 @@ export_sdl_function("DestroyWindow", "SDL_DestroyWindow")
 export_sdl_function("Init", "SDL_Init")
 export_sdl_function("QuitSubSystem", "SDL_QuitSubSystem")
 export_sdl_function("WasInit", "SDL_WasInit")
+export_sdl_function("free", "SDL_free")
 export_sdl_function("CreateProperties", "SDL_CreateProperties")
 export_sdl_function("DestroyProperties", "SDL_DestroyProperties")
 export_sdl_function("SetPointerProperty", "SDL_SetPointerProperty")
