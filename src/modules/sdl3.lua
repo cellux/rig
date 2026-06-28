@@ -1450,7 +1450,6 @@ local destroy_gl_font_backend_state
 local window_size_width = ffi.new("int[1]")
 local window_size_height = ffi.new("int[1]")
 local gl_font_vertex_arrays = ffi.new("unsigned int[1]")
-local gl_font_buffers = ffi.new("unsigned int[1]")
 local gl_font_textures = ffi.new("unsigned int[1]")
 local gl_font_quad_vertices = ffi.new("float[24]")
 local gl_font_window_width = ffi.new("int[1]")
@@ -1885,18 +1884,16 @@ destroy_gl_font_backend_state = function()
       return
    end
 
-   local gl = state.gl
-
-   if state.vbo ~= 0 then
-      gl_font_buffers[0] = state.vbo
-      gl.DeleteBuffers(1, gl_font_buffers)
+   if state.vbo ~= nil then
+      state.vbo:release()
    end
    if state.vao ~= 0 then
+      local gl = state.gl
       gl_font_vertex_arrays[0] = state.vao
       gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
    end
-   if state.program ~= 0 then
-      gl.DeleteProgram(state.program)
+   if state.program ~= nil then
+      state.program:release()
    end
 
    gl_font_backend_state = nil
@@ -1908,56 +1905,52 @@ local function ensure_gl_font_backend_state()
    end
 
    local gl = require("gl")
-   local program = gl.create_program {
+   local glx = require("glx")
+   local program = glx.Program {
       vertex_source = gl_font_vertex_source,
       fragment_source = gl_font_fragment_source,
    }
 
    gl.GenVertexArrays(1, gl_font_vertex_arrays)
-   gl.GenBuffers(1, gl_font_buffers)
 
    local vao = tonumber(gl_font_vertex_arrays[0]) or 0
-   local vbo = tonumber(gl_font_buffers[0]) or 0
-   if vao == 0 or vbo == 0 then
-      if vbo ~= 0 then
-         gl_font_buffers[0] = vbo
-         gl.DeleteBuffers(1, gl_font_buffers)
-      end
+   local vbo = glx.Buffer {
+      target = gl.ARRAY_BUFFER,
+   }
+   if vao == 0 then
+      vbo:release()
+      program:release()
+      rig.raise("failed to create OpenGL font vertex objects")
+   end
+   if vbo.id == 0 then
       if vao ~= 0 then
          gl_font_vertex_arrays[0] = vao
          gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
       end
-      gl.DeleteProgram(program)
+      program:release()
       rig.raise("failed to create OpenGL font vertex objects")
    end
 
    gl.BindVertexArray(vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
-   gl.BufferData(
-      gl.ARRAY_BUFFER,
-      ffi.sizeof(gl_font_quad_vertices),
-      nil,
-      gl.DYNAMIC_DRAW
-   )
+   vbo:set_data(nil, gl.DYNAMIC_DRAW, ffi.sizeof(gl_font_quad_vertices))
 
    gl.EnableVertexAttribArray(0)
    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 0))
    gl.EnableVertexAttribArray(1)
    gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 8))
 
-   local atlas_location = gl.get_uniform_location(program, "u_atlas")
-   local view_size_location = gl.get_uniform_location(program, "u_view_size")
-   local color_location = gl.get_uniform_location(program, "u_color")
+   local atlas_location = program:uniform_location("u_atlas")
+   local view_size_location = program:uniform_location("u_view_size")
+   local color_location = program:uniform_location("u_color")
    if atlas_location < 0 or view_size_location < 0 or color_location < 0 then
-      gl_font_buffers[0] = vbo
-      gl.DeleteBuffers(1, gl_font_buffers)
+      vbo:release()
       gl_font_vertex_arrays[0] = vao
       gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
-      gl.DeleteProgram(program)
+      program:release()
       rig.raise("failed to locate OpenGL font shader uniforms")
    end
 
-   gl.UseProgram(program)
+   program:use()
    gl.Uniform1i(atlas_location, 0)
 
    gl_font_backend_state = {
@@ -2306,7 +2299,7 @@ function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, dr
 
    gl.Enable(gl.BLEND)
    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-   gl.UseProgram(backend_state.program)
+   backend_state.program:use()
    gl.Uniform2f(backend_state.view_size_location, window_width, window_height)
    gl.Uniform4f(
       backend_state.color_location,
@@ -2318,13 +2311,7 @@ function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, dr
    gl.ActiveTexture(gl.TEXTURE0)
    gl.BindTexture(gl.TEXTURE_2D, texture)
    gl.BindVertexArray(backend_state.vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, backend_state.vbo)
-   gl.BufferData(
-      gl.ARRAY_BUFFER,
-      ffi.sizeof(gl_font_quad_vertices),
-      gl_font_quad_vertices,
-      gl.DYNAMIC_DRAW
-   )
+   backend_state.vbo:set_data(gl_font_quad_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
 end
 
@@ -2764,26 +2751,14 @@ local shader_stage_service_sdl3_gl = {
          )
       end
 
-      local gl = require("gl")
-      local shader_type = nil
-      if spec.stage == "vertex" then
-         shader_type = gl.VERTEX_SHADER
-      elseif spec.stage == "fragment" then
-         shader_type = gl.FRAGMENT_SHADER
-      elseif spec.stage == "compute" then
-         shader_type = rawget(gl, "COMPUTE_SHADER")
-      end
-      if shader_type == nil then
-         rig.raise(
-            "shader stage '%s' is not supported by the OpenGL runtime provider",
-            tostring(spec.stage)
-         )
-      end
-
-      return gl.create_shader(shader_type, spec.source)
+      return require("glx").Shader {
+         stage = spec.stage,
+         source = spec.source,
+         source_name = spec.source_name,
+      }
    end,
    destroy_stage = function(stage)
-      require("gl").DeleteShader(stage)
+      stage:release()
    end,
 }
 

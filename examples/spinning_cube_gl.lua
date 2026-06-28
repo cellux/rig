@@ -3,6 +3,7 @@ local ffi = require("ffi")
 local animator = require("animator")
 local color = require("color")
 local gl = require("gl")
+local glx = require("glx")
 local mathx = require("mathx")
 local mesh = require("mesh")
 local scenegraph = require("scenegraph")
@@ -59,9 +60,9 @@ local cube_mesh = mesh.make_cube {
 
 function Cube:init()
    self:super().init(self)
-   self.program = 0
+   self.program = nil
    self.vao = 0
-   self.vbo = 0
+   self.vbo = nil
    self.mvp_location = -1
    self.rotation_x_angle = 0.0
    self.rotation_y_angle = 0.0
@@ -75,7 +76,6 @@ function Cube:init()
    self.target = mathx.vec3(0.0, 0.0, 0.0)
    self.up = mathx.vec3(0.0, 1.0, 0.0)
    self.gl_vertex_arrays = ffi.new("GLuint[1]")
-   self.gl_buffers = ffi.new("GLuint[1]")
 end
 
 function Cube:build_mvp(out, aspect)
@@ -102,44 +102,34 @@ function Cube:activate()
       source = fragment_shader_source,
    }
 
-   local ok, linked_or_err = pcall(function()
-      return gl.link_program {
+   self.program = self:replace_owned("program", glx.Program {
+      shaders = {
          vertex_shader,
          fragment_shader,
-      }
+      },
+   }, function(_, program)
+      program:release()
    end)
-   shader.destroy_stage(vertex_shader)
-   shader.destroy_stage(fragment_shader)
-   if not ok then
-      rig.raise(linked_or_err)
-   end
-   self.program = self:replace_owned("program", linked_or_err, function(_, program)
-      if program ~= 0 then
-         gl.DeleteProgram(program)
-      end
+
+   self.vbo = self:replace_owned("vbo", glx.Buffer {
+      target = gl.ARRAY_BUFFER,
+   }, function(_, vbo)
+      vbo:release()
    end)
 
    gl.GenVertexArrays(1, self.gl_vertex_arrays)
-   gl.GenBuffers(1, self.gl_buffers)
    self.vao = self:replace_owned("vao", tonumber(self.gl_vertex_arrays[0]) or 0, function(self_ref, vao)
       if vao ~= 0 then
          self_ref.gl_vertex_arrays[0] = vao
          gl.DeleteVertexArrays(1, self_ref.gl_vertex_arrays)
       end
    end)
-   self.vbo = self:replace_owned("vbo", tonumber(self.gl_buffers[0]) or 0, function(self_ref, vbo)
-      if vbo ~= 0 then
-         self_ref.gl_buffers[0] = vbo
-         gl.DeleteBuffers(1, self_ref.gl_buffers)
-      end
-   end)
-   if self.vao == 0 or self.vbo == 0 then
+   if self.vao == 0 then
       rig.raise("failed to create OpenGL vertex objects")
    end
 
    gl.BindVertexArray(self.vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, self.vbo)
-   gl.buffer_data(gl.ARRAY_BUFFER, cube_mesh.vertex_blob, gl.STATIC_DRAW)
+   self.vbo:set_data(cube_mesh.vertex_blob, gl.STATIC_DRAW)
 
    gl.EnableVertexAttribArray(0)
    gl.VertexAttribPointer(
@@ -164,7 +154,7 @@ function Cube:activate()
    gl.Enable(gl.DEPTH_TEST)
    gl.DepthFunc(gl.LEQUAL)
 
-   self.mvp_location = gl.get_uniform_location(self.program, "u_mvp")
+   self.mvp_location = self.program:uniform_location("u_mvp")
    if self.mvp_location < 0 then
       rig.raise("failed to locate OpenGL uniform 'u_mvp'")
    end
@@ -182,15 +172,15 @@ function Cube:draw(context)
    gl.ClearColor(context.background_color:to_rgbaf())
    gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
 
-   gl.UseProgram(self.program)
+   self.program:use()
    gl.UniformMatrix4fv(self.mvp_location, 1, gl.FALSE, self.mvp)
    gl.BindVertexArray(self.vao)
    gl.DrawArrays(gl.TRIANGLES, 0, cube_mesh.vertex_count)
 end
 
 function Cube:release()
-   self.program = 0
-   self.vbo = 0
+   self.program = nil
+   self.vbo = nil
    self.vao = 0
    self.mvp_location = -1
 end

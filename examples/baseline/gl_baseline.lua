@@ -3,6 +3,7 @@ local color = require("color")
 local ffi = require("ffi")
 local font = require("font")
 local gl = require("gl")
+local glx = require("glx")
 local profiler = require("profiler")
 local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
@@ -27,7 +28,6 @@ local profiler_warn_color = color.rgb(255, 214, 160)
 local profiler_toggle_color = color.rgb(196, 220, 255)
 
 local gl_vertex_arrays = ffi.new("GLuint[1]")
-local gl_buffers = ffi.new("GLuint[1]")
 local rect_vertices = ffi.new("float[12]")
 local find_font_path
 
@@ -118,12 +118,11 @@ local function draw_rect(scene, x, y, w, h, r, g, b, a)
 
    gl.Enable(gl.BLEND)
    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-   gl.UseProgram(scene.rect_program)
+   scene.rect_program:use()
    gl.Uniform2f(scene.rect_view_size_location, window_width, window_height)
    gl.Uniform4f(scene.rect_color_location, r / 255.0, g / 255.0, b / 255.0, a / 255.0)
    gl.BindVertexArray(scene.rect_vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, scene.rect_vbo)
-   gl.BufferData(gl.ARRAY_BUFFER, ffi.sizeof(rect_vertices), rect_vertices, gl.DYNAMIC_DRAW)
+   scene.rect_vbo:set_data(rect_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
 end
 
@@ -197,9 +196,9 @@ end
 
 function Scene:init()
    self:super().init(self)
-   self.rect_program = 0
+   self.rect_program = nil
    self.rect_vao = 0
-   self.rect_vbo = 0
+   self.rect_vbo = nil
    self.rect_view_size_location = -1
    self.rect_color_location = -1
    self.moving_square = self:add_child(MovingSquare())
@@ -207,41 +206,38 @@ function Scene:init()
 end
 
 function Scene:activate()
-   self.rect_program = self:replace_owned("rect_program", gl.create_program {
+   self.rect_program = self:replace_owned("rect_program", glx.Program {
       vertex_source = rect_vertex_shader_source,
       fragment_source = rect_fragment_shader_source,
    }, function(_, program)
-      if program ~= 0 then
-         gl.DeleteProgram(program)
-      end
+      program:release()
+   end)
+
+   self.rect_vbo = self:replace_owned("rect_vbo", glx.Buffer {
+      target = gl.ARRAY_BUFFER,
+   }, function(_, vbo)
+      vbo:release()
    end)
 
    gl.GenVertexArrays(1, gl_vertex_arrays)
-   gl.GenBuffers(1, gl_buffers)
    self.rect_vao = self:replace_owned("rect_vao", tonumber(gl_vertex_arrays[0]) or 0, function(_, vao)
       if vao ~= 0 then
          gl_vertex_arrays[0] = vao
          gl.DeleteVertexArrays(1, gl_vertex_arrays)
       end
    end)
-   self.rect_vbo = self:replace_owned("rect_vbo", tonumber(gl_buffers[0]) or 0, function(_, vbo)
-      if vbo ~= 0 then
-         gl_buffers[0] = vbo
-         gl.DeleteBuffers(1, gl_buffers)
-      end
-   end)
 
-   if self.rect_vao == 0 or self.rect_vbo == 0 then
+   if self.rect_vao == 0 then
       rig.raise("failed to create OpenGL rectangle resources")
    end
 
    gl.BindVertexArray(self.rect_vao)
-   gl.BindBuffer(gl.ARRAY_BUFFER, self.rect_vbo)
+   self.rect_vbo:bind()
    gl.EnableVertexAttribArray(0)
    gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, ffi.sizeof("float") * 2, ffi.cast("const void *", 0))
 
-   self.rect_view_size_location = gl.get_uniform_location(self.rect_program, "u_view_size")
-   self.rect_color_location = gl.get_uniform_location(self.rect_program, "u_color")
+   self.rect_view_size_location = self.rect_program:uniform_location("u_view_size")
+   self.rect_color_location = self.rect_program:uniform_location("u_color")
    if self.rect_view_size_location < 0 or self.rect_color_location < 0 then
       rig.raise("failed to locate OpenGL rectangle uniforms")
    end
@@ -281,9 +277,9 @@ function Scene:on_resize(info)
 end
 
 function Scene:release()
-   self.rect_vbo = 0
+   self.rect_vbo = nil
    self.rect_vao = 0
-   self.rect_program = 0
+   self.rect_program = nil
    self.rect_view_size_location = -1
    self.rect_color_location = -1
    self.moving_square = nil
