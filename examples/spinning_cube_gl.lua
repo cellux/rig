@@ -179,7 +179,7 @@ function Cube:draw(context)
    self:build_mvp(self.mvp, context.viewport_width / context.viewport_height)
 
    gl.Viewport(0, 0, context.viewport_width, context.viewport_height)
-   gl.ClearColor(context.background_color:unpackf())
+   gl.ClearColor(context.background_color:to_rgbaf())
    gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
 
    gl.UseProgram(self.program)

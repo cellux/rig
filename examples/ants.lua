@@ -788,7 +788,7 @@ function Scene:init()
 end
 
 function Scene:draw(context)
-   sdl3.clear(self.background_color:unpackf())
+   sdl3.clear(self.background_color:to_rgbaf())
 end
 
 function Scene:activate()

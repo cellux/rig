@@ -115,32 +115,19 @@ local function read_color_table(value)
    return r, g, b, a
 end
 
-local function assign_from_table(self, value)
-   local r, g, b, a = read_color_table(value)
-
-   assign_rgba8(self, r, g, b, a)
-end
-
 local color_methods = {}
 local Color
 
-local function assign_color(self, first, g, b, a)
-   if ffi.istype(Color, first) then
-      assign_rgba8(self, first.r, first.g, first.b, first.a)
-      return
-   end
+local function new_color_rgba8(r, g, b, a)
+   local value = ffi.new("rig_color_Color")
+   assign_rgba8(value, r, g, b, a)
+   return value
+end
 
-   if type(first) == "table" then
-      assign_from_table(self, first)
-      return
-   end
-
-   if type(first) == "string" and g == nil and b == nil and a == nil then
-      assign_rgba8(self, parse_hex(first))
-      return
-   end
-
-   assign_rgba8(self, first, g, b, a)
+local function new_color_rgbaf(r, g, b, a)
+   local value = ffi.new("rig_color_Color")
+   assign_rgbaf(value, r, g, b, a)
+   return value
 end
 
 local function pack_components(a, b, c, d)
@@ -167,39 +154,52 @@ local function unpack_u32(value, format_name)
    return first, second, third, fourth
 end
 
-local function from_packed(value, order)
-   local first, second, third, fourth = unpack_u32(value, order)
+local function color_from_format(value, format_name)
+   if format_name == "rgb"
+      or format_name == "rgba"
+      or format_name == "rgbf"
+      or format_name == "rgbaf"
+   then
+      if type(value) ~= "table" then
+         rig.raise("color format '" .. format_name .. "' expects a table")
+      end
 
-   if order == "u32_rgba" then
-      return Color(first, second, third, fourth)
-   elseif order == "u32_argb" then
-      return Color(second, third, fourth, first)
-   elseif order == "u32_abgr" then
-      return Color(fourth, third, second, first)
-   elseif order == "u32_bgra" then
-      return Color(third, second, first, fourth)
+      local r, g, b, a = read_color_table(value)
+      if format_name == "rgb" then
+         return new_color_rgba8(r, g, b, 255)
+      elseif format_name == "rgba" then
+         return new_color_rgba8(r, g, b, a)
+      elseif format_name == "rgbf" then
+         return new_color_rgbaf(r, g, b, 1)
+      end
+
+      return new_color_rgbaf(r, g, b, a)
+   elseif format_name == "hex"
+      or format_name == "hex_rgb"
+      or format_name == "hex_rgba"
+   then
+      return new_color_rgba8(parse_hex(value))
+   elseif format_name == "u32_rgba"
+      or format_name == "u32_argb"
+      or format_name == "u32_abgr"
+      or format_name == "u32_bgra"
+   then
+      local first, second, third, fourth = unpack_u32(value, format_name)
+      if format_name == "u32_rgba" then
+         return new_color_rgba8(first, second, third, fourth)
+      elseif format_name == "u32_argb" then
+         return new_color_rgba8(second, third, fourth, first)
+      elseif format_name == "u32_abgr" then
+         return new_color_rgba8(fourth, third, second, first)
+      end
+
+      return new_color_rgba8(third, second, first, fourth)
    end
 
-   rig.raise("unsupported packed color format '" .. tostring(order) .. "'")
+   rig.raise("unsupported input color format '" .. tostring(format_name) .. "'")
 end
 
-local function from_table_in_format(value, format_name)
-   local r, g, b, a = read_color_table(value)
-
-   if format_name == "rgb" then
-      return Color(r, g, b, 255)
-   elseif format_name == "rgba" then
-      return Color(r, g, b, a)
-   elseif format_name == "rgbf" then
-      return M.rgbf(r, g, b)
-   elseif format_name == "rgbaf" then
-      return M.rgbaf(r, g, b, a)
-   end
-
-   rig.raise("unsupported table color format '" .. tostring(format_name) .. "'")
-end
-
-local function to_color_table(self, format_name)
+local function color_to_format(self, format_name)
    if format_name == "rgb" then
       return {
          self.r,
@@ -227,20 +227,51 @@ local function to_color_table(self, format_name)
          self.a / 255.0,
       }
    elseif format_name == "hex_rgb" then
-      return self:to_hex_rgb()
+      return string.format("#%02X%02X%02X", self.r, self.g, self.b)
    elseif format_name == "hex_rgba" or format_name == "hex" then
-      return self:to_hex_rgba()
+      return string.format("#%02X%02X%02X%02X", self.r, self.g, self.b, self.a)
    elseif format_name == "u32_rgba" then
-      return self:to_u32_rgba()
+      return pack_components(self.r, self.g, self.b, self.a)
    elseif format_name == "u32_argb" then
-      return self:to_u32_argb()
+      return pack_components(self.a, self.r, self.g, self.b)
    elseif format_name == "u32_abgr" then
-      return self:to_u32_abgr()
+      return pack_components(self.a, self.b, self.g, self.r)
    elseif format_name == "u32_bgra" then
-      return self:to_u32_bgra()
+      return pack_components(self.b, self.g, self.r, self.a)
    end
 
    rig.raise("unsupported output color format '" .. tostring(format_name) .. "'")
+end
+
+local function assign_color_value(self, value)
+   self.components[0] = value.r
+   self.components[1] = value.g
+   self.components[2] = value.b
+   self.components[3] = value.a
+end
+
+local function assign_color(self, first, g, b, a)
+   if ffi.istype(Color, first) then
+      assign_color_value(self, first)
+      return
+   end
+
+   if type(first) == "table" then
+      assign_color_value(self, color_from_format(first, "rgba"))
+      return
+   end
+
+   if type(first) == "string" and g == nil and b == nil and a == nil then
+      assign_color_value(self, color_from_format(first, "hex"))
+      return
+   end
+
+   assign_color_value(self, color_from_format({
+      first,
+      g,
+      b,
+      a,
+   }, "rgba"))
 end
 
 Color = ffi.metatype("rig_color_Color", {
@@ -304,14 +335,14 @@ function color_methods:with_alpha(a)
    return Color(self.r, self.g, self.b, a)
 end
 
-function color_methods:set_mix(first, second, amount)
+local function mixed_components(first, second, amount, label)
    local resolved = tonumber(amount)
    if resolved == nil then
-      rig.raise("color:set_mix amount must be numeric")
+      rig.raise(label .. " amount must be numeric")
    end
 
    if not ffi.istype(Color, first) or not ffi.istype(Color, second) then
-      rig.raise("color:set_mix expects source colors")
+      rig.raise(label .. " expects source colors")
    end
 
    if resolved < 0 then
@@ -320,13 +351,23 @@ function color_methods:set_mix(first, second, amount)
       resolved = 1
    end
 
-   self:set(
-      first.r + (second.r - first.r) * resolved,
+   return first.r + (second.r - first.r) * resolved,
       first.g + (second.g - first.g) * resolved,
       first.b + (second.b - first.b) * resolved,
       first.a + (second.a - first.a) * resolved
+end
+
+function color_methods:set_mix(first, second, amount)
+   self:set(
+      mixed_components(first, second, amount, "color:set_mix")
    )
    return self
+end
+
+function color_methods:mix(second, amount)
+   return Color(
+      mixed_components(self, second, amount, "color:mix")
+   )
 end
 
 function color_methods:to_rgb()
@@ -335,14 +376,6 @@ end
 
 function color_methods:to_rgba()
    return self.r, self.g, self.b, self.a
-end
-
-function color_methods:unpack()
-   return self:to_rgba()
-end
-
-function color_methods:unpack8()
-   return self:unpack()
 end
 
 function color_methods:to_rgbf()
@@ -358,102 +391,8 @@ function color_methods:to_rgbaf()
       self.a / 255.0
 end
 
-function color_methods:unpackf()
-   return self:to_rgbaf()
-end
-
-function color_methods:to_rgb_table()
-   return {
-      self.r,
-      self.g,
-      self.b,
-   }
-end
-
-function color_methods:to_rgba_table()
-   return {
-      self.r,
-      self.g,
-      self.b,
-      self.a,
-   }
-end
-
-function color_methods:to_rgbf_table()
-   return {
-      self.r / 255.0,
-      self.g / 255.0,
-      self.b / 255.0,
-   }
-end
-
-function color_methods:to_rgbaf_table()
-   return {
-      self.r / 255.0,
-      self.g / 255.0,
-      self.b / 255.0,
-      self.a / 255.0,
-   }
-end
-
-function color_methods:to_table()
-   return self:to_rgba_table()
-end
-
-function color_methods:to_float_table()
-   return self:to_rgbaf_table()
-end
-
-function color_methods:to_hex_rgb()
-   return string.format("#%02X%02X%02X", self.r, self.g, self.b)
-end
-
-function color_methods:to_hex_rgba()
-   return string.format("#%02X%02X%02X%02X", self.r, self.g, self.b, self.a)
-end
-
-function color_methods:hex_rgb()
-   return self:to_hex_rgb()
-end
-
-function color_methods:hex_rgba()
-   return self:to_hex_rgba()
-end
-
-function color_methods:to_u32_rgba()
-   return pack_components(self.r, self.g, self.b, self.a)
-end
-
-function color_methods:to_u32_argb()
-   return pack_components(self.a, self.r, self.g, self.b)
-end
-
-function color_methods:to_u32_abgr()
-   return pack_components(self.a, self.b, self.g, self.r)
-end
-
-function color_methods:to_u32_bgra()
-   return pack_components(self.b, self.g, self.r, self.a)
-end
-
-function color_methods:u32_rgba()
-   return self:to_u32_rgba()
-end
-
-function color_methods:u32_argb()
-   return self:to_u32_argb()
-end
-
-function color_methods:u32_abgr()
-   return self:to_u32_abgr()
-end
-
-function color_methods:u32_bgra()
-   return self:to_u32_bgra()
-end
-
 function color_methods:to(format_name)
-   return to_color_table(self, format_name)
+   return color_to_format(self, format_name)
 end
 
 function color_methods:write_rgba8(buffer, offset)
@@ -483,85 +422,57 @@ function M.is(value)
 end
 
 function M.rgb(r, g, b)
-   return Color(r, g, b, 255)
-end
-
-function M.from_rgb(r, g, b)
-   return M.rgb(r, g, b)
+   return color_from_format({
+      r,
+      g,
+      b,
+   }, "rgb")
 end
 
 function M.rgba(r, g, b, a)
-   return Color(r, g, b, a)
-end
-
-function M.from_rgba(r, g, b, a)
-   return M.rgba(r, g, b, a)
+   return color_from_format({
+      r,
+      g,
+      b,
+      a,
+   }, "rgba")
 end
 
 function M.rgbf(r, g, b)
-   return Color(
-      normalize_unit(r, "r"),
-      normalize_unit(g, "g"),
-      normalize_unit(b, "b"),
-      255
-   )
-end
-
-function M.from_rgbf(r, g, b)
-   return M.rgbf(r, g, b)
+   return color_from_format({
+      r,
+      g,
+      b,
+   }, "rgbf")
 end
 
 function M.rgbaf(r, g, b, a)
-   return Color(
-      normalize_unit(r, "r"),
-      normalize_unit(g, "g"),
-      normalize_unit(b, "b"),
-      normalize_unit(a, "a", 1)
-   )
-end
-
-function M.from_rgbaf(r, g, b, a)
-   return M.rgbaf(r, g, b, a)
+   return color_from_format({
+      r,
+      g,
+      b,
+      a,
+   }, "rgbaf")
 end
 
 function M.hex(value)
-   return Color(value)
-end
-
-function M.from_hex(value)
-   return M.hex(value)
+   return color_from_format(value, "hex")
 end
 
 function M.u32_rgba(value)
-   return from_packed(value, "u32_rgba")
-end
-
-function M.from_u32_rgba(value)
-   return M.u32_rgba(value)
+   return color_from_format(value, "u32_rgba")
 end
 
 function M.u32_argb(value)
-   return from_packed(value, "u32_argb")
-end
-
-function M.from_u32_argb(value)
-   return M.u32_argb(value)
+   return color_from_format(value, "u32_argb")
 end
 
 function M.u32_abgr(value)
-   return from_packed(value, "u32_abgr")
-end
-
-function M.from_u32_abgr(value)
-   return M.u32_abgr(value)
+   return color_from_format(value, "u32_abgr")
 end
 
 function M.u32_bgra(value)
-   return from_packed(value, "u32_bgra")
-end
-
-function M.from_u32_bgra(value)
-   return M.u32_bgra(value)
+   return color_from_format(value, "u32_bgra")
 end
 
 function M.from(value, format_name)
@@ -571,41 +482,18 @@ function M.from(value, format_name)
 
    if format_name == nil then
       if type(value) == "string" then
-         return M.from_hex(value)
+         return color_from_format(value, "hex")
       elseif type(value) == "table" then
-         return from_table_in_format(value, "rgba")
+         return color_from_format(value, "rgba")
       end
       rig.raise("color.from requires a format for this value")
    end
 
-   if format_name == "rgb"
-      or format_name == "rgba"
-      or format_name == "rgbf"
-      or format_name == "rgbaf"
-   then
-      if type(value) ~= "table" then
-         rig.raise("color.from(..., '" .. format_name .. "') expects a table")
-      end
-      return from_table_in_format(value, format_name)
-   elseif format_name == "hex"
-      or format_name == "hex_rgb"
-      or format_name == "hex_rgba"
-   then
-      return M.from_hex(value)
-   elseif format_name == "u32_rgba" then
-      return M.from_u32_rgba(value)
-   elseif format_name == "u32_argb" then
-      return M.from_u32_argb(value)
-   elseif format_name == "u32_abgr" then
-      return M.from_u32_abgr(value)
-   elseif format_name == "u32_bgra" then
-      return M.from_u32_bgra(value)
-   end
-
-   rig.raise("unsupported input color format '" .. tostring(format_name) .. "'")
+   return color_from_format(value, format_name)
 end
 
 M.Color = Color
+
 M.WHITE = M.rgb(255, 255, 255)
 M.BLACK = M.rgb(0, 0, 0)
 M.TRANSPARENT = M.rgba(0, 0, 0, 0)

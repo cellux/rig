@@ -531,7 +531,7 @@ function Scene:draw(context)
    local renderer = context.renderer
    set_draw_color(
       renderer,
-      self.background_color:unpack()
+      self.background_color:to_rgba()
    )
    if not sdl3.RenderClear(renderer) then
       rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
@@ -795,7 +795,7 @@ draw_profiler = function(renderer, scene, style, frame_profiler)
    local panel_w = 378
    local panel_h = 210
 
-   set_draw_color(renderer, profiler_panel_color:unpack())
+   set_draw_color(renderer, profiler_panel_color:to_rgba())
    fill_rect(renderer, panel_x, panel_y, panel_w, panel_h)
 
    local text_x = panel_x + 10

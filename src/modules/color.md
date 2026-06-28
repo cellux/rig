@@ -22,17 +22,8 @@
 - `color.u32_abgr(value)`
 - `color.u32_bgra(value)`
 
-## Format Factories
+## Generic Factory
 
-- `color.from_rgb(r, g, b)`
-- `color.from_rgba(r, g, b, a)`
-- `color.from_rgbf(r, g, b)`
-- `color.from_rgbaf(r, g, b, a)`
-- `color.from_hex(value)`
-- `color.from_u32_rgba(value)`
-- `color.from_u32_argb(value)`
-- `color.from_u32_abgr(value)`
-- `color.from_u32_bgra(value)`
 - `color.from(value[, format])`
   - `format` supports `rgb`, `rgba`, `rgbf`, `rgbaf`, `hex`, `hex_rgb`, `hex_rgba`, `u32_rgba`, `u32_argb`, `u32_abgr`, and `u32_bgra`.
   - For `rgb`, `rgba`, `rgbf`, and `rgbaf`, pass `value` as a table.
@@ -59,6 +50,9 @@
   - Reassigns the color from normalized float components.
 - `value:copy()`
 - `value:with_alpha(a)`
+- `value:mix(second, amount)`
+  - Returns a new color containing the linear interpolation between `value` and `second`.
+  - `amount` is clamped to the `0..1` range.
 - `value:set_mix(first, second, amount)`
   - Replaces `value` with the linear interpolation between `first` and `second`.
   - `amount` is clamped to the `0..1` range.
@@ -66,29 +60,6 @@
 - `value:to_rgba()`
 - `value:to_rgbf()`
 - `value:to_rgbaf()`
-- `value:unpack()`
-- `value:unpack8()`
-  - Returns `r, g, b, a` as RGBA8 bytes.
-- `value:unpackf()`
-  - Returns normalized `r, g, b, a` floats.
-- `value:to_rgb_table()`
-- `value:to_rgba_table()`
-- `value:to_rgbf_table()`
-- `value:to_rgbaf_table()`
-- `value:to_table()`
-- `value:to_float_table()`
-- `value:to_hex_rgb()`
-- `value:to_hex_rgba()`
-- `value:hex_rgb()`
-- `value:hex_rgba()`
-- `value:to_u32_rgba()`
-- `value:to_u32_argb()`
-- `value:to_u32_abgr()`
-- `value:to_u32_bgra()`
-- `value:u32_rgba()`
-- `value:u32_argb()`
-- `value:u32_abgr()`
-- `value:u32_bgra()`
 - `value:to(format)`
   - Returns a table for `rgb`, `rgba`, `rgbf`, and `rgbaf`.
   - Returns a string for `hex`, `hex_rgb`, and `hex_rgba`.
