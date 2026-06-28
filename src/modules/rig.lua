@@ -11,6 +11,18 @@ M.raise = prelude.raise
 
 local raise = M.raise
 
+function M.shallow_copy(value)
+   if type(value) ~= "table" then
+      return value
+   end
+
+   local copy = {}
+   for key, entry in pairs(value) do
+      copy[key] = entry
+   end
+   return copy
+end
+
 --[ rig.tostring ]
 
 local function stringify(value)

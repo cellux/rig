@@ -180,6 +180,28 @@ test.case("rig.tostring respects __tostring on tables", function()
    test.equal(rig.tostring(value), "custom table")
 end)
 
+test.case("rig.shallow_copy returns non-tables unchanged and clones tables", function()
+   test.equal(rig.shallow_copy(nil), nil)
+   test.equal(rig.shallow_copy(42), 42)
+   test.equal(rig.shallow_copy("hello"), "hello")
+
+   local nested = {
+      flag = true,
+   }
+   local original = {
+      count = 3,
+      nested = nested,
+   }
+   local copy = rig.shallow_copy(original)
+
+   test.truthy(copy ~= original)
+   test.equal(copy.count, 3)
+   test.equal(copy.nested, nested)
+
+   copy.count = 9
+   test.equal(original.count, 3)
+end)
+
 test.case("rig.create_ffi_library_loader caches success and failure", function()
    local ffi_module = require("ffi")
    local old_load = ffi_module.load

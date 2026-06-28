@@ -32,14 +32,6 @@ function M.free(ptr)
    end
 end
 
-local function shallow_copy_table(values)
-   local copy = {}
-   for key, value in pairs(values) do
-      copy[key] = value
-   end
-   return copy
-end
-
 local function schema_path_label(path)
    if type(path) == "string" and path ~= "" then
       return path
@@ -225,7 +217,7 @@ end
 
 function Properties:to_table()
    ensure_properties(self)
-   return shallow_copy_table(self._values)
+   return rig.shallow_copy(self._values)
 end
 
 function Properties:clone()
@@ -647,7 +639,7 @@ function M.build_vertex_buffer_descriptions(buffers)
    local normalized = {}
 
    for i = 1, #raw_buffers do
-      local spec = shallow_copy_table(raw_buffers[i])
+      local spec = rig.shallow_copy(raw_buffers[i])
       if spec.slot == nil then
          spec.slot = i - 1
       end
@@ -685,7 +677,7 @@ function M.build_vertex_input_state(layout)
    local attribute_specs = {}
    local buffer_specs = {}
    for i = 1, #decoded.buffers do
-      local buffer = shallow_copy_table(decoded.buffers[i])
+      local buffer = rig.shallow_copy(decoded.buffers[i])
       local buffer_slot = buffer.slot
       if buffer_slot == nil then
          buffer_slot = i - 1
@@ -695,7 +687,7 @@ function M.build_vertex_input_state(layout)
       buffer_specs[i] = buffer
 
       for j = 1, #decoded.buffers[i].attributes do
-         local spec = shallow_copy_table(decoded.buffers[i].attributes[j])
+         local spec = rig.shallow_copy(decoded.buffers[i].attributes[j])
          spec.buffer_slot = buffer_slot
          attribute_specs[#attribute_specs + 1] = spec
       end
