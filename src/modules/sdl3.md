@@ -153,6 +153,7 @@ Additional fields accepted by `options.driver_config.sdl3_gpu`:
   - Atlas pages are uploaded lazily as OpenGL textures.
   - Updated atlas pages are re-uploaded automatically when their page revision changes.
   - Text is drawn through a small OpenGL shader pipeline owned by the runtime.
+- `mode = "sdl3_gl"` also provides the `"gl.resolver"` service used by `gl` for lazy OpenGL entry-point resolution.
 - `sdl3.SetRenderDrawColor(renderer, r, g, b, a)`
   - Raw SDL renderer color setter.
 - `sdl3.RenderClear(renderer)`

@@ -6,6 +6,7 @@ local rig = require("rig")
 local sched = require("sched")
 local schema = require("schema")
 require("font")
+require("gl")
 require("mesh")
 local shader = require("shader")
 require("time")
@@ -2786,9 +2787,16 @@ local shader_stage_service_sdl3_gl = {
    end,
 }
 
+local gl_resolver_service_sdl3_gl = {
+   get_gl_proc_address = function(name)
+      return M.get_gl_proc_address(name)
+   end,
+}
+
 rig.register_service_provider("time", "sdl3", sdl3_time_service)
 rig.register_service_provider("font.renderer", "sdl3", sdl3_font_provider)
 rig.register_service_provider("font.renderer", "sdl3_gl", sdl3_gl_font_provider)
+rig.register_service_provider("gl.resolver", "sdl3_gl", gl_resolver_service_sdl3_gl)
 rig.register_service_provider("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_service)
 rig.register_service_provider("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
 rig.register_service_provider("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
@@ -2990,6 +2998,7 @@ rig.register_runtime_preset("sdl3_gl", {
    providers = {
       time = "sdl3",
       ["font.renderer"] = "sdl3_gl",
+      ["gl.resolver"] = "sdl3_gl",
       ["shader.stage"] = "sdl3_gl",
    },
 })

@@ -1,7 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
 local rig = require("rig")
-local sdl3 = require("sdl3")
 
 ffi.cdef[[
 typedef unsigned int GLenum;
@@ -64,8 +63,12 @@ typedef void (*rig_gl__UniformMatrix4fv)(GLint location, GLsizei count, GLboolea
 typedef void (*rig_gl__DrawArrays)(GLenum mode, GLint first, GLsizei count);
 ]]
 
+rig.register_service("gl.resolver", {
+   "get_gl_proc_address",
+})
+
 local function bind_function(name)
-   local ptr, err = sdl3.get_gl_proc_address("gl" .. name)
+   local ptr, err = rig.require_service("gl.resolver").get_gl_proc_address("gl" .. name)
    if ptr == nil then
       rig.raise(
          "failed to resolve OpenGL function gl%s: %s",
