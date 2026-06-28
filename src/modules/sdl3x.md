@@ -6,6 +6,7 @@ Unlike `sdl3`, this module is not a raw binding surface. It provides app classes
 
 ## Exports
 
+- `sdl3x.Properties`
 - `sdl3x.App`
 - `sdl3x.SceneApp`
 
@@ -21,6 +22,32 @@ Use `rig.run { module_config = { sdl3x = { ... } } }` for optional SDL app defau
   - Currently supported by `mode = "sdl3"` and `mode = "sdl3_gl"`.
 - `fullscreen`
   - Optional boolean initial fullscreen state applied during `after_setup()`.
+
+## `sdl3x.Properties`
+
+`sdl3x.Properties` is a higher-level owning wrapper around `SDL_PropertiesID`.
+
+Instances expose the live SDL handle directly as:
+
+- `props.id`
+
+Methods:
+
+- `props:set(name, value)`
+- `props:clear(name)`
+- `props:merge(values_or_props)`
+- `props:get(name[, default])`
+- `props:has(name)`
+- `props:to_table()`
+- `props:clone()`
+- `props:release()`
+
+Supported value types mirror the current SDL property setter surface in `sdl3.lua`:
+
+- `boolean`
+- integer or floating-point `number`
+- `string`
+- pointer-like `cdata`
 
 ## `sdl3x.App`
 

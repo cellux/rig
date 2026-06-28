@@ -1,10 +1,84 @@
 local animator = require("animator")
+local ffi = require("ffi")
 local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
 local sdl3x = require("sdl3x")
 local test = require("test")
 
 local Object = scenegraph.Object
+
+local function list_contains(list, expected)
+   for i = 1, #list do
+      if list[i] == expected then
+         return true
+      end
+   end
+   return false
+end
+
+local function with_sdl3_property_stubs(run)
+   local old_create_properties = sdl3.CreateProperties
+   local old_destroy_properties = sdl3.DestroyProperties
+   local old_set_pointer_property = sdl3.SetPointerProperty
+   local old_set_string_property = sdl3.SetStringProperty
+   local old_set_number_property = sdl3.SetNumberProperty
+   local old_set_float_property = sdl3.SetFloatProperty
+   local old_set_boolean_property = sdl3.SetBooleanProperty
+   local old_clear_property = sdl3.ClearProperty
+
+   local observed = {}
+   local next_id = 100
+
+   sdl3.CreateProperties = function()
+      next_id = next_id + 1
+      table.insert(observed, "create:" .. next_id)
+      return next_id
+   end
+   sdl3.DestroyProperties = function(id)
+      table.insert(observed, "destroy:" .. tostring(id))
+   end
+   sdl3.SetPointerProperty = function(id, name, value)
+      table.insert(observed, "pointer:" .. tostring(id) .. ":" .. name)
+      return value ~= nil
+   end
+   sdl3.SetStringProperty = function(id, name, value)
+      table.insert(observed, "string:" .. tostring(id) .. ":" .. name .. ":" .. value)
+      return true
+   end
+   sdl3.SetNumberProperty = function(id, name, value)
+      table.insert(observed, "number:" .. tostring(id) .. ":" .. name .. ":" .. tostring(value))
+      return true
+   end
+   sdl3.SetFloatProperty = function(id, name, value)
+      table.insert(observed, "float:" .. tostring(id) .. ":" .. name .. ":" .. tostring(value))
+      return true
+   end
+   sdl3.SetBooleanProperty = function(id, name, value)
+      table.insert(observed, "boolean:" .. tostring(id) .. ":" .. name .. ":" .. tostring(value))
+      return true
+   end
+   sdl3.ClearProperty = function(id, name)
+      table.insert(observed, "clear:" .. tostring(id) .. ":" .. name)
+      return true
+   end
+
+   local ok, result_or_err = pcall(run, observed)
+
+   sdl3.CreateProperties = old_create_properties
+   sdl3.DestroyProperties = old_destroy_properties
+   sdl3.SetPointerProperty = old_set_pointer_property
+   sdl3.SetStringProperty = old_set_string_property
+   sdl3.SetNumberProperty = old_set_number_property
+   sdl3.SetFloatProperty = old_set_float_property
+   sdl3.SetBooleanProperty = old_set_boolean_property
+   sdl3.ClearProperty = old_clear_property
+
+   if not ok then
+      error(result_or_err)
+   end
+
+   return result_or_err
+end
 
 local function find_font_path()
    local candidates = {
@@ -38,6 +112,68 @@ test.case("sdl3x.App stores resize events in app fields", function()
    test.equal(app.window_height, 200)
    test.equal(app.pixel_width, 640)
    test.equal(app.pixel_height, 400)
+end)
+
+test.case("sdl3x.Properties exposes a live props.id and owns SDL properties", function()
+   with_sdl3_property_stubs(function(observed)
+      local pointer = ffi.new("int[1]")
+      local props = sdl3x.Properties({
+         enabled = true,
+         count = 7,
+         scale = 1.5,
+         title = "rig",
+      })
+
+      test.equal(props.id, 101)
+      test.truthy(props:has("enabled"))
+      test.equal(props:get("count"), 7)
+      test.equal(props:get("missing", "fallback"), "fallback")
+
+      props:set("pointer", pointer)
+      props:clear("title")
+
+      local clone = props:clone()
+      test.equal(clone.id, 102)
+      test.truthy(clone:has("pointer"))
+      test.equal(clone:get("count"), 7)
+
+      local values = props:to_table()
+      test.equal(values.count, 7)
+      test.falsey(values.title ~= nil)
+
+      props:release()
+      clone:release()
+
+      test.equal(props.id, 0)
+      test.equal(clone.id, 0)
+      test.truthy(list_contains(observed, "create:101"))
+      test.truthy(list_contains(observed, "boolean:101:enabled:true"))
+      test.truthy(list_contains(observed, "number:101:count:7"))
+      test.truthy(list_contains(observed, "float:101:scale:1.5"))
+      test.truthy(list_contains(observed, "string:101:title:rig"))
+      test.truthy(list_contains(observed, "pointer:101:pointer"))
+      test.truthy(list_contains(observed, "clear:101:title"))
+      test.truthy(list_contains(observed, "create:102"))
+      test.truthy(list_contains(observed, "boolean:102:enabled:true"))
+      test.truthy(list_contains(observed, "number:102:count:7"))
+      test.truthy(list_contains(observed, "float:102:scale:1.5"))
+      test.truthy(list_contains(observed, "pointer:102:pointer"))
+      test.truthy(list_contains(observed, "destroy:101"))
+      test.truthy(list_contains(observed, "destroy:102"))
+   end)
+end)
+
+test.case("sdl3 GPU builders accept sdl3x.Properties", function()
+   local props = {
+      id = 55,
+   }
+   local buffer_info = sdl3.build_gpu_buffer_create_info({
+      usage = 5,
+      size = 64,
+      props = props,
+   })
+
+   test.equal(tonumber(buffer_info[0].props), 55)
 end)
 
 test.case("sdl3x.App wraps render calls with profiler hooks when enabled", function()

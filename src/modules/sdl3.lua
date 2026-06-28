@@ -139,6 +139,7 @@ bool SDL_SetStringProperty(SDL_PropertiesID props, const char *name, const char 
 bool SDL_SetNumberProperty(SDL_PropertiesID props, const char *name, Sint64 value);
 bool SDL_SetFloatProperty(SDL_PropertiesID props, const char *name, float value);
 bool SDL_SetBooleanProperty(SDL_PropertiesID props, const char *name, bool value);
+bool SDL_ClearProperty(SDL_PropertiesID props, const char *name);
 bool SDL_PollEvent(SDL_Event *event);
 Uint32 SDL_GetMouseState(float *x, float *y);
 bool SDL_GetWindowSize(SDL_Window *window, int *w, int *h);
@@ -498,6 +499,7 @@ export_sdl_function("SetStringProperty", "SDL_SetStringProperty")
 export_sdl_function("SetNumberProperty", "SDL_SetNumberProperty")
 export_sdl_function("SetFloatProperty", "SDL_SetFloatProperty")
 export_sdl_function("SetBooleanProperty", "SDL_SetBooleanProperty")
+export_sdl_function("ClearProperty", "SDL_ClearProperty")
 export_sdl_function("PollEvent", "SDL_PollEvent")
 export_sdl_function("GetMouseState", "SDL_GetMouseState")
 export_sdl_function("GetWindowSize", "SDL_GetWindowSize")
@@ -746,6 +748,27 @@ local VERTEX_ATTRIBUTE_FORMATS = {
    float4 = M.GPU_VERTEXELEMENTFORMAT_FLOAT4,
 }
 
+local function normalize_properties_id(props)
+   if props == nil then
+      return 0
+   end
+
+   local value_type = type(props)
+   if value_type == "number" or value_type == "cdata" then
+      return props
+   end
+
+   if value_type == "table" then
+      local id = rawget(props, "id")
+      local id_type = type(id)
+      if id_type == "number" or id_type == "cdata" then
+         return id
+      end
+   end
+
+   rig.raise("props must be a number, cdata SDL_PropertiesID, or table with numeric id")
+end
+
 local function normalize_vertex_input_rate(value)
    if type(value) == "string" then
       local normalized = VERTEX_INPUT_RATES[value]
@@ -822,7 +845,7 @@ local GPUBufferCreateInfo = ffi.metatype("SDL_GPUBufferCreateInfo", {
          assert(tonumber(spec.usage), "GPU buffer usage must be a number")
       create_info.size =
          assert(tonumber(spec.size), "GPU buffer size must be a number")
-      create_info.props = tonumber(spec.props or 0) or 0
+      create_info.props = normalize_properties_id(spec.props)
       return create_info
    end,
 })
@@ -1116,7 +1139,7 @@ function M.build_graphics_pipeline_create_info(spec)
       end
    end
 
-   create_info[0].props = tonumber(spec.props or 0) or 0
+   create_info[0].props = normalize_properties_id(spec.props)
 
    return {
       create_info = create_info,
@@ -1218,7 +1241,7 @@ function M.create_gpu_shader(device, compiled, props)
       reflection.resource_info.num_storage_buffers or 0
    create_info[0].num_uniform_buffers =
       reflection.resource_info.num_uniform_buffers or 0
-   create_info[0].props = props or 0
+   create_info[0].props = normalize_properties_id(props)
 
    local shader_handle = M.CreateGPUShader(device, create_info)
    if shader_handle == nil then

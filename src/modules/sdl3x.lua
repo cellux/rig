@@ -58,6 +58,169 @@ local function get_error_string()
    return ffi.string(err)
 end
 
+local Properties = rig.Class()
+
+local function ensure_properties(properties)
+   if getmetatable(properties) ~= Properties then
+      rig.raise("sdl3x.Properties operation expects an sdl3x.Properties instance")
+   end
+   if properties._released then
+      rig.raise("sdl3x.Properties has been released")
+   end
+end
+
+local function copy_property_values(values)
+   local copy = {}
+   for key, value in pairs(values) do
+      copy[key] = value
+   end
+   return copy
+end
+
+local function set_property_value(properties, name, value)
+   if type(name) ~= "string" or name == "" then
+      rig.raise("sdl3x.Properties expects property names to be non-empty strings")
+   end
+
+   if value == nil then
+      if not sdl3.ClearProperty(properties.id, name) then
+         rig.raise(("failed to clear property '%s': %s"):format(
+            name,
+            get_error_string()
+         ))
+      end
+      properties._values[name] = nil
+      return properties
+   end
+
+   local ok = nil
+   local value_type = type(value)
+   if value_type == "boolean" then
+      ok = sdl3.SetBooleanProperty(properties.id, name, value)
+   elseif value_type == "number" then
+      if value == math.floor(value) then
+         ok = sdl3.SetNumberProperty(properties.id, name, value)
+      else
+         ok = sdl3.SetFloatProperty(properties.id, name, value)
+      end
+   elseif value_type == "string" then
+      ok = sdl3.SetStringProperty(properties.id, name, value)
+   elseif value_type == "cdata" then
+      ok = sdl3.SetPointerProperty(properties.id, name, ffi.cast("void *", value))
+   else
+      rig.raise(
+         ("unsupported SDL property value type for '%s': %s"):format(
+            name,
+            value_type
+         )
+      )
+   end
+
+   if not ok then
+      rig.raise(("failed to set property '%s': %s"):format(
+         name,
+         get_error_string()
+      ))
+   end
+
+   properties._values[name] = value
+   return properties
+end
+
+M.Properties = Properties
+
+function Properties:init(values)
+   if values ~= nil and type(values) ~= "table" then
+      rig.raise("sdl3x.Properties expects a table if initialized with values")
+   end
+
+   self.id = sdl3.CreateProperties()
+   if self.id == 0 then
+      rig.raise("failed to create SDL properties: " .. get_error_string())
+   end
+
+   self._released = false
+   self._values = {}
+
+   local initial_values = values
+   if getmetatable(values) == Properties then
+      initial_values = values._values
+   end
+
+   local ok, err = pcall(function()
+      if initial_values ~= nil then
+         self:merge(initial_values)
+      end
+   end)
+   if not ok then
+      self:release()
+      rig.raise(err)
+   end
+end
+
+function Properties:set(name, value)
+   ensure_properties(self)
+   return set_property_value(self, name, value)
+end
+
+function Properties:clear(name)
+   return self:set(name, nil)
+end
+
+function Properties:merge(values)
+   ensure_properties(self)
+
+   local source = values
+   if getmetatable(values) == Properties then
+      source = values._values
+   elseif type(values) ~= "table" then
+      rig.raise("sdl3x.Properties:merge expects a table or sdl3x.Properties")
+   end
+
+   for key, value in pairs(source) do
+      set_property_value(self, key, value)
+   end
+   return self
+end
+
+function Properties:get(name, default)
+   ensure_properties(self)
+   local value = self._values[name]
+   if value == nil then
+      return default
+   end
+   return value
+end
+
+function Properties:has(name)
+   ensure_properties(self)
+   return self._values[name] ~= nil
+end
+
+function Properties:to_table()
+   ensure_properties(self)
+   return copy_property_values(self._values)
+end
+
+function Properties:clone()
+   ensure_properties(self)
+   return Properties(self._values)
+end
+
+function Properties:release()
+   if self._released then
+      return
+   end
+
+   if self.id ~= nil and self.id ~= 0 then
+      sdl3.DestroyProperties(self.id)
+   end
+
+   self.id = 0
+   self._values = {}
+   self._released = true
+end
+
 local function init_common_state(self, runtime_options, scope_label)
    local config = get_module_config(runtime_options or {})
 

@@ -262,7 +262,15 @@ local function normalize_properties_id(props)
       return props
    end
 
-   error("props must be a number or cdata SDL_PropertiesID")
+   if value_type == "table" then
+      local id = rawget(props, "id")
+      local id_type = type(id)
+      if id_type == "number" or id_type == "cdata" then
+         return id
+      end
+   end
+
+   error("props must be a number, cdata SDL_PropertiesID, or table with numeric id")
 end
 
 local function normalize_shader_stage(shader_stage)
