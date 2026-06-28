@@ -1,5 +1,3 @@
-local ffi = require("ffi")
-
 local animator = require("animator")
 local color = require("color")
 local gl = require("gl")
@@ -61,7 +59,7 @@ local cube_mesh = mesh.make_cube {
 function Cube:init()
    self:super().init(self)
    self.program = nil
-   self.vao = 0
+   self.vao = nil
    self.vbo = nil
    self.mvp_location = -1
    self.rotation_x_angle = 0.0
@@ -75,7 +73,6 @@ function Cube:init()
    self.eye = mathx.vec3(0.0, 0.0, -4.5)
    self.target = mathx.vec3(0.0, 0.0, 0.0)
    self.up = mathx.vec3(0.0, 1.0, 0.0)
-   self.gl_vertex_arrays = ffi.new("GLuint[1]")
 end
 
 function Cube:build_mvp(out, aspect)
@@ -117,38 +114,30 @@ function Cube:activate()
       vbo:release()
    end)
 
-   gl.GenVertexArrays(1, self.gl_vertex_arrays)
-   self.vao = self:replace_owned("vao", tonumber(self.gl_vertex_arrays[0]) or 0, function(self_ref, vao)
-      if vao ~= 0 then
-         self_ref.gl_vertex_arrays[0] = vao
-         gl.DeleteVertexArrays(1, self_ref.gl_vertex_arrays)
-      end
+   self.vao = self:replace_owned("vao", glx.VertexArray(), function(_, vao)
+      vao:release()
    end)
-   if self.vao == 0 then
+   if self.vao.id == 0 then
       rig.raise("failed to create OpenGL vertex objects")
    end
 
-   gl.BindVertexArray(self.vao)
+   self.vao:bind()
    self.vbo:set_data(cube_mesh.vertex_blob, gl.STATIC_DRAW)
-
-   gl.EnableVertexAttribArray(0)
-   gl.VertexAttribPointer(
+   self.vao:attribute(
       0,
       3,
       gl.FLOAT,
       gl.FALSE,
       cube_mesh.vertex_stride,
-      ffi.cast("const void *", cube_mesh.attribute_offsets.position)
+      cube_mesh.attribute_offsets.position
    )
-
-   gl.EnableVertexAttribArray(1)
-   gl.VertexAttribPointer(
+   self.vao:attribute(
       1,
       3,
       gl.FLOAT,
       gl.FALSE,
       cube_mesh.vertex_stride,
-      ffi.cast("const void *", cube_mesh.attribute_offsets.color)
+      cube_mesh.attribute_offsets.color
    )
 
    gl.Enable(gl.DEPTH_TEST)
@@ -174,14 +163,14 @@ function Cube:draw(context)
 
    self.program:use()
    gl.UniformMatrix4fv(self.mvp_location, 1, gl.FALSE, self.mvp)
-   gl.BindVertexArray(self.vao)
+   self.vao:bind()
    gl.DrawArrays(gl.TRIANGLES, 0, cube_mesh.vertex_count)
 end
 
 function Cube:release()
    self.program = nil
    self.vbo = nil
-   self.vao = 0
+   self.vao = nil
    self.mvp_location = -1
 end
 

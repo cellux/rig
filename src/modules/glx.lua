@@ -6,10 +6,12 @@ local rig = require("rig")
 local Shader = rig.Class()
 local Program = rig.Class()
 local Buffer = rig.Class()
+local VertexArray = rig.Class()
 
 M.Shader = Shader
 M.Program = Program
 M.Buffer = Buffer
+M.VertexArray = VertexArray
 
 local function ensure_shader(value)
    if getmetatable(value) ~= Shader then
@@ -26,6 +28,12 @@ end
 local function ensure_buffer(value)
    if getmetatable(value) ~= Buffer then
       rig.raise("glx operation expects a glx.Buffer")
+   end
+end
+
+local function ensure_vertex_array(value)
+   if getmetatable(value) ~= VertexArray then
+      rig.raise("glx operation expects a glx.VertexArray")
    end
 end
 
@@ -50,6 +58,13 @@ local function ensure_buffer_live(buffer)
    end
 end
 
+local function ensure_vertex_array_live(vertex_array)
+   ensure_vertex_array(vertex_array)
+   if vertex_array.id == 0 then
+      rig.raise("OpenGL vertex array has been released")
+   end
+end
+
 local function normalize_size(label, value)
    local size = tonumber(value)
    if size == nil then
@@ -70,6 +85,35 @@ local function normalize_usage(value)
       rig.raise("OpenGL buffer usage must be numeric")
    end
    return usage
+end
+
+local function normalize_gl_boolean(label, value)
+   if value == nil then
+      return gl.FALSE
+   end
+
+   local normalized = tonumber(value)
+   if normalized == nil then
+      rig.raise("%s must be numeric", label)
+   end
+
+   if normalized == 0 then
+      return gl.FALSE
+   end
+
+   return gl.TRUE
+end
+
+local function normalize_pointer(value)
+   if value == nil then
+      return ffi.cast("const void *", 0)
+   end
+
+   if type(value) == "number" then
+      return ffi.cast("const void *", value)
+   end
+
+   return value
 end
 
 local function shader_stage_constant(stage)
@@ -401,6 +445,59 @@ function Buffer:release()
    local buffers = ffi.new("GLuint[1]")
    buffers[0] = self.id
    gl.DeleteBuffers(1, buffers)
+   self.id = 0
+end
+
+function VertexArray:init()
+   local arrays = ffi.new("GLuint[1]")
+   gl.GenVertexArrays(1, arrays)
+
+   self.id = tonumber(arrays[0]) or 0
+   if self.id == 0 then
+      rig.raise("failed to create OpenGL vertex array")
+   end
+end
+
+function VertexArray:bind()
+   ensure_vertex_array_live(self)
+   gl.BindVertexArray(self.id)
+   return self
+end
+
+function VertexArray:attribute(index, size, value_type, normalized, stride, pointer)
+   ensure_vertex_array_live(self)
+
+   local resolved_index = normalize_size("OpenGL vertex attribute index", index)
+   local resolved_size = normalize_size("OpenGL vertex attribute size", size)
+   local resolved_type = tonumber(value_type)
+   if resolved_type == nil then
+      rig.raise("OpenGL vertex attribute type must be numeric")
+   end
+   local resolved_stride = normalize_size("OpenGL vertex attribute stride", stride or 0)
+   local resolved_pointer = normalize_pointer(pointer)
+
+   self:bind()
+   gl.EnableVertexAttribArray(resolved_index)
+   gl.VertexAttribPointer(
+      resolved_index,
+      resolved_size,
+      resolved_type,
+      normalize_gl_boolean("OpenGL vertex attribute normalized flag", normalized),
+      resolved_stride,
+      resolved_pointer
+   )
+   return self
+end
+
+function VertexArray:release()
+   ensure_vertex_array(self)
+   if self.id == 0 then
+      return
+   end
+
+   local arrays = ffi.new("GLuint[1]")
+   arrays[0] = self.id
+   gl.DeleteVertexArrays(1, arrays)
    self.id = 0
 end
 

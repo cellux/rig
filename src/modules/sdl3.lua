@@ -1449,7 +1449,6 @@ local shutdown
 local destroy_gl_font_backend_state
 local window_size_width = ffi.new("int[1]")
 local window_size_height = ffi.new("int[1]")
-local gl_font_vertex_arrays = ffi.new("unsigned int[1]")
 local gl_font_textures = ffi.new("unsigned int[1]")
 local gl_font_quad_vertices = ffi.new("float[24]")
 local gl_font_window_width = ffi.new("int[1]")
@@ -1887,10 +1886,8 @@ destroy_gl_font_backend_state = function()
    if state.vbo ~= nil then
       state.vbo:release()
    end
-   if state.vao ~= 0 then
-      local gl = state.gl
-      gl_font_vertex_arrays[0] = state.vao
-      gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
+   if state.vao ~= nil then
+      state.vao:release()
    end
    if state.program ~= nil then
       state.program:release()
@@ -1910,42 +1907,27 @@ local function ensure_gl_font_backend_state()
       vertex_source = gl_font_vertex_source,
       fragment_source = gl_font_fragment_source,
    }
-
-   gl.GenVertexArrays(1, gl_font_vertex_arrays)
-
-   local vao = tonumber(gl_font_vertex_arrays[0]) or 0
+   local vao = glx.VertexArray()
    local vbo = glx.Buffer {
       target = gl.ARRAY_BUFFER,
    }
-   if vao == 0 then
-      vbo:release()
-      program:release()
-      rig.raise("failed to create OpenGL font vertex objects")
-   end
    if vbo.id == 0 then
-      if vao ~= 0 then
-         gl_font_vertex_arrays[0] = vao
-         gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
-      end
+      vao:release()
       program:release()
       rig.raise("failed to create OpenGL font vertex objects")
    end
 
-   gl.BindVertexArray(vao)
+   vao:bind()
    vbo:set_data(nil, gl.DYNAMIC_DRAW, ffi.sizeof(gl_font_quad_vertices))
-
-   gl.EnableVertexAttribArray(0)
-   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 0))
-   gl.EnableVertexAttribArray(1)
-   gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 16, ffi.cast("const void *", 8))
+   vao:attribute(0, 2, gl.FLOAT, gl.FALSE, 16, 0)
+   vao:attribute(1, 2, gl.FLOAT, gl.FALSE, 16, 8)
 
    local atlas_location = program:uniform_location("u_atlas")
    local view_size_location = program:uniform_location("u_view_size")
    local color_location = program:uniform_location("u_color")
    if atlas_location < 0 or view_size_location < 0 or color_location < 0 then
       vbo:release()
-      gl_font_vertex_arrays[0] = vao
-      gl.DeleteVertexArrays(1, gl_font_vertex_arrays)
+      vao:release()
       program:release()
       rig.raise("failed to locate OpenGL font shader uniforms")
    end
@@ -2310,7 +2292,7 @@ function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, dr
    )
    gl.ActiveTexture(gl.TEXTURE0)
    gl.BindTexture(gl.TEXTURE_2D, texture)
-   gl.BindVertexArray(backend_state.vao)
+   backend_state.vao:bind()
    backend_state.vbo:set_data(gl_font_quad_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
 end

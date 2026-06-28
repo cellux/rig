@@ -11,6 +11,7 @@ local observed
 local next_shader_id
 local next_program_id
 local next_buffer_id
+local next_vertex_array_id
 
 local callbacks = {}
 
@@ -147,7 +148,40 @@ callbacks.glDeleteBuffers = ffi.cast("rig_gl__DeleteBuffers", function(n, buffer
    end
 end)
 
-test.case("glx provides high-level OpenGL shader, program, and buffer helpers", function()
+callbacks.glGenVertexArrays = ffi.cast("rig_gl__GenVertexArrays", function(n, arrays)
+   for i = 0, tonumber(n) - 1 do
+      arrays[i] = next_vertex_array_id
+      observed.generated_vertex_arrays[#observed.generated_vertex_arrays + 1] = next_vertex_array_id
+      next_vertex_array_id = next_vertex_array_id + 1
+   end
+end)
+
+callbacks.glBindVertexArray = ffi.cast("rig_gl__BindVertexArray", function(array)
+   observed.bound_vertex_arrays[#observed.bound_vertex_arrays + 1] = tonumber(array)
+end)
+
+callbacks.glDeleteVertexArrays = ffi.cast("rig_gl__DeleteVertexArrays", function(n, arrays)
+   for i = 0, tonumber(n) - 1 do
+      observed.deleted_vertex_arrays[#observed.deleted_vertex_arrays + 1] = tonumber(arrays[i])
+   end
+end)
+
+callbacks.glEnableVertexAttribArray = ffi.cast("rig_gl__EnableVertexAttribArray", function(index)
+   observed.enabled_vertex_attributes[#observed.enabled_vertex_attributes + 1] = tonumber(index)
+end)
+
+callbacks.glVertexAttribPointer = ffi.cast("rig_gl__VertexAttribPointer", function(index, size, value_type, normalized, stride, pointer)
+   observed.vertex_attributes[#observed.vertex_attributes + 1] = {
+      index = tonumber(index),
+      size = tonumber(size),
+      value_type = tonumber(value_type),
+      normalized = tonumber(normalized),
+      stride = tonumber(stride),
+      pointer = tonumber(ffi.cast("uintptr_t", pointer)),
+   }
+end)
+
+test.case("glx provides high-level OpenGL shader, program, buffer, and vertex-array helpers", function()
    resolved_names = {}
    observed = {
       created_shaders = {},
@@ -167,10 +201,16 @@ test.case("glx provides high-level OpenGL shader, program, and buffer helpers", 
       bound_buffers = {},
       buffer_uploads = {},
       deleted_buffers = {},
+      generated_vertex_arrays = {},
+      bound_vertex_arrays = {},
+      deleted_vertex_arrays = {},
+      enabled_vertex_attributes = {},
+      vertex_attributes = {},
    }
    next_shader_id = 101
    next_program_id = 201
    next_buffer_id = 301
+   next_vertex_array_id = 401
 
    rig.register_service_provider("gl.resolver", "glx_test_provider", {
       get_gl_proc_address = function(name)
@@ -230,6 +270,13 @@ test.case("glx provides high-level OpenGL shader, program, and buffer helpers", 
          buffer:set_data(nil, gl.DYNAMIC_DRAW, 16)
          buffer:release()
          observed.buffer_id_after_release = buffer.id
+
+         local vertex_array = glx.VertexArray()
+         observed.vertex_array_id = vertex_array.id
+         vertex_array:bind()
+         vertex_array:attribute(3, 2, gl.FLOAT, gl.TRUE, 24, 12)
+         vertex_array:release()
+         observed.vertex_array_id_after_release = vertex_array.id
       end,
    })
 
@@ -253,6 +300,7 @@ test.case("glx provides high-level OpenGL shader, program, and buffer helpers", 
    test.equal(observed.manual_shader.id, 0)
    test.equal(observed.adopted_program_id_after_release, 0)
    test.equal(observed.buffer_id_after_release, 0)
+   test.equal(observed.vertex_array_id_after_release, 0)
 
    test.equal(observed.buffer_uploads[1].bytes, "ABCD")
    test.equal(observed.buffer_uploads[1].size, 4)
@@ -260,6 +308,12 @@ test.case("glx provides high-level OpenGL shader, program, and buffer helpers", 
    test.equal(observed.buffer_uploads[2].size, 4)
    test.falsey(observed.buffer_uploads[3].has_data)
    test.equal(observed.buffer_uploads[3].size, 16)
+   test.equal(observed.vertex_attributes[1].index, 3)
+   test.equal(observed.vertex_attributes[1].size, 2)
+   test.equal(observed.vertex_attributes[1].value_type, gl.FLOAT)
+   test.equal(observed.vertex_attributes[1].normalized, gl.TRUE)
+   test.equal(observed.vertex_attributes[1].stride, 24)
+   test.equal(observed.vertex_attributes[1].pointer, 12)
 
    local resolved = {}
    for i = 1, #resolved_names do
@@ -270,5 +324,6 @@ test.case("glx provides high-level OpenGL shader, program, and buffer helpers", 
    test.truthy(resolved.glCreateProgram ~= nil)
    test.truthy(resolved.glGetUniformLocation ~= nil)
    test.truthy(resolved.glGenBuffers ~= nil)
+   test.truthy(resolved.glGenVertexArrays ~= nil)
    test.truthy(resolved.glGetString ~= nil)
 end)

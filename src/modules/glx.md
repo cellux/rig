@@ -35,6 +35,14 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
     - `buffer:bind()`
     - `buffer:set_data(data, usage, size?)`
     - `buffer:release()`
+- `glx.VertexArray()`
+  - Creates a vertex-array object.
+  - Fields:
+    - `id`
+  - Methods:
+    - `vao:bind()`
+    - `vao:attribute(index, size, type, normalized?, stride?, pointer?)`
+    - `vao:release()`
 - `glx.get_version_string()`
 
 ## Notes

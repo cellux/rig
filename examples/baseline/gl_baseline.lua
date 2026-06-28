@@ -27,7 +27,6 @@ local profiler_body_color = color.rgb(255, 248, 224)
 local profiler_warn_color = color.rgb(255, 214, 160)
 local profiler_toggle_color = color.rgb(196, 220, 255)
 
-local gl_vertex_arrays = ffi.new("GLuint[1]")
 local rect_vertices = ffi.new("float[12]")
 local find_font_path
 
@@ -121,7 +120,7 @@ local function draw_rect(scene, x, y, w, h, r, g, b, a)
    scene.rect_program:use()
    gl.Uniform2f(scene.rect_view_size_location, window_width, window_height)
    gl.Uniform4f(scene.rect_color_location, r / 255.0, g / 255.0, b / 255.0, a / 255.0)
-   gl.BindVertexArray(scene.rect_vao)
+   scene.rect_vao:bind()
    scene.rect_vbo:set_data(rect_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
 end
@@ -197,7 +196,7 @@ end
 function Scene:init()
    self:super().init(self)
    self.rect_program = nil
-   self.rect_vao = 0
+   self.rect_vao = nil
    self.rect_vbo = nil
    self.rect_view_size_location = -1
    self.rect_color_location = -1
@@ -219,22 +218,17 @@ function Scene:activate()
       vbo:release()
    end)
 
-   gl.GenVertexArrays(1, gl_vertex_arrays)
-   self.rect_vao = self:replace_owned("rect_vao", tonumber(gl_vertex_arrays[0]) or 0, function(_, vao)
-      if vao ~= 0 then
-         gl_vertex_arrays[0] = vao
-         gl.DeleteVertexArrays(1, gl_vertex_arrays)
-      end
+   self.rect_vao = self:replace_owned("rect_vao", glx.VertexArray(), function(_, vao)
+      vao:release()
    end)
 
-   if self.rect_vao == 0 then
+   if self.rect_vao.id == 0 then
       rig.raise("failed to create OpenGL rectangle resources")
    end
 
-   gl.BindVertexArray(self.rect_vao)
+   self.rect_vao:bind()
    self.rect_vbo:bind()
-   gl.EnableVertexAttribArray(0)
-   gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, ffi.sizeof("float") * 2, ffi.cast("const void *", 0))
+   self.rect_vao:attribute(0, 2, gl.FLOAT, gl.FALSE, ffi.sizeof("float") * 2, 0)
 
    self.rect_view_size_location = self.rect_program:uniform_location("u_view_size")
    self.rect_color_location = self.rect_program:uniform_location("u_color")
@@ -278,7 +272,7 @@ end
 
 function Scene:release()
    self.rect_vbo = nil
-   self.rect_vao = 0
+   self.rect_vao = nil
    self.rect_program = nil
    self.rect_view_size_location = -1
    self.rect_color_location = -1
