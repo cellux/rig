@@ -174,6 +174,7 @@ typedef struct SDL_GPUTexture SDL_GPUTexture;
 typedef struct SDL_GPUBuffer SDL_GPUBuffer;
 typedef struct SDL_GPUTransferBuffer SDL_GPUTransferBuffer;
 typedef struct SDL_GPUShader SDL_GPUShader;
+typedef struct SDL_GPUComputePipeline SDL_GPUComputePipeline;
 typedef struct SDL_GPUGraphicsPipeline SDL_GPUGraphicsPipeline;
 typedef struct SDL_GPUCommandBuffer SDL_GPUCommandBuffer;
 typedef struct SDL_GPUCopyPass SDL_GPUCopyPass;
