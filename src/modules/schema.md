@@ -66,6 +66,13 @@ Schemas decode input values into validated, normalized output values.
   - Tries each choice in order until one succeeds.
   - If `description` is provided, it is used as the failure message instead of exposing the last branch error.
 - `schema.has_metatable(expected_metatable, description)`
+- `schema.instance_of(expected_class[, description])`
+  - Uses `expected_class:is_instance(value)`.
+  - Accepts subclass instances.
+- `schema.ffi.struct(ctype, fields[, options])`
+  - Validates a plain Lua spec table and materializes a `ctype[1]` FFI struct bundle.
+- `schema.ffi.array(ctype, item_schema[, options])`
+  - Validates an array and materializes a `ctype[?]` FFI array bundle.
 
 ## Schema Methods
 
@@ -80,6 +87,14 @@ All schema objects provide:
 - `schema_object:where(description, check_fn)`
   - Adds one extra predicate check after the inner schema succeeds.
   - Raises `"... expects <description>"` when `check_fn` returns false.
+
+FFI builder bundles provide:
+
+- `bundle.cdata`
+- `bundle.value`
+- `bundle.length`
+- `bundle.keepalive`
+- `bundle:retain(value)`
 
 ## Examples
 
@@ -129,6 +144,52 @@ local shader_stage_schema = schema.non_empty_string()
       rig.raise("shader stage expects vertex or fragment")
    end)
 ```
+
+FFI struct materialization:
+
+```lua
+local schema = require("schema")
+local ffi = require("ffi")
+
+ffi.cdef[[
+typedef struct ExamplePoint {
+  int x;
+  int y;
+} ExamplePoint;
+
+typedef struct ExampleLine {
+  ExamplePoint start;
+  ExamplePoint finish;
+} ExampleLine;
+]]
+
+local point_schema = schema.ffi.struct("ExamplePoint", {
+   x = schema.integer { coerce = true },
+   y = schema.integer { coerce = true },
+})
+
+local line_schema = schema.ffi.struct("ExampleLine", {
+   start = point_schema,
+   ["end"] = {
+      schema = point_schema,
+      to = "finish",
+   },
+})
+
+local line = schema.assert(line_schema, {
+   start = { x = "1", y = "2" },
+   ["end"] = { x = "3", y = "4" },
+}, "line")
+
+assert(line.value.finish.x == 3)
+```
+
+Field descriptors inside `schema.ffi.struct(...)` may use:
+
+- a schema object directly for same-name assignment
+- `{ schema = ..., to = "field_name" }` for renames
+- `{ schema = ..., count_field = "num_items" }` to derive counts from decoded arrays
+- `{ schema = ..., assign = function(dst, value, bundle, descriptor, path) ... end }` for custom writes and keepalive retention
 
 ## Notes
 

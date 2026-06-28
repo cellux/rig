@@ -30,6 +30,17 @@ local function ensure_schema(value, label)
    return value
 end
 
+local function ensure_non_empty_string(value, label)
+   if type(value) ~= "string" or value == "" then
+      raise((label or "value") .. " must be a non-empty string")
+   end
+   return value
+end
+
+local function get_ffi()
+   return require("ffi")
+end
+
 M.Schema = Class()
 M.DecodeSchema = Class(M.Schema)
 M.OptionalSchema = Class(M.Schema)
@@ -39,8 +50,13 @@ M.RecordSchema = Class(M.Schema)
 M.EnumSchema = Class(M.Schema)
 M.OneOfSchema = Class(M.Schema)
 M.MetatableSchema = Class(M.Schema)
+M.InstanceSchema = Class(M.Schema)
 M.TransformSchema = Class(M.Schema)
 M.CheckedSchema = Class(M.Schema)
+M.ffi = {}
+M.ffi.Bundle = Class()
+M.ffi.StructSchema = Class(M.Schema)
+M.ffi.ArraySchema = Class(M.Schema)
 
 function M.Schema:decode(_, _)
    raise("schema.decode must be implemented by subclasses")
@@ -297,6 +313,25 @@ function M.MetatableSchema:decode(value, path)
    return value
 end
 
+function M.InstanceSchema:init(expected_class, description)
+   if type(expected_class) ~= "table" or type(expected_class.is_instance) ~= "function" then
+      raise("schema.InstanceSchema expects expected_class to provide is_instance(value)")
+   end
+   if description ~= nil and (type(description) ~= "string" or description == "") then
+      raise("schema.InstanceSchema expects description to be a non-empty string if provided")
+   end
+
+   self.expected_class = expected_class
+   self.description = description or "a class instance"
+end
+
+function M.InstanceSchema:decode(value, path)
+   if not self.expected_class:is_instance(value) then
+      fail(path, self.description)
+   end
+   return value
+end
+
 function M.TransformSchema:init(inner, transform_fn)
    self.inner = ensure_schema(inner, "schema.TransformSchema inner")
    if type(transform_fn) ~= "function" then
@@ -457,6 +492,181 @@ function M.table()
    end)
 end
 
+function M.ffi.Bundle:init(kind, cdata, value, length)
+   if kind ~= "struct" and kind ~= "array" then
+      raise("schema.ffi.Bundle kind must be 'struct' or 'array'")
+   end
+
+   self.kind = kind
+   self.cdata = cdata
+   self.value = value
+   self.length = length
+   self.keepalive = {}
+end
+
+function M.ffi.Bundle:retain(value)
+   self.keepalive[#self.keepalive + 1] = value
+   return value
+end
+
+local function is_ffi_bundle(value)
+   return M.ffi.Bundle:is_instance(value)
+end
+
+local function resolve_ffi_assignment_value(value, bundle)
+   if not is_ffi_bundle(value) then
+      return value
+   end
+
+   bundle:retain(value)
+   if value.kind == "struct" then
+      return value.value
+   end
+   return value.cdata
+end
+
+local function field_descriptor_schema()
+   return M.record({
+      schema = M.any(),
+      to = M.non_empty_string():optional(),
+      assign = M.func():optional(),
+      count_field = M.non_empty_string():optional(),
+   })
+end
+
+local function normalize_ffi_field_descriptor(name, field_spec)
+   local normalized = {
+      name = name,
+   }
+
+   if M.Schema:is_instance(field_spec) then
+      normalized.schema = field_spec
+      normalized.to = name
+      return normalized
+   end
+
+   if type(field_spec) ~= "table" then
+      raise("schema.ffi field '" .. name .. "' must be a schema or field descriptor")
+   end
+
+   local descriptor = field_descriptor_schema():assert(
+      field_spec,
+      "schema.ffi field '" .. name .. "'"
+   )
+   normalized.schema = ensure_schema(
+      descriptor.schema,
+      "schema.ffi field '" .. name .. "' schema"
+   )
+   normalized.to = descriptor.to or name
+   normalized.assign = descriptor.assign
+   normalized.count_field = descriptor.count_field
+   return normalized
+end
+
+function M.ffi.StructSchema:init(ctype, fields, options)
+   ensure_non_empty_string(ctype, "schema.ffi.StructSchema ctype")
+   if type(fields) ~= "table" then
+      raise("schema.ffi.StructSchema expects fields to be a table")
+   end
+   if options ~= nil and type(options) ~= "table" then
+      raise("schema.ffi.StructSchema expects options to be a table if provided")
+   end
+
+   self.ctype = ctype
+   self.fields = {}
+   local record_fields = {}
+
+   for key, field_spec in pairs(fields) do
+      if type(key) ~= "string" or key == "" then
+         raise("schema.ffi.StructSchema field names must be non-empty strings")
+      end
+      local descriptor = normalize_ffi_field_descriptor(key, field_spec)
+      self.fields[key] = descriptor
+      record_fields[key] = descriptor.schema
+   end
+
+   self.record_schema = M.record(record_fields, options)
+end
+
+function M.ffi.StructSchema:decode(value, path)
+   local decoded = self.record_schema:decode(value, path)
+   local ffi = get_ffi()
+   local cdata = ffi.new(self.ctype .. "[1]")
+   local bundle = M.ffi.Bundle("struct", cdata, cdata[0], 1)
+
+   for key, descriptor in pairs(self.fields) do
+      local decoded_value = decoded[key]
+      if decoded_value ~= nil then
+         if descriptor.assign ~= nil then
+            descriptor.assign(
+               bundle.value,
+               decoded_value,
+               bundle,
+               descriptor,
+               field_path(path, key)
+            )
+         else
+            bundle.value[descriptor.to] = resolve_ffi_assignment_value(
+               decoded_value,
+               bundle
+            )
+         end
+
+         if descriptor.count_field ~= nil then
+            if is_ffi_bundle(decoded_value) and decoded_value.kind == "array" then
+               bundle.value[descriptor.count_field] = decoded_value.length or 0
+            elseif type(decoded_value) == "table" then
+               bundle.value[descriptor.count_field] = #decoded_value
+            else
+               raise(
+                  field_path(path, key)
+                     .. " count_field requires a decoded table or schema.ffi.array bundle"
+               )
+            end
+         end
+      end
+   end
+
+   return bundle
+end
+
+function M.ffi.ArraySchema:init(ctype, item_schema, options)
+   ensure_non_empty_string(ctype, "schema.ffi.ArraySchema ctype")
+   if options ~= nil and type(options) ~= "table" then
+      raise("schema.ffi.ArraySchema expects options to be a table if provided")
+   end
+
+   self.ctype = ctype
+   self.item_schema = ensure_schema(item_schema, "schema.ffi.ArraySchema item_schema")
+   self.array_schema = M.array(self.item_schema, options)
+end
+
+function M.ffi.ArraySchema:decode(value, path)
+   local decoded = self.array_schema:decode(value, path)
+   local count = #decoded
+   local ffi = get_ffi()
+   local cdata = nil
+   if count > 0 then
+      cdata = ffi.new(self.ctype .. "[?]", count)
+   end
+   local bundle = M.ffi.Bundle("array", cdata, cdata, count)
+
+   for i = 1, count do
+      local item = decoded[i]
+      if is_ffi_bundle(item) then
+         if item.kind ~= "struct" then
+            raise(index_path(path, i) .. " expects a struct-valued schema.ffi bundle")
+         end
+         bundle:retain(item)
+         cdata[i - 1] = item.value
+      else
+         cdata[i - 1] = item
+      end
+   end
+
+   return bundle
+end
+
 function M.optional(inner, default_value)
    return M.OptionalSchema(inner, default_value)
 end
@@ -487,6 +697,18 @@ end
 
 function M.has_metatable(expected_metatable, description)
    return M.MetatableSchema(expected_metatable, description)
+end
+
+function M.instance_of(expected_class, description)
+   return M.InstanceSchema(expected_class, description)
+end
+
+function M.ffi.struct(ctype, fields, options)
+   return M.ffi.StructSchema(ctype, fields, options)
+end
+
+function M.ffi.array(ctype, item_schema, options)
+   return M.ffi.ArraySchema(ctype, item_schema, options)
 end
 
 function M.assert(schema_object, value, path)

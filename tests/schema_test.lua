@@ -1,5 +1,29 @@
 local test = require("test")
+local ffi = require("ffi")
+local rig = require("rig")
 local schema = require("schema")
+
+ffi.cdef[[
+typedef struct rig_schema_test_Point {
+   int x;
+   int y;
+} rig_schema_test_Point;
+
+typedef struct rig_schema_test_Line {
+   rig_schema_test_Point start;
+   rig_schema_test_Point finish;
+} rig_schema_test_Line;
+
+typedef struct rig_schema_test_IntList {
+   int *values;
+   int count;
+} rig_schema_test_IntList;
+
+typedef struct rig_schema_test_Message {
+   const char *text;
+   int len;
+} rig_schema_test_Message;
+]]
 
 test.case("schema number can coerce and constrain values", function()
    local jobs_schema = schema.positive_number {
@@ -147,4 +171,101 @@ test.case("schema has_metatable validates metatable-backed values", function()
    local ok, err = schema.check(schema.has_metatable(mt, "a test instance"), {}, "thing")
    test.falsey(ok)
    test.match(err, "thing expects a test instance")
+end)
+
+test.case("schema instance_of accepts subclass instances", function()
+   local Base = rig.Class()
+   local Child = rig.Class(Base)
+   local value = Child()
+
+   local decoded = schema.assert(
+      schema.instance_of(Base, "a Base instance"),
+      value,
+      "thing"
+   )
+   test.equal(decoded, value)
+
+   local ok, err = schema.check(schema.instance_of(Base, "a Base instance"), {}, "thing")
+   test.falsey(ok)
+   test.match(err, "thing expects a Base instance")
+end)
+
+test.case("schema.ffi.struct populates simple and nested structs", function()
+   local point_schema = schema.ffi.struct("rig_schema_test_Point", {
+      x = schema.integer({
+         coerce = true,
+      }),
+      y = schema.integer({
+         coerce = true,
+      }),
+   })
+   local line_schema = schema.ffi.struct("rig_schema_test_Line", {
+      start = point_schema,
+      ["end"] = {
+         schema = point_schema,
+         to = "finish",
+      },
+   })
+
+   local line = schema.assert(line_schema, {
+      start = {
+         x = "1",
+         y = "2",
+      },
+      ["end"] = {
+         x = "3",
+         y = "4",
+      },
+   }, "line")
+
+   test.equal(line.value.start.x, 1)
+   test.equal(line.value.start.y, 2)
+   test.equal(line.value.finish.x, 3)
+   test.equal(line.value.finish.y, 4)
+   test.equal(#line.keepalive, 2)
+end)
+
+test.case("schema.ffi.array and count_field populate pointer fields", function()
+   local int_array_schema = schema.ffi.array("int", schema.integer({
+      coerce = true,
+   }))
+   local list_schema = schema.ffi.struct("rig_schema_test_IntList", {
+      values = {
+         schema = int_array_schema,
+         count_field = "count",
+      },
+   })
+
+   local list = schema.assert(list_schema, {
+      values = { "4", "5", "6" },
+   }, "list")
+
+   test.equal(list.value.count, 3)
+   test.equal(list.value.values[0], 4)
+   test.equal(list.value.values[1], 5)
+   test.equal(list.value.values[2], 6)
+   test.equal(#list.keepalive, 1)
+end)
+
+test.case("schema.ffi.struct supports custom assign hooks", function()
+   local message_schema = schema.ffi.struct("rig_schema_test_Message", {
+      text = {
+         schema = schema.non_empty_string(),
+         assign = function(dst, value, bundle)
+            local buffer = ffi.new("char[?]", #value + 1)
+            ffi.copy(buffer, value)
+            dst.text = buffer
+            dst.len = #value
+            bundle:retain(buffer)
+         end,
+      },
+   })
+
+   local message = schema.assert(message_schema, {
+      text = "hello",
+   }, "message")
+
+   test.equal(ffi.string(message.value.text), "hello")
+   test.equal(message.value.len, 5)
+   test.equal(#message.keepalive, 1)
 end)
