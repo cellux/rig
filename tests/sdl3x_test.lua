@@ -232,15 +232,26 @@ end)
 test.case("sdl3x.normalize_properties_id accepts raw ids and sdl3x.Properties", function()
    test.equal(sdl3x.normalize_properties_id(nil), 0)
    test.equal(sdl3x.normalize_properties_id(55), 55)
-   test.equal(sdl3x.normalize_properties_id({
-      id = 77,
-   }), 77)
 
    with_sdl3_property_stubs(function()
       local props = sdl3x.Properties()
       test.equal(sdl3x.normalize_properties_id(props), 101)
       props:release()
    end)
+end)
+
+test.case("sdl3x.normalize_properties_id rejects ad hoc props tables", function()
+   local ok, err = pcall(function()
+      sdl3x.normalize_properties_id({
+         id = 77,
+      })
+   end)
+
+   test.falsey(ok)
+   test.match(
+      tostring(err),
+      "props must be a number, cdata SDL_PropertiesID, or sdl3x%.Properties"
+   )
 end)
 
 test.case("sdl3x.create_window builds temporary SDL properties", function()
@@ -294,17 +305,18 @@ test.case("sdl3x.create_window builds temporary SDL properties", function()
    sdl3.GetDisplayUsableBounds = old_get_display_usable_bounds
 end)
 
-test.case("sdl3 GPU builders accept sdl3x.Properties", function()
-   local props = {
-      id = 55,
-   }
-   local buffer_info = sdl3x.build_gpu_buffer_create_info({
-      usage = 5,
-      size = 64,
-      props = props,
-   })
+test.case("sdl3x GPU builders accept sdl3x.Properties", function()
+   with_sdl3_property_stubs(function()
+      local props = sdl3x.Properties()
+      local buffer_info = sdl3x.build_gpu_buffer_create_info({
+         usage = 5,
+         size = 64,
+         props = props,
+      })
 
-   test.equal(tonumber(buffer_info[0].props), 55)
+      test.equal(tonumber(buffer_info[0].props), 101)
+      props:release()
+   end)
 end)
 
 test.case("sdl3x GPU descriptor builders populate FFI structs", function()

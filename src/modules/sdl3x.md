@@ -26,7 +26,6 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 
 - `sdl3x.get_error([fallback])`
 - `sdl3x.free(ptr)`
-- `sdl3x.default_window_props`
 - `sdl3x.normalize_properties_id(props)`
 - `sdl3x.create_window(options)`
 - `sdl3x.Properties`
@@ -96,10 +95,11 @@ Additional `sdl3_gpu` fields:
 - `sdl3x.free(ptr)`
   - Frees SDL-owned memory returned by SDL APIs that require `SDL_free(...)`.
   - Ignores `nil` and `ffi.NULL`.
-- `sdl3x.default_window_props`
-  - Default property table merged by `sdl3x.create_window(...)`.
+- `sdl3x.normalize_properties_id(props)`
+  - Accepts `nil`, a raw numeric/cdata `SDL_PropertiesID`, or an `sdl3x.Properties` instance.
+  - Returns the normalized SDL properties handle.
 - `sdl3x.create_window(options)`
-  - Builds a temporary `sdl3x.Properties`, merges `sdl3x.default_window_props` with `options.window_props`, fills default width/height when omitted, and calls `SDL_CreateWindowWithProperties(...)`.
+  - Builds a temporary `sdl3x.Properties`, merges builtin default window properties with `options.window_props`, fills default width/height when omitted, and calls `SDL_CreateWindowWithProperties(...)`.
 - `sdl3x.resource_scope(device)`
   - Creates an SDL GPU-specific wrapper over `rig.ResourceScope(...)`.
   - Supports generic `adopt`, `replace`, and `release`, plus:

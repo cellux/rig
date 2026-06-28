@@ -14,33 +14,7 @@ require("mesh")
 local shader = require("shader")
 require("time")
 
-local module_config_schema = schema.record({
-   frame_profiler = schema.one_of({
-      schema.boolean(),
-      schema.table(),
-   }, "a boolean or table"):optional(),
-   fullscreen = schema.boolean():optional(),
-   vsync = schema.boolean():optional(),
-})
-
-local function get_module_config(runtime_options)
-   return rig.get_module_config(
-      runtime_options,
-      "sdl3x",
-      module_config_schema,
-      "sdl3x module configuration"
-   )
-end
-
-local function create_frame_profiler(spec)
-   if spec == nil or spec == false then
-      return nil
-   end
-   if spec == true then
-      return profiler.FrameProfiler()
-   end
-   return profiler.FrameProfiler(spec)
-end
+--[ error handling ]
 
 function M.get_error(fallback)
    local err = sdl3.GetError()
@@ -50,11 +24,17 @@ function M.get_error(fallback)
    return ffi.string(err)
 end
 
+--[ utilities ]
+
 function M.free(ptr)
    if ptr ~= nil and ptr ~= ffi.NULL then
       sdl3.free(ffi.cast("void *", ptr))
    end
 end
+
+--[ properties ]
+
+local Properties = rig.Class()
 
 function M.normalize_properties_id(props)
    if props == nil then
@@ -66,22 +46,12 @@ function M.normalize_properties_id(props)
       return props
    end
 
-   if value_type == "table" then
-      local id = rawget(props, "id")
-      local id_type = type(id)
-      if id_type == "number" or id_type == "cdata" then
-         return id
-      end
+   if getmetatable(props) == Properties then
+      return props.id
    end
 
-   rig.raise("props must be a number, cdata SDL_PropertiesID, or table with numeric id")
+   rig.raise("props must be a number, cdata SDL_PropertiesID, or sdl3x.Properties")
 end
-
-M.default_window_props = {
-   [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "rig",
-}
-
-local Properties = rig.Class()
 
 local function ensure_properties(properties)
    if getmetatable(properties) ~= Properties then
@@ -247,6 +217,10 @@ end
 local DEFAULT_WINDOW_WIDTH = 640
 local DEFAULT_WINDOW_HEIGHT = 360
 
+local default_window_props = {
+   [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "rig",
+}
+
 local function resolve_default_window_size()
    local default_width = DEFAULT_WINDOW_WIDTH
    local default_height = DEFAULT_WINDOW_HEIGHT
@@ -270,7 +244,7 @@ local function resolve_default_window_size()
 end
 
 local function build_window_properties(options)
-   local props = Properties(M.default_window_props)
+   local props = Properties(default_window_props)
    local ok, result_or_err = pcall(function()
       local window_props = options.window_props
       if window_props ~= nil then
@@ -2620,6 +2594,34 @@ rig.register_runtime_preset("sdl3_gl", {
       ["shader.stage"] = "sdl3_gl",
    },
 })
+
+local module_config_schema = schema.record({
+   frame_profiler = schema.one_of({
+      schema.boolean(),
+      schema.table(),
+   }, "a boolean or table"):optional(),
+   fullscreen = schema.boolean():optional(),
+   vsync = schema.boolean():optional(),
+})
+
+local function get_module_config(runtime_options)
+   return rig.get_module_config(
+      runtime_options,
+      "sdl3x",
+      module_config_schema,
+      "sdl3x module configuration"
+   )
+end
+
+local function create_frame_profiler(spec)
+   if spec == nil or spec == false then
+      return nil
+   end
+   if spec == true then
+      return profiler.FrameProfiler()
+   end
+   return profiler.FrameProfiler(spec)
+end
 
 local function init_common_state(self, runtime_options, scope_label)
    local config = get_module_config(runtime_options or {})
