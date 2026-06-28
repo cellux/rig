@@ -61,7 +61,6 @@ function Cube:init()
    self.program = nil
    self.vao = nil
    self.vbo = nil
-   self.mvp_location = -1
    self.rotation_x_angle = 0.0
    self.rotation_y_angle = 0.0
    self.rotation_x = mathx.mat4()
@@ -142,11 +141,6 @@ function Cube:activate()
 
    gl.Enable(gl.DEPTH_TEST)
    gl.DepthFunc(gl.LEQUAL)
-
-   self.mvp_location = self.program:uniform_location("u_mvp")
-   if self.mvp_location < 0 then
-      rig.raise("failed to locate OpenGL uniform 'u_mvp'")
-   end
 end
 
 function Cube:update(dt)
@@ -162,7 +156,7 @@ function Cube:draw(context)
    gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
 
    self.program:use()
-   gl.UniformMatrix4fv(self.mvp_location, 1, gl.FALSE, self.mvp)
+   self.program:set_uniform_matrix4fv("u_mvp", self.mvp)
    self.vao:bind()
    gl.DrawArrays(gl.TRIANGLES, 0, cube_mesh.vertex_count)
 end
@@ -171,7 +165,6 @@ function Cube:release()
    self.program = nil
    self.vbo = nil
    self.vao = nil
-   self.mvp_location = -1
 end
 
 function Scene:init()

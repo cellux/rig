@@ -387,6 +387,82 @@ function Program:uniform_location(name)
    return location
 end
 
+function Program:set_uniform1i(name, value)
+   ensure_program_live(self)
+
+   local location = self:uniform_location(name)
+   if location < 0 then
+      rig.raise("failed to locate OpenGL uniform '%s'", name)
+   end
+
+   local resolved_value = tonumber(value)
+   if resolved_value == nil then
+      rig.raise("glx.Program:set_uniform1i expects value to be numeric")
+   end
+
+   gl.Uniform1i(location, resolved_value)
+   return self
+end
+
+function Program:set_uniform2f(name, x, y)
+   ensure_program_live(self)
+
+   local location = self:uniform_location(name)
+   if location < 0 then
+      rig.raise("failed to locate OpenGL uniform '%s'", name)
+   end
+
+   local resolved_x = tonumber(x)
+   local resolved_y = tonumber(y)
+   if resolved_x == nil or resolved_y == nil then
+      rig.raise("glx.Program:set_uniform2f expects numeric x and y values")
+   end
+
+   gl.Uniform2f(location, resolved_x, resolved_y)
+   return self
+end
+
+function Program:set_uniform4f(name, x, y, z, w)
+   ensure_program_live(self)
+
+   local location = self:uniform_location(name)
+   if location < 0 then
+      rig.raise("failed to locate OpenGL uniform '%s'", name)
+   end
+
+   local resolved_x = tonumber(x)
+   local resolved_y = tonumber(y)
+   local resolved_z = tonumber(z)
+   local resolved_w = tonumber(w)
+   if resolved_x == nil or resolved_y == nil or resolved_z == nil or resolved_w == nil then
+      rig.raise("glx.Program:set_uniform4f expects numeric x, y, z, and w values")
+   end
+
+   gl.Uniform4f(location, resolved_x, resolved_y, resolved_z, resolved_w)
+   return self
+end
+
+function Program:set_uniform_matrix4fv(name, value, count, transpose)
+   ensure_program_live(self)
+
+   local location = self:uniform_location(name)
+   if location < 0 then
+      rig.raise("failed to locate OpenGL uniform '%s'", name)
+   end
+   if value == nil then
+      rig.raise("glx.Program:set_uniform_matrix4fv expects value")
+   end
+
+   local resolved_count = count == nil and 1 or normalize_size("OpenGL uniform matrix count", count)
+   gl.UniformMatrix4fv(
+      location,
+      resolved_count,
+      normalize_gl_boolean("OpenGL uniform matrix transpose flag", transpose),
+      value
+   )
+   return self
+end
+
 function Program:use()
    ensure_program_live(self)
    gl.UseProgram(self.id)

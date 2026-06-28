@@ -118,8 +118,8 @@ local function draw_rect(scene, x, y, w, h, r, g, b, a)
    gl.Enable(gl.BLEND)
    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
    scene.rect_program:use()
-   gl.Uniform2f(scene.rect_view_size_location, window_width, window_height)
-   gl.Uniform4f(scene.rect_color_location, r / 255.0, g / 255.0, b / 255.0, a / 255.0)
+   scene.rect_program:set_uniform2f("u_view_size", window_width, window_height)
+   scene.rect_program:set_uniform4f("u_color", r / 255.0, g / 255.0, b / 255.0, a / 255.0)
    scene.rect_vao:bind()
    scene.rect_vbo:set_data(rect_vertices, gl.DYNAMIC_DRAW)
    gl.DrawArrays(gl.TRIANGLES, 0, 6)
@@ -198,8 +198,6 @@ function Scene:init()
    self.rect_program = nil
    self.rect_vao = nil
    self.rect_vbo = nil
-   self.rect_view_size_location = -1
-   self.rect_color_location = -1
    self.moving_square = self:add_child(MovingSquare())
    self.profiler_overlay = self:add_child(ProfilerOverlay())
 end
@@ -229,12 +227,6 @@ function Scene:activate()
    self.rect_vao:bind()
    self.rect_vbo:bind()
    self.rect_vao:attribute(0, 2, gl.FLOAT, gl.FALSE, ffi.sizeof("float") * 2, 0)
-
-   self.rect_view_size_location = self.rect_program:uniform_location("u_view_size")
-   self.rect_color_location = self.rect_program:uniform_location("u_color")
-   if self.rect_view_size_location < 0 or self.rect_color_location < 0 then
-      rig.raise("failed to locate OpenGL rectangle uniforms")
-   end
 end
 
 function Scene:draw()
@@ -274,8 +266,6 @@ function Scene:release()
    self.rect_vbo = nil
    self.rect_vao = nil
    self.rect_program = nil
-   self.rect_view_size_location = -1
-   self.rect_color_location = -1
    self.moving_square = nil
    self.profiler_overlay = nil
 end

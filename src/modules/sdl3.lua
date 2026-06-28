@@ -1932,16 +1932,13 @@ local function ensure_gl_font_backend_state()
    end
 
    program:use()
-   gl.Uniform1i(atlas_location, 0)
+   program:set_uniform1i("u_atlas", 0)
 
    gl_font_backend_state = {
       gl = gl,
       program = program,
       vao = vao,
       vbo = vbo,
-      atlas_location = atlas_location,
-      view_size_location = view_size_location,
-      color_location = color_location,
    }
 
    return gl_font_backend_state
@@ -2273,9 +2270,9 @@ function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, dr
    gl.Enable(gl.BLEND)
    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
    backend_state.program:use()
-   gl.Uniform2f(backend_state.view_size_location, window_width, window_height)
-   gl.Uniform4f(
-      backend_state.color_location,
+   backend_state.program:set_uniform2f("u_view_size", window_width, window_height)
+   backend_state.program:set_uniform4f(
+      "u_color",
       glyph_color.r / 255.0,
       glyph_color.g / 255.0,
       glyph_color.b / 255.0,

@@ -24,6 +24,10 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
     - `uniform_locations`
   - Methods:
     - `program:uniform_location(name)`
+    - `program:set_uniform1i(name, value)`
+    - `program:set_uniform2f(name, x, y)`
+    - `program:set_uniform4f(name, x, y, z, w)`
+    - `program:set_uniform_matrix4fv(name, value, count?, transpose?)`
     - `program:use()`
     - `program:release()`
 - `glx.Buffer { target = ... }`

@@ -106,6 +106,40 @@ callbacks.glUseProgram = ffi.cast("rig_gl__UseProgram", function(program)
    observed.used_programs[#observed.used_programs + 1] = tonumber(program)
 end)
 
+callbacks.glUniform1i = ffi.cast("rig_gl__Uniform1i", function(location, v0)
+   observed.uniform1i_calls[#observed.uniform1i_calls + 1] = {
+      location = tonumber(location),
+      v0 = tonumber(v0),
+   }
+end)
+
+callbacks.glUniform2f = ffi.cast("rig_gl__Uniform2f", function(location, v0, v1)
+   observed.uniform2f_calls[#observed.uniform2f_calls + 1] = {
+      location = tonumber(location),
+      v0 = tonumber(v0),
+      v1 = tonumber(v1),
+   }
+end)
+
+callbacks.glUniform4f = ffi.cast("rig_gl__Uniform4f", function(location, v0, v1, v2, v3)
+   observed.uniform4f_calls[#observed.uniform4f_calls + 1] = {
+      location = tonumber(location),
+      v0 = tonumber(v0),
+      v1 = tonumber(v1),
+      v2 = tonumber(v2),
+      v3 = tonumber(v3),
+   }
+end)
+
+callbacks.glUniformMatrix4fv = ffi.cast("rig_gl__UniformMatrix4fv", function(location, count, transpose, value)
+   observed.uniform_matrix4fv_calls[#observed.uniform_matrix4fv_calls + 1] = {
+      location = tonumber(location),
+      count = tonumber(count),
+      transpose = tonumber(transpose),
+      first = tonumber(value[0]),
+   }
+end)
+
 callbacks.glGetUniformLocation = ffi.cast("rig_gl__GetUniformLocation", function(program, name)
    observed.uniform_location_calls = observed.uniform_location_calls + 1
    observed.uniform_queries[#observed.uniform_queries + 1] = {
@@ -250,6 +284,10 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
       used_programs = {},
       uniform_location_calls = 0,
       uniform_queries = {},
+      uniform1i_calls = {},
+      uniform2f_calls = {},
+      uniform4f_calls = {},
+      uniform_matrix4fv_calls = {},
       generated_buffers = {},
       bound_buffers = {},
       buffer_uploads = {},
@@ -300,6 +338,16 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
          observed.sourced_program_shader_count = #sourced_program.shaders
          observed.version = glx.get_version_string()
          sourced_program:use()
+         sourced_program:set_uniform1i("u_mode", 3)
+         sourced_program:set_uniform2f("u_size", 10.5, 20.25)
+         sourced_program:set_uniform4f("u_color", 0.1, 0.2, 0.3, 0.4)
+         local matrix = ffi.new("float[16]", {
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+         })
+         sourced_program:set_uniform_matrix4fv("u_matrix", matrix)
          sourced_program:release()
 
          observed.sourced_shader_id_1 = sourced_shaders[1].id
@@ -364,9 +412,23 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
    test.equal(observed.sourced_program_shader_count, 2)
    test.equal(observed.cached_location_1, 17)
    test.equal(observed.cached_location_2, 17)
-   test.equal(observed.uniform_location_calls, 1)
+   test.equal(observed.uniform_location_calls, 4)
    test.equal(observed.version, "4.6 test")
    test.equal(observed.version_name, gl.VERSION)
+   test.equal(observed.uniform1i_calls[1].location, 17)
+   test.equal(observed.uniform1i_calls[1].v0, 3)
+   test.equal(observed.uniform2f_calls[1].location, 17)
+   test.truthy(math.abs(observed.uniform2f_calls[1].v0 - 10.5) < 0.000001)
+   test.truthy(math.abs(observed.uniform2f_calls[1].v1 - 20.25) < 0.000001)
+   test.equal(observed.uniform4f_calls[1].location, 17)
+   test.truthy(math.abs(observed.uniform4f_calls[1].v0 - 0.1) < 0.000001)
+   test.truthy(math.abs(observed.uniform4f_calls[1].v1 - 0.2) < 0.000001)
+   test.truthy(math.abs(observed.uniform4f_calls[1].v2 - 0.3) < 0.000001)
+   test.truthy(math.abs(observed.uniform4f_calls[1].v3 - 0.4) < 0.000001)
+   test.equal(observed.uniform_matrix4fv_calls[1].location, 17)
+   test.equal(observed.uniform_matrix4fv_calls[1].count, 1)
+   test.equal(observed.uniform_matrix4fv_calls[1].transpose, gl.FALSE)
+   test.equal(observed.uniform_matrix4fv_calls[1].first, 1)
 
    test.equal(observed.sourced_shader_id_1, 0)
    test.equal(observed.sourced_shader_id_2, 0)
@@ -411,6 +473,10 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
    test.truthy(resolved.glCreateShader ~= nil)
    test.truthy(resolved.glCreateProgram ~= nil)
    test.truthy(resolved.glGetUniformLocation ~= nil)
+   test.truthy(resolved.glUniform1i ~= nil)
+   test.truthy(resolved.glUniform2f ~= nil)
+   test.truthy(resolved.glUniform4f ~= nil)
+   test.truthy(resolved.glUniformMatrix4fv ~= nil)
    test.truthy(resolved.glGenBuffers ~= nil)
    test.truthy(resolved.glGenVertexArrays ~= nil)
    test.truthy(resolved.glGenTextures ~= nil)
