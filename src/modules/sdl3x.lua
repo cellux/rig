@@ -32,13 +32,38 @@ function M.free(ptr)
    end
 end
 
---[ properties ]
+local function shallow_copy_table(values)
+   local copy = {}
+   for key, value in pairs(values) do
+      copy[key] = value
+   end
+   return copy
+end
+
+local function schema_path_label(path)
+   if type(path) == "string" and path ~= "" then
+      return path
+   end
+   return "value"
+end
+
+--[ shared schemas ]
+
+local number_like_schema = schema.number({
+   coerce = true,
+})
+
+local non_negative_integer_schema = schema.integer({
+   coerce = true,
+   min = 0,
+})
+
+--[ Properties ]
 
 local Properties = rig.Class()
-local Window = rig.Class()
 
-function M.normalize_properties_id(props)
-   if props == nil then
+local function normalize_properties_id_value(props, path)
+   if props == nil or props == 0 then
       return 0
    end
 
@@ -51,8 +76,23 @@ function M.normalize_properties_id(props)
       return props.id
    end
 
-   rig.raise("props must be a number, cdata SDL_PropertiesID, or sdl3x.Properties")
+   if path == nil then
+      rig.raise("props must be a number, cdata SDL_PropertiesID, or sdl3x.Properties")
+   end
+
+   rig.raise(
+      schema_path_label(path)
+         .. " expects a number, cdata SDL_PropertiesID, or sdl3x.Properties"
+   )
 end
+
+function M.normalize_properties_id(props)
+   return normalize_properties_id_value(props)
+end
+
+local properties_id_schema = schema.optional(schema.any(), 0):transform(function(value, path)
+   return normalize_properties_id_value(value, path)
+end)
 
 local function ensure_properties(properties)
    if not Properties:is_instance(properties) then
@@ -61,14 +101,6 @@ local function ensure_properties(properties)
    if properties._released then
       rig.raise("sdl3x.Properties has been released")
    end
-end
-
-local function copy_property_values(values)
-   local copy = {}
-   for key, value in pairs(values) do
-      copy[key] = value
-   end
-   return copy
 end
 
 local function set_property_value(properties, name, value)
@@ -193,7 +225,7 @@ end
 
 function Properties:to_table()
    ensure_properties(self)
-   return copy_property_values(self._values)
+   return shallow_copy_table(self._values)
 end
 
 function Properties:clone()
@@ -216,6 +248,8 @@ function Properties:release()
 end
 
 --[ Window ]
+
+local Window = rig.Class()
 
 local function ensure_window(window)
    if not Window:is_instance(window) then
@@ -367,6 +401,8 @@ function Window:release()
    self._released = true
 end
 
+--[ GPU schemas ]
+
 local VERTEX_INPUT_RATES = {
    vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
    instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
@@ -406,54 +442,6 @@ local function normalize_vertex_attribute_format(value)
    end
    return value
 end
-
-local function schema_path_label(path)
-   if type(path) == "string" and path ~= "" then
-      return path
-   end
-   return "value"
-end
-
-local function shallow_copy_table(values)
-   local copy = {}
-   for key, value in pairs(values) do
-      copy[key] = value
-   end
-   return copy
-end
-
-local number_like_schema = schema.number({
-   coerce = true,
-})
-
-local non_negative_integer_schema = schema.integer({
-   coerce = true,
-   min = 0,
-})
-
-local properties_instance_schema = schema.instance_of(
-   Properties,
-   "an sdl3x.Properties"
-)
-
-local properties_id_schema = schema.optional(schema.any(), 0):transform(function(value, path)
-   if value == 0 then
-      return 0
-   end
-
-   local value_type = type(value)
-   if value_type == "number" or value_type == "cdata" then
-      return value
-   end
-   if properties_instance_schema:check(value) then
-      return value.id
-   end
-
-   rig.raise(
-      schema_path_label(path)
-         .. " expects a number, cdata SDL_PropertiesID, or sdl3x.Properties"
-   )
-end)
 
 local vertex_input_rate_schema = schema.one_of({
    schema.non_empty_string():transform(function(value)
@@ -634,6 +622,8 @@ local vertex_input_layout_schema = schema.record({
    buffers = schema.array(vertex_input_layout_buffer_schema),
 })
 
+--[ GPU builders ]
+
 function M.build_vertex_buffer_descriptions(buffers)
    local raw_buffers = schema.assert(
       schema.array(schema.table()),
@@ -747,6 +737,8 @@ function M.build_graphics_pipeline_create_info(spec)
    bundle.create_info = bundle.cdata
    return bundle
 end
+
+--[ GPU shaders and resource scopes ]
 
 local STAGE_TO_SDL = {
    vertex = sdl3.GPU_SHADERSTAGE_VERTEX,
@@ -939,6 +931,8 @@ function M.resource_scope(device)
    return scope
 end
 
+--[ Runtime state ]
+
 local runtime_window = nil
 local runtime_renderer = nil
 local runtime_gpu_device = nil
@@ -951,6 +945,8 @@ local driver_config_schema = schema.map(
    schema.non_empty_string(),
    driver_config_entry_schema
 )
+
+--[ Runtime configuration ]
 
 local function merge_props(base_props, override_props)
    local merged = {}
@@ -1148,6 +1144,8 @@ local gl_font_quad_vertices = ffi.new("float[24]")
 local gl_font_backend_state = nil
 local resize_state = nil
 
+--[ Runtime accessors ]
+
 function M.get_window()
    return runtime_window
 end
@@ -1176,6 +1174,8 @@ function M.get_gl_proc_address(name)
 
    return ptr
 end
+
+--[ SDL runtime setup ]
 
 local function get_window_size()
    if runtime_window == nil then
@@ -1314,6 +1314,8 @@ local function setup_gpu(options)
    resize_state = nil
 end
 
+--[ OpenGL runtime setup ]
+
 local GL_PROFILE_VALUES = {
    core = "GL_CONTEXT_PROFILE_CORE",
    compatibility = "GL_CONTEXT_PROFILE_COMPATIBILITY",
@@ -1361,6 +1363,8 @@ local function normalize_gl_profile(value)
    end
    return gl_attribute_int(value)
 end
+
+--[ OpenGL schemas ]
 
 local gl_attribute_value_schema = schema.one_of({
    schema.boolean(),
@@ -1486,6 +1490,8 @@ local function setup_gl(options)
    resize_state = nil
 end
 
+--[ Runtime teardown and presentation ]
+
 shutdown = function()
    destroy_gl_font_backend_state()
    if runtime_gl_context ~= nil then
@@ -1533,8 +1539,52 @@ local function present_gl()
    end
 end
 
-local font_src_rect = ffi.new("SDL_FRect[1]")
-local font_dst_rect = ffi.new("SDL_FRect[1]")
+--[ Window resize tracking ]
+
+local function get_window_size_in_pixels()
+   if runtime_window == nil then
+      rig.raise("an SDL window must exist before querying pixel size")
+   end
+
+   return runtime_window:get_size_in_pixels()
+end
+
+local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
+   local width, height = get_window_size()
+   local pixel_width, pixel_height = get_window_size_in_pixels()
+   local previous = resize_state
+
+   if previous ~= nil
+      and previous.width == width
+      and previous.height == height
+      and previous.pixel_width == pixel_width
+      and previous.pixel_height == pixel_height
+      and event_name ~= "initial" then
+      return
+   end
+
+   resize_state = {
+      width = width,
+      height = height,
+      pixel_width = pixel_width,
+      pixel_height = pixel_height,
+   }
+
+   local ns = timestamp_ns or 0
+   runtime:handle_event("resize", {
+      type = "resize",
+      event = event_name,
+      width = width,
+      height = height,
+      pixel_width = pixel_width,
+      pixel_height = pixel_height,
+      initial = event_name == "initial",
+      timestamp_ns = ns,
+      timestamp_ms = math.floor(ns / 1000000),
+   })
+end
+
+--[ OpenGL font backend ]
 
 local gl_font_vertex_source = [[
 #version 330 core
@@ -1641,49 +1691,6 @@ local function ensure_gl_font_backend_state()
    return gl_font_backend_state
 end
 
-local function get_window_size_in_pixels()
-   if runtime_window == nil then
-      rig.raise("an SDL window must exist before querying pixel size")
-   end
-
-   return runtime_window:get_size_in_pixels()
-end
-
-local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
-   local width, height = get_window_size()
-   local pixel_width, pixel_height = get_window_size_in_pixels()
-   local previous = resize_state
-
-   if previous ~= nil
-      and previous.width == width
-      and previous.height == height
-      and previous.pixel_width == pixel_width
-      and previous.pixel_height == pixel_height
-      and event_name ~= "initial" then
-      return
-   end
-
-   resize_state = {
-      width = width,
-      height = height,
-      pixel_width = pixel_width,
-      pixel_height = pixel_height,
-   }
-
-   local ns = timestamp_ns or 0
-   runtime:handle_event("resize", {
-      type = "resize",
-      event = event_name,
-      width = width,
-      height = height,
-      pixel_width = pixel_width,
-      pixel_height = pixel_height,
-      initial = event_name == "initial",
-      timestamp_ns = ns,
-      timestamp_ms = math.floor(ns / 1000000),
-   })
-end
-
 local function upload_gl_font_page_texture(page, texture)
    local pixel_count = page.width * page.height
    local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
@@ -1777,6 +1784,11 @@ local function write_gl_font_quad_vertices(packed, x, y, scale)
    gl_font_quad_vertices[22] = packed.u0
    gl_font_quad_vertices[23] = packed.v1
 end
+
+--[ SDL font backend ]
+
+local font_src_rect = ffi.new("SDL_FRect[1]")
+local font_dst_rect = ffi.new("SDL_FRect[1]")
 
 local function upload_font_page_texture(page, texture)
    local pixel_count = page.width * page.height
@@ -2003,6 +2015,8 @@ function sdl3_gl_font_provider.draw_text_run(text_renderer, run, base_x, baselin
    end
 end
 
+--[ GPU and rendering utilities ]
+
 function M.upload_to_gpu_buffer(device, buffer, data)
    if device == nil then
       rig.raise("sdl3x.upload_to_gpu_buffer requires an SDL_GPUDevice*")
@@ -2146,6 +2160,8 @@ function M.clear(r, g, b, a)
       error("failed to clear render target: " .. get_error_string())
    end
 end
+
+--[ Event dispatch and frame drivers ]
 
 local function dispatch_keyboard_event(event, runtime)
    local key_name = sdl3.GetKeyName(event.key)
@@ -2331,6 +2347,8 @@ local function current_time_seconds()
    return tonumber(ticks[0]) / 1000000000.0
 end
 
+--[ Runtime services ]
+
 local sdl3_time_service = {
    now = function()
       return current_time_seconds()
@@ -2443,6 +2461,8 @@ rig.register_service_provider("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_ser
 rig.register_service_provider("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
 rig.register_service_provider("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
 
+--[ Scheduler ]
+
 local function setup_scheduler(label)
    runtime_scheduler = sched.Scheduler(label)
    runtime_scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
@@ -2481,6 +2501,8 @@ local function require_render_callback(mode_options, mode_key, runtime)
    end
    return callback
 end
+
+--[ Runtime drivers ]
 
 rig.register_runtime_driver("sdl3", {
    events = {
@@ -2643,6 +2665,8 @@ rig.register_runtime_preset("sdl3_gl", {
       ["shader.stage"] = "sdl3_gl",
    },
 })
+
+--[ App support ]
 
 local module_config_schema = schema.record({
    frame_profiler = schema.one_of({
@@ -2866,6 +2890,8 @@ local function on_resize_common(self, resize_info)
    self.pixel_height = resize_info.pixel_height or 0
 end
 
+--[ App classes ]
+
 local App = rig.Class(rig.App)
 local SceneApp = rig.Class(animator.App)
 
@@ -2903,6 +2929,8 @@ function SceneApp:before_shutdown()
       rig.raise(err)
    end
 end
+
+--[ App method wiring ]
 
 App.before_frame = before_frame_common
 App.after_frame = after_frame_common
