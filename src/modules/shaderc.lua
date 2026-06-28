@@ -168,41 +168,16 @@ local STATUS_NAMES = {
    [8] = "configuration_error",
 }
 
-local library_state = {
-   library = nil,
-   error = nil,
-}
-
-local function load_library()
-   if library_state.library ~= nil then
-      return library_state.library
-   end
-   if library_state.error ~= nil then
-      error(library_state.error)
-   end
-
-   local candidates = {
+local load_library = rig.create_ffi_library_loader({
+   label = "shaderc",
+   candidates = {
       "shaderc_shared",
       "libshaderc_shared.so.1",
       "libshaderc_shared.so",
       "shaderc_shared.dll",
       "libshaderc_shared.dylib",
-   }
-   local failures = {}
-
-   for _, name in ipairs(candidates) do
-      local ok, lib = pcall(ffi.load, name)
-      if ok then
-         library_state.library = lib
-         return lib
-      end
-      table.insert(failures, tostring(lib))
-   end
-
-   library_state.error = "failed to load shaderc library: "
-      .. table.concat(failures, "; ")
-   error(library_state.error)
-end
+   },
+})
 
 local function status_name(status)
    return STATUS_NAMES[tonumber(status)] or tostring(tonumber(status))

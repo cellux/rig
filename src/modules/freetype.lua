@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 
 ffi.cdef[[
 typedef unsigned char FT_Bool;
@@ -190,39 +191,16 @@ FT_Error FT_Render_Glyph(FT_GlyphSlot slot, FT_Int render_mode);
 FT_Error FT_Get_Kerning(FT_Face face, FT_UInt left_glyph, FT_UInt right_glyph, FT_UInt kern_mode, FT_Vector *akerning);
 ]]
 
-local freetype_library = nil
-local freetype_library_error = nil
-
-local function load_freetype_library()
-   if freetype_library ~= nil then
-      return freetype_library
-   end
-   if freetype_library_error ~= nil then
-      error(freetype_library_error)
-   end
-
-   local candidates = {
+local load_freetype_library = rig.create_ffi_library_loader({
+   label = "FreeType",
+   candidates = {
       "freetype",
       "libfreetype.so.6",
       "libfreetype.so",
       "freetype.dll",
       "libfreetype.dylib",
-   }
-   local failures = {}
-
-   for _, name in ipairs(candidates) do
-      local ok, lib = pcall(ffi.load, name)
-      if ok then
-         freetype_library = lib
-         return lib
-      end
-      table.insert(failures, tostring(lib))
-   end
-
-   freetype_library_error = "failed to load FreeType library: "
-      .. table.concat(failures, "; ")
-   error(freetype_library_error)
-end
+   },
+})
 
 local function export_freetype_function(export_name, symbol_name)
    M[export_name] = function(...)

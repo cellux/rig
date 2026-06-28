@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 
 ffi.cdef[[
 typedef int hb_bool_t;
@@ -87,39 +88,16 @@ int hb_ft_font_get_load_flags(hb_font_t *font);
 void hb_ft_font_changed(hb_font_t *font);
 ]]
 
-local harfbuzz_library = nil
-local harfbuzz_library_error = nil
-
-local function load_harfbuzz_library()
-   if harfbuzz_library ~= nil then
-      return harfbuzz_library
-   end
-   if harfbuzz_library_error ~= nil then
-      error(harfbuzz_library_error)
-   end
-
-   local candidates = {
+local load_harfbuzz_library = rig.create_ffi_library_loader({
+   label = "HarfBuzz",
+   candidates = {
       "harfbuzz",
       "libharfbuzz.so.0",
       "libharfbuzz.so",
       "harfbuzz.dll",
       "libharfbuzz.dylib",
-   }
-   local failures = {}
-
-   for _, name in ipairs(candidates) do
-      local ok, lib = pcall(ffi.load, name)
-      if ok then
-         harfbuzz_library = lib
-         return lib
-      end
-      table.insert(failures, tostring(lib))
-   end
-
-   harfbuzz_library_error = "failed to load HarfBuzz library: "
-      .. table.concat(failures, "; ")
-   error(harfbuzz_library_error)
-end
+   },
+})
 
 local function export_harfbuzz_function(export_name, symbol_name)
    M[export_name] = function(...)

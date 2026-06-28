@@ -429,39 +429,16 @@ bool SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *command_buffer);
 bool SDL_WaitForGPUIdle(SDL_GPUDevice *device);
 ]]
 
-local sdl_library = nil
-local sdl_library_error = nil
-
-local function load_sdl_library()
-   if sdl_library ~= nil then
-      return sdl_library
-   end
-   if sdl_library_error ~= nil then
-      rig.raise(sdl_library_error)
-   end
-
-   local candidates = {
+local load_sdl_library = rig.create_ffi_library_loader({
+   label = "SDL3",
+   candidates = {
       "SDL3",
       "libSDL3.so.0",
       "libSDL3.so",
       "SDL3.dll",
       "libSDL3.dylib",
-   }
-   local failures = {}
-
-   for _, name in ipairs(candidates) do
-      local ok, lib = pcall(ffi.load, name)
-      if ok then
-         sdl_library = lib
-         return lib
-      end
-      table.insert(failures, tostring(lib))
-   end
-
-   sdl_library_error = "failed to load SDL3 library: "
-      .. table.concat(failures, "; ")
-   error(sdl_library_error)
-end
+   },
+})
 
 local function export_sdl_function(export_name, symbol_name)
    M[export_name] = function(...)

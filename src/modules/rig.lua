@@ -92,6 +92,67 @@ function M.fprintln(stream, ...)
    print_values(stream, true, ...)
 end
 
+--[ FFI loaders ]
+
+function M.create_ffi_library_loader(options)
+   if type(options) ~= "table" then
+      raise("rig.create_ffi_library_loader expects an options table")
+   end
+
+   local label = options.label
+   if type(label) ~= "string" or label == "" then
+      raise("rig.create_ffi_library_loader expects label to be a non-empty string")
+   end
+
+   local candidates = options.candidates
+   if type(candidates) ~= "table" then
+      raise("rig.create_ffi_library_loader expects candidates to be an array")
+   end
+
+   local resolved_candidates = {}
+   for i, name in ipairs(candidates) do
+      if type(name) ~= "string" or name == "" then
+         raise(
+            "rig.create_ffi_library_loader expects candidates[%d] to be a non-empty string",
+            i
+         )
+      end
+      resolved_candidates[i] = name
+   end
+   if #resolved_candidates == 0 then
+      raise("rig.create_ffi_library_loader expects at least one candidate")
+   end
+
+   local ffi = require("ffi")
+   local library = nil
+   local load_error = nil
+
+   return function()
+      if library ~= nil then
+         return library
+      end
+      if load_error ~= nil then
+         error(load_error)
+      end
+
+      local failures = {}
+      for i, name in ipairs(resolved_candidates) do
+         local ok, lib = pcall(ffi.load, name)
+         if ok then
+            library = lib
+            return lib
+         end
+         failures[i] = tostring(lib)
+      end
+
+      load_error = ("failed to load %s library: %s"):format(
+         label,
+         table.concat(failures, "; ")
+      )
+      error(load_error)
+   end
+end
+
 --[ ResourceScope ]
 
 M.ResourceScope = M.Class()

@@ -28,6 +28,11 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Alias for `prelude.raise(message[, ...])`.
   - Raises an error without adding Lua stack-location prefixes.
   - If extra arguments are provided, formats the message through `string.format(...)` first.
+- `rig.create_ffi_library_loader(options)`
+  - Builds a lazy `ffi.load(...)` wrapper with cached success and cached failure.
+  - `options.label` is required and is used in the cached error message.
+  - `options.candidates` is a required array of library names to try in order.
+  - Returns a function that loads the first matching candidate on first call and returns the cached library handle on later calls.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.

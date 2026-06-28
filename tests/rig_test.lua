@@ -179,6 +179,71 @@ test.case("rig.tostring respects __tostring on tables", function()
    test.equal(rig.tostring(value), "custom table")
 end)
 
+test.case("rig.create_ffi_library_loader caches success and failure", function()
+   local ffi_module = require("ffi")
+   local old_load = ffi_module.load
+
+   local ok, err = pcall(function()
+      local success_calls = {}
+      local fake_library = {
+         marker = "ok",
+      }
+
+      ffi_module.load = function(name)
+         table.insert(success_calls, name)
+         if name == "rig-test-good" then
+            return fake_library
+         end
+         error("missing " .. name)
+      end
+
+      local load_success = rig.create_ffi_library_loader({
+         label = "rig-test-success",
+         candidates = {
+            "rig-test-missing",
+            "rig-test-good",
+            "rig-test-never-reached",
+         },
+      })
+
+      test.equal(load_success(), fake_library)
+      test.equal(load_success(), fake_library)
+      test.equal(#success_calls, 2)
+      test.equal(success_calls[1], "rig-test-missing")
+      test.equal(success_calls[2], "rig-test-good")
+
+      local failure_calls = {}
+      ffi_module.load = function(name)
+         table.insert(failure_calls, name)
+         error("missing " .. name)
+      end
+
+      local load_failure = rig.create_ffi_library_loader({
+         label = "rig-test-failure",
+         candidates = {
+            "rig-test-bad-a",
+            "rig-test-bad-b",
+         },
+      })
+
+      local failure_ok_1, failure_err_1 = pcall(load_failure)
+      test.falsey(failure_ok_1)
+      test.match(tostring(failure_err_1), "failed to load rig%-test%-failure library:")
+
+      local failure_ok_2, failure_err_2 = pcall(load_failure)
+      test.falsey(failure_ok_2)
+      test.match(tostring(failure_err_2), "failed to load rig%-test%-failure library:")
+      test.equal(#failure_calls, 2)
+      test.equal(failure_calls[1], "rig-test-bad-a")
+      test.equal(failure_calls[2], "rig-test-bad-b")
+   end)
+
+   ffi_module.load = old_load
+   if not ok then
+      error(err)
+   end
+end)
+
 test.case("resource scope releases in the expected order", function()
    local scope = rig.ResourceScope({}, "test scope")
    local released = {}

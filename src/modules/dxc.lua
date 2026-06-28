@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 local schema = require("schema")
 local windows = require("windows")
 
@@ -153,10 +154,15 @@ local dxc_compile_options_schema = schema.record({
    preserve_interface = schema.boolean():optional(),
 })
 
-local dxc_state = {
-   library = nil,
-   error = nil,
-}
+local load_dxc_library = rig.create_ffi_library_loader({
+   label = "dxcompiler",
+   candidates = {
+      "dxcompiler",
+      "libdxcompiler.so",
+      "libdxcompiler.dylib",
+      "dxcompiler.dll",
+   },
+})
 
 local IID_IDxcCompiler3 = ffi.new("IID", {
    0x228B4687,
@@ -206,36 +212,6 @@ local function release_com(obj)
    if obj ~= nil and obj ~= ffi.NULL then
       obj.lpVtbl.Release(obj)
    end
-end
-
-local function load_dxc_library()
-   if dxc_state.library ~= nil then
-      return dxc_state.library
-   end
-   if dxc_state.error ~= nil then
-      error(dxc_state.error)
-   end
-
-   local candidates = {
-      "dxcompiler",
-      "libdxcompiler.so",
-      "libdxcompiler.dylib",
-      "dxcompiler.dll",
-   }
-   local failures = {}
-
-   for _, name in ipairs(candidates) do
-      local ok, lib = pcall(ffi.load, name)
-      if ok then
-         dxc_state.library = lib
-         return lib
-      end
-      table.insert(failures, tostring(lib))
-   end
-
-   dxc_state.error = "failed to load dxcompiler library: "
-      .. table.concat(failures, "; ")
-   error(dxc_state.error)
 end
 
 local function ascii_wide(text, field_name)

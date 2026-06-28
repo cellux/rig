@@ -1,5 +1,6 @@
 local M = ... or {}
 local ffi = require("ffi")
+local rig = require("rig")
 
 ffi.cdef[[
 typedef uint32_t SpvId;
@@ -161,11 +162,6 @@ M.RESOURCE_TYPE_SAMPLED_IMAGE = 7
 M.RESOURCE_TYPE_SEPARATE_IMAGE = 10
 M.RESOURCE_TYPE_SEPARATE_SAMPLERS = 11
 
-local spirvcross_state = {
-   library = nil,
-   error = nil,
-}
-
 local EXECUTION_MODEL_NAMES = {
    [M.EXECUTION_MODEL_VERTEX] = "vertex",
    [M.EXECUTION_MODEL_FRAGMENT] = "fragment",
@@ -194,36 +190,16 @@ local BASETYPE_NAMES = {
    [18] = "sampler",
 }
 
-local function load_library()
-   if spirvcross_state.library ~= nil then
-      return spirvcross_state.library
-   end
-   if spirvcross_state.error ~= nil then
-      error(spirvcross_state.error)
-   end
-
-   local candidates = {
+local load_library = rig.create_ffi_library_loader({
+   label = "spirv-cross-c-shared",
+   candidates = {
       "spirv-cross-c-shared",
       "libspirv-cross-c-shared.so.0",
       "libspirv-cross-c-shared.so",
       "spirv-cross-c-shared.dll",
       "libspirv-cross-c-shared.dylib",
-   }
-   local failures = {}
-
-   for _, name in ipairs(candidates) do
-      local ok, lib = pcall(ffi.load, name)
-      if ok then
-         spirvcross_state.library = lib
-         return lib
-      end
-      table.insert(failures, tostring(lib))
-   end
-
-   spirvcross_state.error = "failed to load spirv-cross-c-shared library: "
-      .. table.concat(failures, "; ")
-   error(spirvcross_state.error)
-end
+   },
+})
 
 local function result_ok(result)
    return tonumber(result) >= 0
