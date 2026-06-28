@@ -6,6 +6,7 @@ Unlike `sdl3`, this module is not a raw binding surface. It provides app classes
 
 ## Exports
 
+- `sdl3x.get_error([fallback])`
 - `sdl3x.Properties`
 - `sdl3x.App`
 - `sdl3x.SceneApp`
@@ -22,6 +23,13 @@ Use `rig.run { module_config = { sdl3x = { ... } } }` for optional SDL app defau
   - Currently supported by `mode = "sdl3"` and `mode = "sdl3_gl"`.
 - `fullscreen`
   - Optional boolean initial fullscreen state applied during `after_setup()`.
+
+## Helpers
+
+- `sdl3x.get_error([fallback])`
+  - Returns the current SDL error string.
+  - Returns `fallback` when SDL has no current error string.
+  - Defaults to `"unknown SDL error"` when no fallback is provided.
 
 ## `sdl3x.Properties`
 

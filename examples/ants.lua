@@ -1,4 +1,5 @@
 local sdl3 = require("sdl3")
+local sdl3x = require("sdl3x")
 local scenegraph = require("scenegraph")
 local animator = require("animator")
 local mathx = require("mathx")
@@ -222,7 +223,7 @@ local function set_color(renderer, draw_color)
       draw_color.b,
       draw_color.a
    ) then
-      rig.raise("failed to set renderer color: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set renderer color: " .. sdl3x.get_error())
    end
 end
 
@@ -240,13 +241,13 @@ local function fill_rect(renderer, x, y, w, h)
    rect[0].w = w
    rect[0].h = h
    if not sdl3.RenderFillRect(renderer, rect) then
-      rig.raise("failed to draw ant segment: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to draw ant segment: " .. sdl3x.get_error())
    end
 end
 
 local function draw_line(renderer, x1, y1, x2, y2)
    if not sdl3.RenderLine(renderer, x1, y1, x2, y2) then
-      rig.raise("failed to draw ant leg: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to draw ant leg: " .. sdl3x.get_error())
    end
 end
 
@@ -834,7 +835,7 @@ function App:after_setup()
    local width_out = ffi.new("int[1]")
    local height_out = ffi.new("int[1]")
    if not sdl3.GetWindowSize(window, width_out, height_out) then
-      rig.raise("failed to query window size: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to query window size: " .. sdl3x.get_error())
    end
 
    window_width = tonumber(width_out[0]) or 0

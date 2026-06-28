@@ -1,4 +1,5 @@
 local sdl3 = require("sdl3")
+local sdl3x = require("sdl3x")
 local scenegraph = require("scenegraph")
 local animator = require("animator")
 local font = require("font")
@@ -160,7 +161,7 @@ function RasterSplit:draw(renderer, raster_texture, raster_phase, layout, split_
       dst_rect[0].w = split_width
       dst_rect[0].h = visible_height
       if not sdl3.RenderTexture(renderer, raster_texture, src_rect, dst_rect) then
-         rig.raise("failed to render raster texture: " .. ffi.string(sdl3.GetError()))
+         rig.raise("failed to render raster texture: " .. sdl3x.get_error())
       end
       return
    end
@@ -177,7 +178,7 @@ function RasterSplit:draw(renderer, raster_texture, raster_phase, layout, split_
    dst_rect[0].w = split_width
    dst_rect[0].h = first_height
    if not sdl3.RenderTexture(renderer, raster_texture, src_rect, dst_rect) then
-      rig.raise("failed to render raster texture head: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to render raster texture head: " .. sdl3x.get_error())
    end
 
    src_rect[0].x = 0
@@ -189,7 +190,7 @@ function RasterSplit:draw(renderer, raster_texture, raster_phase, layout, split_
    dst_rect[0].w = split_width
    dst_rect[0].h = second_height
    if not sdl3.RenderTexture(renderer, raster_texture, src_rect, dst_rect) then
-      rig.raise("failed to render raster texture tail: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to render raster texture tail: " .. sdl3x.get_error())
    end
 end
 
@@ -256,7 +257,7 @@ function RasterSplits:draw(context)
    local visible_height = visible_lines * line_height
 
    if not sdl3.SetTextureAlphaMod(self.texture, math.floor(self.alpha * 255 + 0.5)) then
-      rig.raise("failed to set raster texture alpha modulation: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set raster texture alpha modulation: " .. sdl3x.get_error())
    end
 
    for i = 1, #self.items do
@@ -534,7 +535,7 @@ function Scene:draw(context)
       self.background_color:to_rgba()
    )
    if not sdl3.RenderClear(renderer) then
-      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to clear SDL renderer: " .. sdl3x.get_error())
    end
 end
 
@@ -629,7 +630,7 @@ end
 
 set_draw_color = function(renderer, r, g, b, a)
    if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
-      rig.raise("failed to set renderer color: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set renderer color: " .. sdl3x.get_error())
    end
 end
 
@@ -639,7 +640,7 @@ local function fill_rect(renderer, x, y, w, h)
    draw_rect[0].w = w
    draw_rect[0].h = h
    if not sdl3.RenderFillRect(renderer, draw_rect) then
-      rig.raise("failed to draw rectangle: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to draw rectangle: " .. sdl3x.get_error())
    end
 end
 
@@ -663,17 +664,17 @@ upload_raster_texture = function(renderer, field, line_height)
       texture_height
    )
    if texture == nil or texture == ffi.NULL then
-      rig.raise("failed to create raster texture: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to create raster texture: " .. sdl3x.get_error())
    end
 
    if not sdl3.UpdateTexture(texture, nil, rgba, 4) then
       sdl3.DestroyTexture(texture)
-      rig.raise("failed to upload raster texture: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to upload raster texture: " .. sdl3x.get_error())
    end
 
    if not sdl3.SetTextureBlendMode(texture, sdl3.BLENDMODE_BLEND) then
       sdl3.DestroyTexture(texture)
-      rig.raise("failed to set raster texture blend mode: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set raster texture blend mode: " .. sdl3x.get_error())
    end
 
    return texture, texture_height
@@ -836,7 +837,7 @@ local function set_vsync(enabled)
    local renderer = sdl3.get_renderer()
    local interval = enabled and 1 or 0
    if not sdl3.SetRenderVSync(renderer, interval) then
-      rig.raise("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set renderer vsync: " .. sdl3x.get_error())
    end
    vsync_enabled = enabled
 end
@@ -851,10 +852,10 @@ local function set_fullscreen_enabled(enabled)
       rig.raise("sdl3 runtime did not provide a window")
    end
    if not sdl3.SetWindowFullscreen(window, enabled) then
-      rig.raise("failed to set window fullscreen: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set window fullscreen: " .. sdl3x.get_error())
    end
    if not sdl3.SyncWindow(window) then
-      rig.raise("failed to synchronize fullscreen state: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to synchronize fullscreen state: " .. sdl3x.get_error())
    end
    fullscreen_enabled = enabled
 end

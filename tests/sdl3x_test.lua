@@ -114,6 +114,30 @@ test.case("sdl3x.App stores resize events in app fields", function()
    test.equal(app.pixel_height, 400)
 end)
 
+test.case("sdl3x.get_error returns SDL error text or fallback", function()
+   local old_get_error = sdl3.GetError
+   local ok, err = pcall(function()
+      local message = "stubbed SDL error"
+      local buffer = ffi.new("char[?]", #message + 1)
+      ffi.copy(buffer, message)
+      sdl3.GetError = function()
+         return buffer
+      end
+      test.equal(sdl3x.get_error(), message)
+
+      sdl3.GetError = function()
+         return ffi.NULL
+      end
+      test.equal(sdl3x.get_error("fallback"), "fallback")
+      test.equal(sdl3x.get_error(), "unknown SDL error")
+   end)
+
+   sdl3.GetError = old_get_error
+   if not ok then
+      error(err)
+   end
+end)
+
 test.case("sdl3x.Properties exposes a live props.id and owns SDL properties", function()
    with_sdl3_property_stubs(function(observed)
       local pointer = ffi.new("int[1]")

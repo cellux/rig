@@ -4,6 +4,7 @@ local font = require("font")
 local profiler = require("profiler")
 local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
+local sdl3x = require("sdl3x")
 local ffi = require("ffi")
 
 local Object = scenegraph.Object
@@ -55,7 +56,7 @@ end
 
 local function set_draw_color(renderer, r, g, b, a)
    if not sdl3.SetRenderDrawColor(renderer, r, g, b, a) then
-      rig.raise("failed to set draw color: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set draw color: " .. sdl3x.get_error())
    end
 end
 
@@ -65,7 +66,7 @@ local function fill_rect(renderer, x, y, w, h)
    draw_rect[0].w = w
    draw_rect[0].h = h
    if not sdl3.RenderFillRect(renderer, draw_rect) then
-      rig.raise("failed to fill rect: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to fill rect: " .. sdl3x.get_error())
    end
 end
 
@@ -80,7 +81,7 @@ local function set_vsync(enabled)
    local renderer = sdl3.get_renderer()
    local interval = enabled and 1 or 0
    if not sdl3.SetRenderVSync(renderer, interval) then
-      rig.raise("failed to set renderer vsync: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set renderer vsync: " .. sdl3x.get_error())
    end
    vsync_enabled = enabled
 end
@@ -160,7 +161,7 @@ function Scene:draw(context)
 
    set_draw_color(renderer, 6, 8, 18, 255)
    if not sdl3.RenderClear(renderer) then
-      rig.raise("failed to clear SDL renderer: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to clear SDL renderer: " .. sdl3x.get_error())
    end
 
    set_draw_color(renderer, 24, 28, 44, 255)

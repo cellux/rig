@@ -7,6 +7,7 @@ local glx = require("glx")
 local profiler = require("profiler")
 local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
+local sdl3x = require("sdl3x")
 
 local Object = scenegraph.Object
 local MovingSquare = rig.Class(Object)
@@ -128,7 +129,7 @@ end
 local function set_vsync(enabled)
    local interval = enabled and 1 or 0
    if not sdl3.GL_SetSwapInterval(interval) then
-      rig.raise("failed to set OpenGL swap interval: " .. ffi.string(sdl3.GetError()))
+      rig.raise("failed to set OpenGL swap interval: " .. sdl3x.get_error())
    end
    vsync_enabled = enabled
 end

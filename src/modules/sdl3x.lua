@@ -50,10 +50,10 @@ local function create_frame_profiler(spec)
    return profiler.FrameProfiler(spec)
 end
 
-local function get_error_string()
+function M.get_error(fallback)
    local err = sdl3.GetError()
-   if err == nil or err == ffi.NULL then
-      return "unknown SDL error"
+   if err == nil or err == ffi.NULL or err[0] == 0 then
+      return fallback or "unknown SDL error"
    end
    return ffi.string(err)
 end
@@ -86,7 +86,7 @@ local function set_property_value(properties, name, value)
       if not sdl3.ClearProperty(properties.id, name) then
          rig.raise(("failed to clear property '%s': %s"):format(
             name,
-            get_error_string()
+            M.get_error()
          ))
       end
       properties._values[name] = nil
@@ -119,7 +119,7 @@ local function set_property_value(properties, name, value)
    if not ok then
       rig.raise(("failed to set property '%s': %s"):format(
          name,
-         get_error_string()
+         M.get_error()
       ))
    end
 
@@ -136,7 +136,7 @@ function Properties:init(values)
 
    self.id = sdl3.CreateProperties()
    if self.id == 0 then
-      rig.raise("failed to create SDL properties: " .. get_error_string())
+      rig.raise("failed to create SDL properties: " .. M.get_error())
    end
 
    self._released = false
@@ -298,7 +298,7 @@ local function set_vsync_common(self, enabled)
    if renderer ~= nil then
       local interval = enabled and 1 or 0
       if not sdl3.SetRenderVSync(renderer, interval) then
-         rig.raise("failed to set renderer vsync: " .. get_error_string())
+         rig.raise("failed to set renderer vsync: " .. M.get_error())
       end
       self.vsync_enabled = enabled
       return enabled
@@ -307,7 +307,7 @@ local function set_vsync_common(self, enabled)
    if sdl3.get_gl_context() ~= nil then
       local interval = enabled and 1 or 0
       if not sdl3.GL_SetSwapInterval(interval) then
-         rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
+         rig.raise("failed to set OpenGL swap interval: " .. M.get_error())
       end
       self.vsync_enabled = enabled
       return enabled
@@ -330,10 +330,10 @@ local function set_fullscreen_common(self, enabled)
       rig.raise("sdl3 runtime did not provide a window")
    end
    if not sdl3.SetWindowFullscreen(window, enabled) then
-      rig.raise("failed to set window fullscreen: " .. get_error_string())
+      rig.raise("failed to set window fullscreen: " .. M.get_error())
    end
    if not sdl3.SyncWindow(window) then
-      rig.raise("failed to synchronize fullscreen state: " .. get_error_string())
+      rig.raise("failed to synchronize fullscreen state: " .. M.get_error())
    end
 
    self.fullscreen_enabled = enabled
