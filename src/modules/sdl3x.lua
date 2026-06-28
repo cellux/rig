@@ -541,6 +541,37 @@ local gpu_buffer_create_info_schema = schema.ffi.struct(
    }
 )
 
+local gpu_shader_resource_info_schema = schema.record({
+   num_samplers = non_negative_integer_schema:optional(0),
+   num_storage_textures = non_negative_integer_schema:optional(0),
+   num_storage_buffers = non_negative_integer_schema:optional(0),
+   num_uniform_buffers = non_negative_integer_schema:optional(0),
+})
+
+local gpu_shader_create_info_schema = schema.ffi.struct(
+   "SDL_GPUShaderCreateInfo",
+   {
+      code = {
+         schema = schema.string(),
+         assign = function(dst, value, bundle)
+            local buffer = ffi.new("Uint8[?]", #value)
+            ffi.copy(buffer, value, #value)
+            dst.code = buffer
+            dst.code_size = #value
+            bundle:retain(buffer)
+         end,
+      },
+      entrypoint = schema.string():optional("main"),
+      format = number_like_schema,
+      stage = number_like_schema,
+      num_samplers = non_negative_integer_schema:optional(0),
+      num_storage_textures = non_negative_integer_schema:optional(0),
+      num_storage_buffers = non_negative_integer_schema:optional(0),
+      num_uniform_buffers = non_negative_integer_schema:optional(0),
+      props = properties_id_schema,
+   }
+)
+
 local graphics_pipeline_rasterizer_state_schema = schema.ffi.struct(
    "SDL_GPURasterizerState",
    {
@@ -836,25 +867,29 @@ function M.create_gpu_shader(device, compiled, props)
       rig.raise("compiled shader is missing reflection.resource_info")
    end
 
-   local code_buffer = ffi.new("Uint8[?]", #compiled.bytecode)
-   ffi.copy(code_buffer, compiled.bytecode, #compiled.bytecode)
+   local resource_info = schema.assert(
+      gpu_shader_resource_info_schema,
+      reflection.resource_info,
+      "compiled shader reflection.resource_info"
+   )
 
-   local create_info = ffi.new("SDL_GPUShaderCreateInfo[1]")
-   create_info[0].code_size = #compiled.bytecode
-   create_info[0].code = code_buffer
-   create_info[0].entrypoint = compiled.entrypoint or "main"
-   create_info[0].format = normalize_gpu_shader_format(compiled)
-   create_info[0].stage = shader_stage
-   create_info[0].num_samplers = reflection.resource_info.num_samplers or 0
-   create_info[0].num_storage_textures =
-      reflection.resource_info.num_storage_textures or 0
-   create_info[0].num_storage_buffers =
-      reflection.resource_info.num_storage_buffers or 0
-   create_info[0].num_uniform_buffers =
-      reflection.resource_info.num_uniform_buffers or 0
-   create_info[0].props = M.normalize_properties_id(props)
+   local create_info = schema.assert(
+      gpu_shader_create_info_schema,
+      {
+         code = compiled.bytecode,
+         entrypoint = compiled.entrypoint,
+         format = normalize_gpu_shader_format(compiled),
+         stage = shader_stage,
+         num_samplers = resource_info.num_samplers,
+         num_storage_textures = resource_info.num_storage_textures,
+         num_storage_buffers = resource_info.num_storage_buffers,
+         num_uniform_buffers = resource_info.num_uniform_buffers,
+         props = props,
+      },
+      "sdl3x.create_gpu_shader create_info"
+   )
 
-   local shader_handle = sdl3.CreateGPUShader(device, create_info)
+   local shader_handle = sdl3.CreateGPUShader(device, create_info.cdata)
    if shader_handle == nil then
       rig.raise(M.get_error())
    end

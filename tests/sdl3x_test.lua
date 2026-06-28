@@ -475,6 +475,71 @@ test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    test.truthy(bundle.create_info[0].target_info.has_depth_stencil_target)
 end)
 
+test.case("sdl3x.create_gpu_shader builds SDL_GPUShaderCreateInfo through schema", function()
+   local old_create_gpu_shader = sdl3.CreateGPUShader
+   local observed = nil
+   local device = ffi.cast("SDL_GPUDevice *", 0x1234)
+   local shader = ffi.cast("SDL_GPUShader *", 0x5678)
+
+   local ok, err = pcall(function()
+      sdl3.CreateGPUShader = function(seen_device, create_info)
+         observed = {
+            device = seen_device,
+            code = ffi.string(create_info[0].code, create_info[0].code_size),
+            code_size = tonumber(create_info[0].code_size),
+            entrypoint = ffi.string(create_info[0].entrypoint),
+            format = tonumber(create_info[0].format),
+            stage = tonumber(create_info[0].stage),
+            num_samplers = tonumber(create_info[0].num_samplers),
+            num_storage_textures = tonumber(create_info[0].num_storage_textures),
+            num_storage_buffers = tonumber(create_info[0].num_storage_buffers),
+            num_uniform_buffers = tonumber(create_info[0].num_uniform_buffers),
+            props = tonumber(create_info[0].props),
+         }
+         return shader
+      end
+
+      local result = sdl3x.create_gpu_shader(device, {
+         stage = "vertex",
+         format = "spirv",
+         entrypoint = "vs_main",
+         bytecode = "\1\2\3\4",
+         reflection = {
+            resource_info = {
+               num_uniform_buffers = 2,
+            },
+            resources = {
+               uniform_buffers = {
+                  {
+                     name = "Globals",
+                     set = 1,
+                  },
+               },
+            },
+         },
+      }, 77)
+
+      test.equal(result, shader)
+   end)
+
+   sdl3.CreateGPUShader = old_create_gpu_shader
+   if not ok then
+      error(err)
+   end
+
+   test.equal(observed.device, device)
+   test.equal(observed.code, "\1\2\3\4")
+   test.equal(observed.code_size, 4)
+   test.equal(observed.entrypoint, "vs_main")
+   test.equal(observed.format, tonumber(sdl3.GPU_SHADERFORMAT_SPIRV))
+   test.equal(observed.stage, tonumber(sdl3.GPU_SHADERSTAGE_VERTEX))
+   test.equal(observed.num_samplers, 0)
+   test.equal(observed.num_storage_textures, 0)
+   test.equal(observed.num_storage_buffers, 0)
+   test.equal(observed.num_uniform_buffers, 2)
+   test.equal(observed.props, 77)
+end)
+
 test.case("sdl3x.App wraps render calls with profiler hooks when enabled", function()
    local observed = {}
    local TestApp = rig.Class(sdl3x.App)
