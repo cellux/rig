@@ -27,28 +27,13 @@ local function validate_app_options(options, context_label)
    end
 end
 
-local function normalize_module_config(options)
-   if options == nil then
-      return {}
-   end
-   return schema.assert(module_config_schema, options, "animator module configuration")
-end
-
 local function get_module_config(runtime_options)
-   local module_config = runtime_options.module_config
-   if module_config == nil then
-      return {}
-   end
-   if type(module_config) ~= "table" then
-      rig.raise("rig.run expects options.module_config to be a table if provided")
-   end
-
-   local animator_config = module_config.animator
-   if animator_config == nil then
-      return {}
-   end
-
-   return normalize_module_config(animator_config)
+   return rig.get_module_config(
+      runtime_options,
+      "animator",
+      module_config_schema,
+      "animator module configuration"
+   )
 end
 
 function App:init(options)

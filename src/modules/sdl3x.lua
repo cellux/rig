@@ -14,19 +14,6 @@ require("mesh")
 local shader = require("shader")
 require("time")
 
-local default_font_draw_color = color.WHITE
-
-local function resolve_font_draw_color(value)
-   if value == nil then
-      return default_font_draw_color
-   end
-   if color.is(value) then
-      return value
-   end
-
-   rig.raise("font draw color must be a color.Color if provided")
-end
-
 local module_config_schema = schema.record({
    frame_profiler = schema.one_of({
       schema.boolean(),
@@ -36,31 +23,13 @@ local module_config_schema = schema.record({
    vsync = schema.boolean():optional(),
 })
 
-local DEFAULT_WINDOW_WIDTH = 640
-local DEFAULT_WINDOW_HEIGHT = 360
-
-local function normalize_module_config(options)
-   if options == nil then
-      return {}
-   end
-   return schema.assert(module_config_schema, options, "sdl3x module configuration")
-end
-
 local function get_module_config(runtime_options)
-   local module_config = runtime_options.module_config
-   if module_config == nil then
-      return {}
-   end
-   if type(module_config) ~= "table" then
-      rig.raise("rig.run expects options.module_config to be a table if provided")
-   end
-
-   local sdl3x_config = module_config.sdl3x
-   if sdl3x_config == nil then
-      return {}
-   end
-
-   return normalize_module_config(sdl3x_config)
+   return rig.get_module_config(
+      runtime_options,
+      "sdl3x",
+      module_config_schema,
+      "sdl3x module configuration"
+   )
 end
 
 local function create_frame_profiler(spec)
@@ -274,6 +243,9 @@ function Properties:release()
    self._values = {}
    self._released = true
 end
+
+local DEFAULT_WINDOW_WIDTH = 640
+local DEFAULT_WINDOW_HEIGHT = 360
 
 local function resolve_default_window_size()
    local default_width = DEFAULT_WINDOW_WIDTH
@@ -1867,6 +1839,19 @@ function sdl3_font_provider.release_text_renderer(text_renderer)
       state.textures[i] = nil
       state.revisions[i] = nil
    end
+end
+
+local default_font_draw_color = color.WHITE
+
+local function resolve_font_draw_color(value)
+   if value == nil then
+      return default_font_draw_color
+   end
+   if color.is(value) then
+      return value
+   end
+
+   rig.raise("font draw color must be a color.Color if provided")
 end
 
 function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)

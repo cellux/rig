@@ -1,6 +1,7 @@
 local test = require("test")
 local uv = require("uv")
 local repr = require("repr")
+local schema = require("schema")
 
 test.case("rig globals are available", function()
    test.equal(type(rig), "table")
@@ -242,6 +243,32 @@ test.case("rig.create_ffi_library_loader caches success and failure", function()
    if not ok then
       error(err)
    end
+end)
+
+test.case("rig.get_module_config validates one module config with schema defaults", function()
+   local config = rig.get_module_config({
+      module_config = {
+         demo = {},
+      },
+   }, "demo", schema.record({
+      enabled = schema.boolean():optional(true),
+   }), "demo module configuration")
+
+   test.equal(config.enabled, true)
+end)
+
+test.case("rig.get_module_config rejects non-table module_config", function()
+   local ok, err = pcall(function()
+      rig.get_module_config({
+         module_config = "bad",
+      }, "demo", schema.record({}), "demo module configuration")
+   end)
+
+   test.falsey(ok)
+   test.match(
+      tostring(err),
+      "rig%.run expects options%.module_config to be a table if provided"
+   )
 end)
 
 test.case("resource scope releases in the expected order", function()

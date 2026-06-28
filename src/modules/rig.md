@@ -33,6 +33,11 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `options.label` is required and is used in the cached error message.
   - `options.candidates` is a required array of library names to try in order.
   - Returns a function that loads the first matching candidate on first call and returns the cached library handle on later calls.
+- `rig.get_module_config(options, module_id, config_schema[, context_label])`
+  - Reads `options.module_config[module_id]`, validates it with `schema.assert(...)`, and returns the normalized table.
+  - Missing `options`, missing `options.module_config`, and missing `options.module_config[module_id]` are treated as `{}` and still validated through the schema.
+  - Raises if `options.module_config` is present but not a table.
+  - `context_label` defaults to `"<module_id> module configuration"`.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.

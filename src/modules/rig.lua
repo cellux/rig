@@ -153,6 +153,40 @@ function M.create_ffi_library_loader(options)
    end
 end
 
+function M.get_module_config(options, module_id, config_schema, context_label)
+   if options == nil then
+      options = {}
+   elseif type(options) ~= "table" then
+      raise("rig.get_module_config expects options to be a table if provided")
+   end
+   if type(module_id) ~= "string" or module_id == "" then
+      raise("rig.get_module_config expects module_id to be a non-empty string")
+   end
+   if config_schema == nil then
+      raise("rig.get_module_config expects config_schema")
+   end
+
+   local label = context_label or (module_id .. " module configuration")
+   if type(label) ~= "string" or label == "" then
+      raise("rig.get_module_config expects context_label to be a non-empty string if provided")
+   end
+
+   local module_config = options.module_config
+   if module_config == nil then
+      return schema.assert(config_schema, {}, label)
+   end
+   if type(module_config) ~= "table" then
+      raise("rig.run expects options.module_config to be a table if provided")
+   end
+
+   local raw_config = module_config[module_id]
+   if raw_config == nil then
+      raw_config = {}
+   end
+
+   return schema.assert(config_schema, raw_config, label)
+end
+
 --[ ResourceScope ]
 
 M.ResourceScope = M.Class()

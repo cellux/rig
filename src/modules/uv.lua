@@ -91,19 +91,12 @@ local function normalize_module_config(options)
 end
 
 local function get_uv_module_config(options)
-   local module_config = options.module_config
-   if module_config == nil then
-      return {}
-   end
-   if type(module_config) ~= "table" then
-      rig.raise("rig.run expects options.module_config to be a table if provided")
-   end
-
-   local uv_config = module_config.uv
-   if uv_config == nil then
-      return {}
-   end
-   return normalize_module_config(uv_config)
+   return rig.get_module_config(
+      options,
+      "uv",
+      uv_module_config_schema,
+      "uv module configuration"
+   )
 end
 
 local function read_clock(clock_id, label)
