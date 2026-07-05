@@ -1,6 +1,7 @@
 local M = ... or {}
 local prelude = require("prelude")
 local Class = prelude.Class
+local is_class = prelude.is_class
 local raise = prelude.raise
 local set = prelude.set
 
@@ -297,8 +298,8 @@ function M.OneOfSchema:decode(value, path)
 end
 
 function M.InstanceSchema:init(expected_class, description)
-   if type(expected_class) ~= "table" or type(expected_class.is_instance) ~= "function" then
-      raise("schema.InstanceSchema expects expected_class to provide is_instance(value)")
+   if not is_class(expected_class) then
+      raise("schema.InstanceSchema expects expected_class to be a Rig class")
    end
    if description ~= nil and (type(description) ~= "string" or description == "") then
       raise("schema.InstanceSchema expects description to be a non-empty string if provided")
