@@ -33,6 +33,7 @@ Schemas decode input values into validated, normalized output values.
     - `non_empty = true`
     - `pattern = "..."`
 - `schema.non_empty_string()`
+- `schema.string_lookup(mapping[, label])`
 - `schema.number(options?)`
   - Supports:
     - `coerce = true`

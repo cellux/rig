@@ -461,6 +461,32 @@ test.case("sdl3x vertex input state builder retains descriptor storage", functio
    test.equal(#bundle.keepalive, 2)
 end)
 
+test.case("sdl3x vertex input state builder rejects unsupported numeric input rates", function()
+   local ok, err = pcall(function()
+      sdl3x.build_vertex_input_state({
+         buffers = {
+            {
+               pitch = 24,
+               input_rate = 12345,
+               attributes = {
+                  {
+                     location = 0,
+                     format = "float3",
+                     offset = 0,
+                  },
+               },
+            },
+         },
+      })
+   end)
+
+   test.falsey(ok)
+   test.match(
+      tostring(err),
+      "sdl3x%.build_vertex_input_state layout%.buffers%[1%]%.input_rate expects a vertex input rate"
+   )
+end)
+
 test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    local bundle = sdl3x.build_graphics_pipeline_create_info({
       primitive_type = 3,

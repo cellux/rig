@@ -387,6 +387,31 @@ function M.non_empty_string()
    }
 end
 
+function M.string_lookup(mapping, label)
+   if type(mapping) ~= "table" then
+      raise("schema.string_lookup expects mapping to be a table")
+   end
+   if label ~= nil and (type(label) ~= "string" or label == "") then
+      raise("schema.string_lookup expects label to be a non-empty string if provided")
+   end
+
+   for key in pairs(mapping) do
+      if type(key) ~= "string" or key == "" then
+         raise("schema.string_lookup mapping keys must be non-empty strings")
+      end
+   end
+
+   local value_label = label or "string value"
+
+   return M.non_empty_string():transform(function(value)
+      local normalized = mapping[value]
+      if normalized == nil then
+         raise("unsupported " .. value_label .. " '" .. value .. "'")
+      end
+      return normalized
+   end)
+end
+
 local function validate_number_schema_options(label, opts)
    if type(opts) ~= "table" then
       raise(label .. " expects options to be a table if provided")

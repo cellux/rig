@@ -403,6 +403,14 @@ local VERTEX_INPUT_RATES = {
    instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
 }
 
+local vertex_input_rate_schema = schema.one_of({
+   schema.string_lookup(VERTEX_INPUT_RATES, "vertex input rate"),
+   schema.enum({
+      sdl3.GPU_VERTEXINPUTRATE_VERTEX,
+      sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
+   }),
+}, "a vertex input rate")
+
 local VERTEX_ATTRIBUTE_FORMATS = {
    float = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
    float2 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
@@ -410,45 +418,8 @@ local VERTEX_ATTRIBUTE_FORMATS = {
    float4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
 }
 
-local function normalize_vertex_input_rate(value)
-   if type(value) == "string" then
-      local normalized = VERTEX_INPUT_RATES[value]
-      if normalized == nil then
-         rig.raise("unsupported vertex input rate '" .. value .. "'")
-      end
-      return normalized
-   end
-   if type(value) ~= "number" then
-      rig.raise("vertex input rate must be a string or number")
-   end
-   return value
-end
-
-local function normalize_vertex_attribute_format(value)
-   if type(value) == "string" then
-      local normalized = VERTEX_ATTRIBUTE_FORMATS[value]
-      if normalized == nil then
-         rig.raise("unsupported vertex attribute format '" .. value .. "'")
-      end
-      return normalized
-   end
-   if type(value) ~= "number" then
-      rig.raise("vertex attribute format must be a string or number")
-   end
-   return value
-end
-
-local vertex_input_rate_schema = schema.one_of({
-   schema.non_empty_string():transform(function(value)
-      return normalize_vertex_input_rate(value)
-   end),
-   schema.number_like(),
-}, "a string or number")
-
 local vertex_attribute_format_schema = schema.one_of({
-   schema.non_empty_string():transform(function(value)
-      return normalize_vertex_attribute_format(value)
-   end),
+   schema.string_lookup(VERTEX_ATTRIBUTE_FORMATS, "vertex attribute format"),
    schema.number_like(),
 }, "a string or number")
 
@@ -458,7 +429,7 @@ local gpu_vertex_buffer_description_schema = schema.ffi.struct(
       slot = schema.integer_like():non_negative(),
       pitch = schema.integer_like():non_negative(),
       input_rate = vertex_input_rate_schema:optional(
-         normalize_vertex_input_rate("vertex")
+         VERTEX_INPUT_RATES.vertex
       ),
       instance_step_rate = schema.integer_like():non_negative():optional(0),
    }
@@ -674,7 +645,7 @@ local vertex_input_layout_buffer_schema = schema.record({
    slot = schema.integer_like():non_negative():optional(),
    pitch = schema.integer_like():non_negative(),
    input_rate = vertex_input_rate_schema:optional(
-      normalize_vertex_input_rate("vertex")
+      VERTEX_INPUT_RATES.vertex
    ),
    instance_step_rate = schema.integer_like():non_negative():optional(0),
    attributes = schema.array(gpu_vertex_attribute_source_schema),
@@ -1385,9 +1356,9 @@ end
 --[ OpenGL runtime setup ]--
 
 local GL_PROFILE_VALUES = {
-   core = "GL_CONTEXT_PROFILE_CORE",
-   compatibility = "GL_CONTEXT_PROFILE_COMPATIBILITY",
-   es = "GL_CONTEXT_PROFILE_ES",
+   core = sdl3.GL_CONTEXT_PROFILE_CORE,
+   compatibility = sdl3.GL_CONTEXT_PROFILE_COMPATIBILITY,
+   es = sdl3.GL_CONTEXT_PROFILE_ES,
 }
 
 local GL_ATTRIBUTE_VALUES = {
@@ -1421,17 +1392,6 @@ local function gl_attribute_int(value)
    return normalized
 end
 
-local function normalize_gl_profile(value)
-   if type(value) == "string" then
-      local field = GL_PROFILE_VALUES[value]
-      if field == nil then
-         rig.raise("unsupported OpenGL context profile '" .. value .. "'")
-      end
-      return sdl3[field]
-   end
-   return gl_attribute_int(value)
-end
-
 --[ OpenGL schemas ]--
 
 local gl_attribute_value_schema = schema.one_of({
@@ -1442,9 +1402,7 @@ local gl_attribute_value_schema = schema.one_of({
 end)
 
 local gl_context_profile_schema = schema.one_of({
-   schema.non_empty_string():transform(function(value)
-      return normalize_gl_profile(value)
-   end),
+   schema.string_lookup(GL_PROFILE_VALUES, "OpenGL context profile"),
    gl_attribute_value_schema,
 }, "a supported OpenGL context profile or boolean/number")
 

@@ -152,6 +152,19 @@ test.case("schema transform injects caller normalization logic", function()
    test.equal(schema.assert(trim_and_upper, "  hello  ", "greeting"), "HELLO")
 end)
 
+test.case("schema string_lookup maps known strings and rejects unknown ones", function()
+   local mode_schema = schema.string_lookup({
+      alpha = 1,
+      beta = 2,
+   }, "mode")
+
+   test.equal(schema.assert(mode_schema, "alpha", "value"), 1)
+
+   local ok, err = schema.check(mode_schema, "gamma", "value")
+   test.falsey(ok)
+   test.match(err, "unsupported mode 'gamma'")
+end)
+
 test.case("schema transform can normalize whole records", function()
    local point_schema = schema.record({
       x = schema.number(),
