@@ -66,6 +66,7 @@ Schemas decode input values into validated, normalized output values.
   - Rejects extra fields by default.
 - `schema.enum(values)`
 - `schema.enum_values(mapping)`
+- `schema.named_value(mapping[, label])`
 - `schema.one_of(choices[, description])`
   - Tries each choice in order until one succeeds.
   - If `description` is provided, it is used as the failure message instead of exposing the last branch error.

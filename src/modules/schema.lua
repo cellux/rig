@@ -888,6 +888,19 @@ function M.enum_values(mapping)
    return M.EnumSchema(values)
 end
 
+function M.named_value(mapping, label)
+   if label ~= nil and (type(label) ~= "string" or label == "") then
+      raise("schema.named_value expects label to be a non-empty string if provided")
+   end
+
+   local description = label ~= nil and ("a " .. label) or "a named value"
+
+   return M.one_of({
+      M.string_lookup(mapping, label),
+      M.enum_values(mapping),
+   }, description)
+end
+
 function M.one_of(choices, description)
    return M.OneOfSchema(choices, description)
 end

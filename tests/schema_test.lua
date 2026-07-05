@@ -71,6 +71,20 @@ test.case("schema enum_values builds an enum from mapping values", function()
    test.match(err, "kind expects one of 1, 2")
 end)
 
+test.case("schema named_value accepts mapping keys and mapped values", function()
+   local mode_schema = schema.named_value({
+      alpha = 1,
+      beta = 2,
+   }, "mode")
+
+   test.equal(schema.assert(mode_schema, "alpha", "mode"), 1)
+   test.equal(schema.assert(mode_schema, 2, "mode"), 2)
+
+   local ok, err = schema.check(mode_schema, "gamma", "mode")
+   test.falsey(ok)
+   test.match(err, "mode expects a mode")
+end)
+
 test.case("schema positive_integer coerces integers and rejects non-positive or fractional values", function()
    local history_schema = schema.integer_like():positive()
 

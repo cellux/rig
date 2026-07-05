@@ -398,27 +398,23 @@ local function ensure_gpu_shader_live(shader)
    end
 end
 
-local VERTEX_INPUT_RATES = {
-   vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
-   instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
-}
+M.VertexInputRate = schema.named_value(
+   {
+      vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
+      instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
+   },
+   "vertex input rate"
+)
 
-M.VertexInputRate = schema.one_of({
-   schema.string_lookup(VERTEX_INPUT_RATES, "vertex input rate"),
-   schema.enum_values(VERTEX_INPUT_RATES),
-}, "a vertex input rate")
-
-local VERTEX_ATTRIBUTE_FORMATS = {
-   float = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
-   float2 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
-   float3 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
-   float4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
-}
-
-M.VertexAttributeFormat = schema.one_of({
-   schema.string_lookup(VERTEX_ATTRIBUTE_FORMATS, "vertex attribute format"),
-   schema.enum_values(VERTEX_ATTRIBUTE_FORMATS),
-}, "a vertex attribute format")
+M.VertexAttributeFormat = schema.named_value(
+   {
+      float = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
+      float2 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
+      float3 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
+      float4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
+   },
+   "vertex attribute format"
+)
 
 local GPUVertexBufferDescription = schema.ffi.struct(
    "SDL_GPUVertexBufferDescription",
@@ -426,7 +422,7 @@ local GPUVertexBufferDescription = schema.ffi.struct(
       slot = schema.integer_like():non_negative(),
       pitch = schema.integer_like():non_negative(),
       input_rate = M.VertexInputRate:optional(
-         VERTEX_INPUT_RATES.vertex
+         sdl3.GPU_VERTEXINPUTRATE_VERTEX
       ),
       instance_step_rate = schema.integer_like():non_negative():optional(0),
    }
@@ -642,7 +638,7 @@ local VertexInputLayoutBuffer = schema.record({
    slot = schema.integer_like():non_negative():optional(),
    pitch = schema.integer_like():non_negative(),
    input_rate = M.VertexInputRate:optional(
-      VERTEX_INPUT_RATES.vertex
+      sdl3.GPU_VERTEXINPUTRATE_VERTEX
    ),
    instance_step_rate = schema.integer_like():non_negative():optional(0),
    attributes = schema.array(GPUVertexAttributeSource),
