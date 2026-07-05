@@ -42,6 +42,7 @@ local function get_ffi()
 end
 
 M.Schema = Class()
+
 M.DecodeSchema = Class(M.Schema)
 M.OptionalSchema = Class(M.Schema)
 M.ArraySchema = Class(M.Schema)
@@ -52,14 +53,16 @@ M.OneOfSchema = Class(M.Schema)
 M.MetatableSchema = Class(M.Schema)
 M.InstanceSchema = Class(M.Schema)
 M.TransformSchema = Class(M.Schema)
-M.CheckedSchema = Class(M.Schema)
+M.PredicateSchema = Class(M.Schema)
+
 M.ffi = {}
+
 M.ffi.Bundle = Class()
 M.ffi.StructSchema = Class(M.Schema)
 M.ffi.ArraySchema = Class(M.Schema)
 
-function M.Schema:decode(_, _)
-   raise("schema.decode must be implemented by subclasses")
+function M.Schema:decode(value, path)
+   raise("Schema:decode must be implemented by subclasses")
 end
 
 function M.Schema:check(value, path)
@@ -90,8 +93,8 @@ function M.Schema:transform(transform_fn)
    return M.TransformSchema(self, transform_fn)
 end
 
-function M.Schema:where(description, check_fn)
-   return M.CheckedSchema(self, description, check_fn)
+function M.Schema:where(description, predicate)
+   return M.PredicateSchema(self, description, predicate)
 end
 
 function M.DecodeSchema:init(description, decode_fn)
@@ -223,7 +226,7 @@ function M.RecordSchema:decode(value, path)
    for key, field_schema in pairs(self.fields) do
       local field_value = rawget(value, key)
       local decoded = field_schema:decode(field_value, field_path(path, key))
-      if decoded ~= nil or field_value ~= nil then
+      if decoded ~= nil then
          normalized[key] = decoded
       end
    end
@@ -345,21 +348,21 @@ function M.TransformSchema:decode(value, path)
    return self.transform_fn(decoded, path)
 end
 
-function M.CheckedSchema:init(inner, description, check_fn)
-   self.inner = ensure_schema(inner, "schema.CheckedSchema inner")
+function M.PredicateSchema:init(inner, description, predicate)
+   self.inner = ensure_schema(inner, "schema.PredicateSchema inner")
    if type(description) ~= "string" or description == "" then
-      raise("schema.CheckedSchema expects a non-empty string description")
+      raise("schema.PredicateSchema expects a non-empty string description")
    end
-   if type(check_fn) ~= "function" then
-      raise("schema.CheckedSchema expects a check function")
+   if type(predicate) ~= "function" then
+      raise("schema.PredicateSchema expects a predicate function")
    end
    self.description = description
-   self.check_fn = check_fn
+   self.predicate = predicate
 end
 
-function M.CheckedSchema:decode(value, path)
+function M.PredicateSchema:decode(value, path)
    local decoded = self.inner:decode(value, path)
-   if not self.check_fn(decoded, path) then
+   if not self.predicate(decoded, path) then
       fail(path, self.description)
    end
    return decoded

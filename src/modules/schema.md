@@ -84,9 +84,9 @@ All schema objects provide:
 - `schema_object:optional_with(default_factory)`
 - `schema_object:transform(transform_fn)`
   - Applies caller-supplied normalization after the inner schema succeeds.
-- `schema_object:where(description, check_fn)`
+- `schema_object:where(description, predicate)`
   - Adds one extra predicate check after the inner schema succeeds.
-  - Raises `"... expects <description>"` when `check_fn` returns false.
+  - Raises `"... expects <description>"` when `predicate` returns false.
 
 FFI builder bundles provide:
 
