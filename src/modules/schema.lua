@@ -860,6 +860,34 @@ function M.enum(values)
    return M.EnumSchema(values)
 end
 
+function M.enum_values(mapping)
+   if type(mapping) ~= "table" then
+      raise("schema.enum_values expects mapping to be a table")
+   end
+
+   local keys = {}
+   for key in pairs(mapping) do
+      keys[#keys + 1] = key
+   end
+
+   table.sort(keys, function(a, b)
+      return tostring(a) < tostring(b)
+   end)
+
+   local values = {}
+   local seen = {}
+
+   for i = 1, #keys do
+      local value = mapping[keys[i]]
+      if not seen[value] then
+         seen[value] = true
+         values[#values + 1] = value
+      end
+   end
+
+   return M.EnumSchema(values)
+end
+
 function M.one_of(choices, description)
    return M.OneOfSchema(choices, description)
 end

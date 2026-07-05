@@ -56,6 +56,21 @@ test.case("schema objects are callable", function()
    test.equal(schema.number_like():positive()("4", "jobs"), 4)
 end)
 
+test.case("schema enum_values builds an enum from mapping values", function()
+   local kind_schema = schema.enum_values({
+      beta = 2,
+      alpha = 1,
+      alias = 1,
+   })
+
+   test.equal(schema.assert(kind_schema, 1, "kind"), 1)
+   test.equal(schema.assert(kind_schema, 2, "kind"), 2)
+
+   local ok, err = schema.check(kind_schema, 3, "kind")
+   test.falsey(ok)
+   test.match(err, "kind expects one of 1, 2")
+end)
+
 test.case("schema positive_integer coerces integers and rejects non-positive or fractional values", function()
    local history_schema = schema.integer_like():positive()
 

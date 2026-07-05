@@ -405,10 +405,7 @@ local VERTEX_INPUT_RATES = {
 
 M.VertexInputRate = schema.one_of({
    schema.string_lookup(VERTEX_INPUT_RATES, "vertex input rate"),
-   schema.enum({
-      sdl3.GPU_VERTEXINPUTRATE_VERTEX,
-      sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
-   }),
+   schema.enum_values(VERTEX_INPUT_RATES),
 }, "a vertex input rate")
 
 local VERTEX_ATTRIBUTE_FORMATS = {
@@ -420,12 +417,7 @@ local VERTEX_ATTRIBUTE_FORMATS = {
 
 M.VertexAttributeFormat = schema.one_of({
    schema.string_lookup(VERTEX_ATTRIBUTE_FORMATS, "vertex attribute format"),
-   schema.enum({
-      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
-      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
-      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
-      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
-   }),
+   schema.enum_values(VERTEX_ATTRIBUTE_FORMATS),
 }, "a vertex attribute format")
 
 local GPUVertexBufferDescription = schema.ffi.struct(
