@@ -43,7 +43,7 @@ local function schema_path_label(path)
    return "value"
 end
 
-local function normalize_properties_id_value(props, path)
+local function normalize_properties_id(props, path)
    if props == nil or props == 0 then
       return 0
    end
@@ -67,12 +67,10 @@ local function normalize_properties_id_value(props, path)
    )
 end
 
-function M.normalize_properties_id(props)
-   return normalize_properties_id_value(props)
-end
+M.normalize_properties_id = normalize_properties_id
 
 local properties_id_schema = schema.optional(schema.any(), 0):transform(function(value, path)
-   return normalize_properties_id_value(value, path)
+   return normalize_properties_id(value, path)
 end)
 
 local function ensure_properties(properties)
@@ -400,8 +398,6 @@ local function ensure_gpu_shader_live(shader)
    end
 end
 
---[ GPU schemas ]--
-
 local VERTEX_INPUT_RATES = {
    vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
    instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
@@ -688,8 +684,6 @@ local vertex_input_layout_schema = schema.record({
    buffers = schema.array(vertex_input_layout_buffer_schema),
 })
 
---[ GPU builders ]--
-
 function M.build_vertex_buffer_descriptions(buffers)
    local raw_buffers = schema.assert(
       schema.array(schema.table()),
@@ -791,8 +785,6 @@ function M.build_graphics_pipeline_create_info(spec)
    bundle.create_info = bundle.cdata
    return bundle
 end
-
---[ GPU shaders and resource scopes ]--
 
 local STAGE_TO_SDL = {
    vertex = sdl3.GPU_SHADERSTAGE_VERTEX,
@@ -948,6 +940,8 @@ function GPUShader:release()
    self.ptr = nil
    self._released = true
 end
+
+--[ ResourceScope ]--
 
 local ResourceScope = rig.Class(rig.ResourceScope)
 M.ResourceScope = ResourceScope
