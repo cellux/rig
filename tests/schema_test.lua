@@ -157,22 +157,6 @@ test.case("schema transform can normalize whole records", function()
    test.equal(point.length_sq, 25)
 end)
 
-test.case("schema has_metatable validates metatable-backed values", function()
-   local mt = {}
-   local value = setmetatable({}, mt)
-
-   local decoded = schema.assert(
-      schema.has_metatable(mt, "a test instance"),
-      value,
-      "thing"
-   )
-   test.equal(decoded, value)
-
-   local ok, err = schema.check(schema.has_metatable(mt, "a test instance"), {}, "thing")
-   test.falsey(ok)
-   test.match(err, "thing expects a test instance")
-end)
-
 test.case("schema instance_of accepts subclass instances", function()
    local Base = rig.Class()
    local Child = rig.Class(Base)

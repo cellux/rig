@@ -8,7 +8,7 @@ The module is aimed at the validation patterns already common in Rig:
 - arrays of names
 - string-to-string maps
 - optional/defaulted fields
-- metatable-backed instance checks
+- class instance checks
 - light normalization such as `tonumber(...)` or record post-processing
 
 ## Model
@@ -65,7 +65,6 @@ Schemas decode input values into validated, normalized output values.
 - `schema.one_of(choices[, description])`
   - Tries each choice in order until one succeeds.
   - If `description` is provided, it is used as the failure message instead of exposing the last branch error.
-- `schema.has_metatable(expected_metatable, description)`
 - `schema.instance_of(expected_class[, description])`
   - Uses `expected_class:is_instance(value)`.
   - Accepts subclass instances.

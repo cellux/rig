@@ -50,7 +50,6 @@ M.MapSchema = Class(M.Schema)
 M.RecordSchema = Class(M.Schema)
 M.EnumSchema = Class(M.Schema)
 M.OneOfSchema = Class(M.Schema)
-M.MetatableSchema = Class(M.Schema)
 M.InstanceSchema = Class(M.Schema)
 M.TransformSchema = Class(M.Schema)
 M.PredicateSchema = Class(M.Schema)
@@ -295,25 +294,6 @@ function M.OneOfSchema:decode(value, path)
    end
 
    raise(last_err or (path_label(path) .. " did not match any schema choice"))
-end
-
-function M.MetatableSchema:init(expected_metatable, description)
-   if type(expected_metatable) ~= "table" then
-      raise("schema.MetatableSchema expects expected_metatable to be a table")
-   end
-   if type(description) ~= "string" or description == "" then
-      raise("schema.MetatableSchema expects description to be a non-empty string")
-   end
-
-   self.expected_metatable = expected_metatable
-   self.description = description
-end
-
-function M.MetatableSchema:decode(value, path)
-   if getmetatable(value) ~= self.expected_metatable then
-      fail(path, self.description)
-   end
-   return value
 end
 
 function M.InstanceSchema:init(expected_class, description)
@@ -696,10 +676,6 @@ end
 
 function M.one_of(choices, description)
    return M.OneOfSchema(choices, description)
-end
-
-function M.has_metatable(expected_metatable, description)
-   return M.MetatableSchema(expected_metatable, description)
 end
 
 function M.instance_of(expected_class, description)
