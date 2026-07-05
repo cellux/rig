@@ -189,7 +189,7 @@ Field descriptors inside `schema.ffi.struct(...)` may use:
 - a schema object directly for same-name assignment
 - `{ schema = ..., to = "field_name" }` for renames
 - `{ schema = ..., count_field = "num_items" }` to derive counts from decoded arrays
-- `{ schema = ..., assign = function(dst, value, bundle, descriptor, path) ... end }` for custom writes and keepalive retention
+- `{ schema = ..., assign = function(dst, value, bundle) ... end }` for custom writes and keepalive retention
 
 ## Notes
 

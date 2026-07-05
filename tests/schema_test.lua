@@ -231,6 +231,32 @@ test.case("schema.ffi.array and count_field populate pointer fields", function()
    test.equal(#list.keepalive, 1)
 end)
 
+test.case("schema.ffi count_field rejects struct bundles", function()
+   local point_schema = schema.ffi.struct("rig_schema_test_Point", {
+      x = schema.integer({
+         coerce = true,
+      }),
+      y = schema.integer({
+         coerce = true,
+      }),
+   })
+   local line_schema = schema.ffi.struct("rig_schema_test_Line", {
+      start = {
+         schema = point_schema,
+         count_field = "finish",
+      },
+   })
+
+   local ok, err = schema.check(line_schema, {
+      start = {
+         x = "1",
+         y = "2",
+      },
+   }, "line")
+   test.falsey(ok)
+   test.match(err, "line.start count_field requires a decoded table or schema%.ffi%.array bundle")
+end)
+
 test.case("schema.ffi.struct supports custom assign hooks", function()
    local message_schema = schema.ffi.struct("rig_schema_test_Message", {
       text = {

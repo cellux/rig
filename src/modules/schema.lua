@@ -38,10 +38,6 @@ local function ensure_non_empty_string(value, label)
    return value
 end
 
-local function get_ffi()
-   return require("ffi")
-end
-
 M.Schema = Class()
 
 M.DecodeSchema = Class(M.Schema)
@@ -57,7 +53,6 @@ M.PredicateSchema = Class(M.Schema)
 
 M.ffi = {}
 
-M.ffi.Bundle = Class()
 M.ffi.StructSchema = Class(M.Schema)
 M.ffi.ArraySchema = Class(M.Schema)
 
@@ -476,9 +471,11 @@ function M.table()
    end)
 end
 
-function M.ffi.Bundle:init(kind, cdata, value, length)
+local Bundle = Class()
+
+function Bundle:init(kind, cdata, value, length)
    if kind ~= "struct" and kind ~= "array" then
-      raise("schema.ffi.Bundle kind must be 'struct' or 'array'")
+      raise("Bundle kind must be 'struct' or 'array'")
    end
 
    self.kind = kind
@@ -488,30 +485,18 @@ function M.ffi.Bundle:init(kind, cdata, value, length)
    self.keepalive = {}
 end
 
-function M.ffi.Bundle:retain(value)
+function Bundle:retain(value)
    self.keepalive[#self.keepalive + 1] = value
    return value
 end
 
-local function is_ffi_bundle(value)
-   return M.ffi.Bundle:is_instance(value)
+local function is_bundle(value)
+   return Bundle:is_instance(value)
 end
 
-local function resolve_ffi_assignment_value(value, bundle)
-   if not is_ffi_bundle(value) then
-      return value
-   end
-
-   bundle:retain(value)
-   if value.kind == "struct" then
-      return value.value
-   end
-   return value.cdata
-end
-
-local function field_descriptor_schema()
+local function ffi_field_descriptor_schema()
    return M.record({
-      schema = M.any(),
+      schema = M.instance_of(M.Schema, "a schema object"),
       to = M.non_empty_string():optional(),
       assign = M.func():optional(),
       count_field = M.non_empty_string():optional(),
@@ -533,14 +518,11 @@ local function normalize_ffi_field_descriptor(name, field_spec)
       raise("schema.ffi field '" .. name .. "' must be a schema or field descriptor")
    end
 
-   local descriptor = field_descriptor_schema():assert(
+   local descriptor = ffi_field_descriptor_schema():assert(
       field_spec,
       "schema.ffi field '" .. name .. "'"
    )
-   normalized.schema = ensure_schema(
-      descriptor.schema,
-      "schema.ffi field '" .. name .. "' schema"
-   )
+   normalized.schema = descriptor.schema
    normalized.to = descriptor.to or name
    normalized.assign = descriptor.assign
    normalized.count_field = descriptor.count_field
@@ -574,9 +556,8 @@ end
 
 function M.ffi.StructSchema:decode(value, path)
    local decoded = self.record_schema:decode(value, path)
-   local ffi = get_ffi()
-   local cdata = ffi.new(self.ctype .. "[1]")
-   local bundle = M.ffi.Bundle("struct", cdata, cdata[0], 1)
+   local cdata = require("ffi").new(self.ctype .. "[1]")
+   local bundle = Bundle("struct", cdata, cdata[0], 1)
 
    for key, descriptor in pairs(self.fields) do
       local decoded_value = decoded[key]
@@ -585,19 +566,29 @@ function M.ffi.StructSchema:decode(value, path)
             descriptor.assign(
                bundle.value,
                decoded_value,
-               bundle,
-               descriptor,
-               field_path(path, key)
-            )
-         else
-            bundle.value[descriptor.to] = resolve_ffi_assignment_value(
-               decoded_value,
                bundle
             )
+         else
+            if is_bundle(decoded_value) then
+               bundle:retain(decoded_value)
+               if decoded_value.kind == "struct" then
+                  bundle.value[descriptor.to] = decoded_value.value
+               else
+                  bundle.value[descriptor.to] = decoded_value.cdata
+               end
+            else
+               bundle.value[descriptor.to] = decoded_value
+            end
          end
 
          if descriptor.count_field ~= nil then
-            if is_ffi_bundle(decoded_value) and decoded_value.kind == "array" then
+            if is_bundle(decoded_value) then
+               if decoded_value.kind ~= "array" then
+                  raise(
+                     field_path(path, key)
+                        .. " count_field requires a decoded table or schema.ffi.array bundle"
+                  )
+               end
                bundle.value[descriptor.count_field] = decoded_value.length or 0
             elseif type(decoded_value) == "table" then
                bundle.value[descriptor.count_field] = #decoded_value
@@ -628,16 +619,15 @@ end
 function M.ffi.ArraySchema:decode(value, path)
    local decoded = self.array_schema:decode(value, path)
    local count = #decoded
-   local ffi = get_ffi()
    local cdata = nil
    if count > 0 then
-      cdata = ffi.new(self.ctype .. "[?]", count)
+      cdata = require("ffi").new(self.ctype .. "[?]", count)
    end
-   local bundle = M.ffi.Bundle("array", cdata, cdata, count)
+   local bundle = Bundle("array", cdata, cdata, count)
 
    for i = 1, count do
       local item = decoded[i]
-      if is_ffi_bundle(item) then
+      if is_bundle(item) then
          if item.kind ~= "struct" then
             raise(index_path(path, i) .. " expects a struct-valued schema.ffi bundle")
          end
