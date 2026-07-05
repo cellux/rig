@@ -398,7 +398,7 @@ local function ensure_gpu_shader_live(shader)
    end
 end
 
-M.VertexInputRate = schema.named_value(
+M.GPUVertexInputRate = schema.named_value(
    {
       vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
       instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
@@ -406,14 +406,14 @@ M.VertexInputRate = schema.named_value(
    "vertex input rate"
 )
 
-M.VertexAttributeFormat = schema.named_value(
+M.GPUVertexElementFormat = schema.named_value(
    {
       float = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
       float2 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
       float3 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
       float4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
    },
-   "vertex attribute format"
+   "vertex element format"
 )
 
 M.GPUTextureFormat = schema.enum_values({
@@ -529,7 +529,7 @@ local GPUVertexBufferDescription = schema.ffi.struct(
    {
       slot = schema.integer():non_negative(),
       pitch = schema.integer():non_negative(),
-      input_rate = M.VertexInputRate:optional(
+      input_rate = M.GPUVertexInputRate:optional(
          sdl3.GPU_VERTEXINPUTRATE_VERTEX
       ),
       instance_step_rate = schema.integer():non_negative():optional(0),
@@ -540,7 +540,7 @@ local GPUVertexAttributeSource = schema.record({
    location = schema.integer():non_negative(),
    buffer_slot = schema.integer():non_negative():optional(),
    slot = schema.integer():non_negative():optional(),
-   format = M.VertexAttributeFormat,
+   format = M.GPUVertexElementFormat,
    offset = schema.integer():non_negative(),
 }):transform(function(value)
    value.buffer_slot = value.buffer_slot or value.slot or 0
@@ -551,7 +551,7 @@ end)
 local GPUVertexAttribute = schema.ffi.struct("SDL_GPUVertexAttribute", {
    location = schema.integer():non_negative(),
    buffer_slot = schema.integer():non_negative():optional(0),
-   format = M.VertexAttributeFormat,
+   format = M.GPUVertexElementFormat,
    offset = schema.integer():non_negative(),
 })
 
@@ -745,7 +745,7 @@ local GPUGraphicsPipelineCreateInfo = schema.ffi.struct(
 local VertexInputLayoutBuffer = schema.record({
    slot = schema.integer():non_negative():optional(),
    pitch = schema.integer():non_negative(),
-   input_rate = M.VertexInputRate:optional(
+   input_rate = M.GPUVertexInputRate:optional(
       sdl3.GPU_VERTEXINPUTRATE_VERTEX
    ),
    instance_step_rate = schema.integer():non_negative():optional(0),

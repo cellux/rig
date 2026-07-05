@@ -27,8 +27,8 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.get_error([fallback])`
 - `sdl3x.free(ptr)`
 - `sdl3x.normalize_properties_id(props)`
-- `sdl3x.VertexInputRate(value[, path])`
-- `sdl3x.VertexAttributeFormat(value[, path])`
+- `sdl3x.GPUVertexInputRate(value[, path])`
+- `sdl3x.GPUVertexElementFormat(value[, path])`
 - `sdl3x.GPUTextureFormat(value[, path])`
 - `sdl3x.Properties`
 - `sdl3x.Window`
@@ -100,12 +100,12 @@ Additional `sdl3_gpu` fields:
 - `sdl3x.normalize_properties_id(props)`
   - Accepts `nil`, a raw numeric/cdata `SDL_PropertiesID`, or an `sdl3x.Properties` instance.
   - Returns the normalized SDL properties handle.
-- `sdl3x.VertexInputRate(value[, path])`
+- `sdl3x.GPUVertexInputRate(value[, path])`
   - Accepts `"vertex"`, `"instance"`, or the corresponding SDL numeric constants.
   - Returns the normalized numeric SDL vertex input rate value.
-- `sdl3x.VertexAttributeFormat(value[, path])`
+- `sdl3x.GPUVertexElementFormat(value[, path])`
   - Accepts `"float"`, `"float2"`, `"float3"`, `"float4"`, or the corresponding SDL numeric constants.
-  - Returns the normalized numeric SDL vertex attribute format value.
+  - Returns the normalized numeric SDL vertex element format value.
 - `sdl3x.GPUTextureFormat(value[, path])`
   - Accepts any exposed `sdl3.GPU_TEXTUREFORMAT_*` numeric constant.
   - Returns the normalized numeric SDL texture format value.

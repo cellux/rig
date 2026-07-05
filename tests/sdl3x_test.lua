@@ -492,19 +492,19 @@ end)
 
 test.case("sdl3x value schemas normalize supported values", function()
    test.equal(
-      sdl3x.VertexInputRate("vertex"),
+      sdl3x.GPUVertexInputRate("vertex"),
       sdl3.GPU_VERTEXINPUTRATE_VERTEX
    )
    test.equal(
-      sdl3x.VertexInputRate(sdl3.GPU_VERTEXINPUTRATE_INSTANCE),
+      sdl3x.GPUVertexInputRate(sdl3.GPU_VERTEXINPUTRATE_INSTANCE),
       sdl3.GPU_VERTEXINPUTRATE_INSTANCE
    )
    test.equal(
-      sdl3x.VertexAttributeFormat("float3"),
+      sdl3x.GPUVertexElementFormat("float3"),
       sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
    )
    test.equal(
-      sdl3x.VertexAttributeFormat(sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4),
+      sdl3x.GPUVertexElementFormat(sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4),
       sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4
    )
    test.equal(
@@ -513,7 +513,7 @@ test.case("sdl3x value schemas normalize supported values", function()
    )
 
    local input_rate_ok, input_rate_err = pcall(function()
-      sdl3x.VertexInputRate("bad")
+      sdl3x.GPUVertexInputRate("bad")
    end)
    test.falsey(input_rate_ok)
    test.match(
@@ -522,12 +522,12 @@ test.case("sdl3x value schemas normalize supported values", function()
    )
 
    local format_ok, format_err = pcall(function()
-      sdl3x.VertexAttributeFormat("bad")
+      sdl3x.GPUVertexElementFormat("bad")
    end)
    test.falsey(format_ok)
    test.match(
       tostring(format_err),
-      "value expects a vertex attribute format"
+      "value expects a vertex element format"
    )
 
    local texture_format_ok, texture_format_err = pcall(function()
