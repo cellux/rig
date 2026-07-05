@@ -66,7 +66,7 @@ Schemas decode input values into validated, normalized output values.
   - Tries each choice in order until one succeeds.
   - If `description` is provided, it is used as the failure message instead of exposing the last branch error.
 - `schema.instance_of(expected_class[, description])`
-  - `expected_class` must be a Rig/prelude class.
+  - `expected_class` must be a Rig class.
   - Uses `expected_class:is_instance(value)`.
   - Accepts subclass instances.
 - `schema.ffi.struct(ctype, fields[, options])`

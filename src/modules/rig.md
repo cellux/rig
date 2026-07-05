@@ -12,17 +12,17 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Builds a membership set table from the array part of `values`.
 - `rig.Class`
   - Alias for `prelude.Class`.
-  - Metaclass shared by all class tables created by `rig.Class(...)` / `prelude.Class(...)`.
+  - Metaclass shared by all class tables created by `rig.Class(...)`.
   - Calling `rig.Class(parent?)` creates a new callable class table.
   - Calling a class constructs one instance whose metatable is the class table.
   - Instances expose `:super()` to return the immediate parent class table, if any.
   - Class tables expose `:is_descendant(ancestor)` to test inheritance against a parent class.
   - Class tables expose `:is_ancestor(descendant)` to test whether another class inherits from them.
-  - All class tables use `rig.Class` / `prelude.Class` as their metaclass.
+  - All class tables use `rig.Class` as their metaclass.
 - `rig.is_class(value)`
   - Alias for `prelude.is_class(value)`.
-  - Returns `true` when `value` is a class table created by `rig.Class(...)` / `prelude.Class(...)`.
-  - Returns `true` for `rig.Class` / `prelude.Class` themselves.
+  - Returns `true` when `value` is a class table created by `rig.Class(...)`.
+  - Returns `true` for `rig.Class` itself.
   - Returns `false` for ordinary instances.
 - `rig.raise(message[, ...])`
   - Alias for `prelude.raise(message[, ...])`.
