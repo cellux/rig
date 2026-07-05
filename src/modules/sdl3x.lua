@@ -408,12 +408,198 @@ M.GPUVertexInputRate = schema.named_value(
 
 M.GPUVertexElementFormat = schema.named_value(
    {
-      float = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
-      float2 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
-      float3 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
-      float4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
+      INVALID = sdl3.GPU_VERTEXELEMENTFORMAT_INVALID,
+      INT = sdl3.GPU_VERTEXELEMENTFORMAT_INT,
+      INT2 = sdl3.GPU_VERTEXELEMENTFORMAT_INT2,
+      INT3 = sdl3.GPU_VERTEXELEMENTFORMAT_INT3,
+      INT4 = sdl3.GPU_VERTEXELEMENTFORMAT_INT4,
+      UINT = sdl3.GPU_VERTEXELEMENTFORMAT_UINT,
+      UINT2 = sdl3.GPU_VERTEXELEMENTFORMAT_UINT2,
+      UINT3 = sdl3.GPU_VERTEXELEMENTFORMAT_UINT3,
+      UINT4 = sdl3.GPU_VERTEXELEMENTFORMAT_UINT4,
+      FLOAT = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
+      FLOAT2 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
+      FLOAT3 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
+      FLOAT4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
+      BYTE2 = sdl3.GPU_VERTEXELEMENTFORMAT_BYTE2,
+      BYTE4 = sdl3.GPU_VERTEXELEMENTFORMAT_BYTE4,
+      UBYTE2 = sdl3.GPU_VERTEXELEMENTFORMAT_UBYTE2,
+      UBYTE4 = sdl3.GPU_VERTEXELEMENTFORMAT_UBYTE4,
+      BYTE2_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_BYTE2_NORM,
+      BYTE4_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_BYTE4_NORM,
+      UBYTE2_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_UBYTE2_NORM,
+      UBYTE4_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+      SHORT2 = sdl3.GPU_VERTEXELEMENTFORMAT_SHORT2,
+      SHORT4 = sdl3.GPU_VERTEXELEMENTFORMAT_SHORT4,
+      USHORT2 = sdl3.GPU_VERTEXELEMENTFORMAT_USHORT2,
+      USHORT4 = sdl3.GPU_VERTEXELEMENTFORMAT_USHORT4,
+      SHORT2_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_SHORT2_NORM,
+      SHORT4_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_SHORT4_NORM,
+      USHORT2_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_USHORT2_NORM,
+      USHORT4_NORM = sdl3.GPU_VERTEXELEMENTFORMAT_USHORT4_NORM,
+      HALF2 = sdl3.GPU_VERTEXELEMENTFORMAT_HALF2,
+      HALF4 = sdl3.GPU_VERTEXELEMENTFORMAT_HALF4,
    },
    "vertex element format"
+)
+
+M.GPUShaderFormat = schema.named_value(
+   {
+      INVALID = sdl3.GPU_SHADERFORMAT_INVALID,
+      PRIVATE = sdl3.GPU_SHADERFORMAT_PRIVATE,
+      SPIRV = sdl3.GPU_SHADERFORMAT_SPIRV,
+      DXBC = sdl3.GPU_SHADERFORMAT_DXBC,
+      DXIL = sdl3.GPU_SHADERFORMAT_DXIL,
+      MSL = sdl3.GPU_SHADERFORMAT_MSL,
+      METALLIB = sdl3.GPU_SHADERFORMAT_METALLIB,
+   },
+   "GPU shader format"
+)
+
+M.GPUShaderStage = schema.named_value(
+   {
+      VERTEX = sdl3.GPU_SHADERSTAGE_VERTEX,
+      FRAGMENT = sdl3.GPU_SHADERSTAGE_FRAGMENT,
+   },
+   "GPU shader stage"
+)
+
+M.GPUPrimitiveType = schema.named_value(
+   {
+      TRIANGLELIST = sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST,
+      TRIANGLESTRIP = sdl3.GPU_PRIMITIVETYPE_TRIANGLESTRIP,
+      LINELIST = sdl3.GPU_PRIMITIVETYPE_LINELIST,
+      LINESTRIP = sdl3.GPU_PRIMITIVETYPE_LINESTRIP,
+      POINTLIST = sdl3.GPU_PRIMITIVETYPE_POINTLIST,
+   },
+   "GPU primitive type"
+)
+
+M.GPUSampleCount = schema.named_value(
+   {
+      ["1"] = sdl3.GPU_SAMPLECOUNT_1,
+      ["2"] = sdl3.GPU_SAMPLECOUNT_2,
+      ["4"] = sdl3.GPU_SAMPLECOUNT_4,
+      ["8"] = sdl3.GPU_SAMPLECOUNT_8,
+   },
+   "GPU sample count"
+)
+
+M.GPUFillMode = schema.named_value(
+   {
+      FILL = sdl3.GPU_FILLMODE_FILL,
+      LINE = sdl3.GPU_FILLMODE_LINE,
+   },
+   "GPU fill mode"
+)
+
+M.GPUCullMode = schema.named_value(
+   {
+      NONE = sdl3.GPU_CULLMODE_NONE,
+      FRONT = sdl3.GPU_CULLMODE_FRONT,
+      BACK = sdl3.GPU_CULLMODE_BACK,
+   },
+   "GPU cull mode"
+)
+
+M.GPUFrontFace = schema.named_value(
+   {
+      COUNTER_CLOCKWISE = sdl3.GPU_FRONTFACE_COUNTER_CLOCKWISE,
+      CLOCKWISE = sdl3.GPU_FRONTFACE_CLOCKWISE,
+   },
+   "GPU front face"
+)
+
+M.GPUCompareOp = schema.named_value(
+   {
+      INVALID = sdl3.GPU_COMPAREOP_INVALID,
+      NEVER = sdl3.GPU_COMPAREOP_NEVER,
+      LESS = sdl3.GPU_COMPAREOP_LESS,
+      EQUAL = sdl3.GPU_COMPAREOP_EQUAL,
+      LESS_OR_EQUAL = sdl3.GPU_COMPAREOP_LESS_OR_EQUAL,
+      GREATER = sdl3.GPU_COMPAREOP_GREATER,
+      NOT_EQUAL = sdl3.GPU_COMPAREOP_NOT_EQUAL,
+      GREATER_OR_EQUAL = sdl3.GPU_COMPAREOP_GREATER_OR_EQUAL,
+      ALWAYS = sdl3.GPU_COMPAREOP_ALWAYS,
+   },
+   "GPU compare op"
+)
+
+M.GPUStencilOp = schema.named_value(
+   {
+      INVALID = sdl3.GPU_STENCILOP_INVALID,
+      KEEP = sdl3.GPU_STENCILOP_KEEP,
+      ZERO = sdl3.GPU_STENCILOP_ZERO,
+      REPLACE = sdl3.GPU_STENCILOP_REPLACE,
+      INCREMENT_AND_CLAMP = sdl3.GPU_STENCILOP_INCREMENT_AND_CLAMP,
+      DECREMENT_AND_CLAMP = sdl3.GPU_STENCILOP_DECREMENT_AND_CLAMP,
+      INVERT = sdl3.GPU_STENCILOP_INVERT,
+      INCREMENT_AND_WRAP = sdl3.GPU_STENCILOP_INCREMENT_AND_WRAP,
+      DECREMENT_AND_WRAP = sdl3.GPU_STENCILOP_DECREMENT_AND_WRAP,
+   },
+   "GPU stencil op"
+)
+
+M.GPUBlendOp = schema.named_value(
+   {
+      INVALID = sdl3.GPU_BLENDOP_INVALID,
+      ADD = sdl3.GPU_BLENDOP_ADD,
+      SUBTRACT = sdl3.GPU_BLENDOP_SUBTRACT,
+      REVERSE_SUBTRACT = sdl3.GPU_BLENDOP_REVERSE_SUBTRACT,
+      MIN = sdl3.GPU_BLENDOP_MIN,
+      MAX = sdl3.GPU_BLENDOP_MAX,
+   },
+   "GPU blend op"
+)
+
+M.GPUBlendFactor = schema.named_value(
+   {
+      INVALID = sdl3.GPU_BLENDFACTOR_INVALID,
+      ZERO = sdl3.GPU_BLENDFACTOR_ZERO,
+      ONE = sdl3.GPU_BLENDFACTOR_ONE,
+      SRC_COLOR = sdl3.GPU_BLENDFACTOR_SRC_COLOR,
+      ONE_MINUS_SRC_COLOR = sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_COLOR,
+      DST_COLOR = sdl3.GPU_BLENDFACTOR_DST_COLOR,
+      ONE_MINUS_DST_COLOR = sdl3.GPU_BLENDFACTOR_ONE_MINUS_DST_COLOR,
+      SRC_ALPHA = sdl3.GPU_BLENDFACTOR_SRC_ALPHA,
+      ONE_MINUS_SRC_ALPHA = sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+      DST_ALPHA = sdl3.GPU_BLENDFACTOR_DST_ALPHA,
+      ONE_MINUS_DST_ALPHA = sdl3.GPU_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+      CONSTANT_COLOR = sdl3.GPU_BLENDFACTOR_CONSTANT_COLOR,
+      ONE_MINUS_CONSTANT_COLOR = sdl3.GPU_BLENDFACTOR_ONE_MINUS_CONSTANT_COLOR,
+      SRC_ALPHA_SATURATE = sdl3.GPU_BLENDFACTOR_SRC_ALPHA_SATURATE,
+   },
+   "GPU blend factor"
+)
+
+local GPU_COLOR_COMPONENT_MASK = bit.bor(
+   sdl3.GPU_COLORCOMPONENT_R,
+   sdl3.GPU_COLORCOMPONENT_G,
+   sdl3.GPU_COLORCOMPONENT_B,
+   sdl3.GPU_COLORCOMPONENT_A
+)
+
+M.GPUColorComponentFlags = schema.integer():non_negative():where(
+   "GPU color component flags",
+   function(value)
+      return bit.band(value, GPU_COLOR_COMPONENT_MASK) == value
+   end
+)
+
+local GPU_BUFFER_USAGE_MASK = bit.bor(
+   sdl3.GPU_BUFFERUSAGE_VERTEX,
+   sdl3.GPU_BUFFERUSAGE_INDEX,
+   sdl3.GPU_BUFFERUSAGE_INDIRECT,
+   sdl3.GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+   sdl3.GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ,
+   sdl3.GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
+)
+
+M.GPUBufferUsageFlags = schema.integer():positive():where(
+   "GPU buffer usage flags",
+   function(value)
+      return bit.band(value, GPU_BUFFER_USAGE_MASK) == value
+   end
 )
 
 M.GPUTextureFormat = schema.named_value({
@@ -524,6 +710,8 @@ M.GPUTextureFormat = schema.named_value({
    R8G8B8A8_UNORM_SRGB = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
 }, "GPU texture format")
 
+local Uint8Value = schema.integer():non_negative():max(255)
+
 local GPUVertexBufferDescription = schema.ffi.struct(
    "SDL_GPUVertexBufferDescription",
    {
@@ -558,13 +746,13 @@ local GPUVertexAttribute = schema.ffi.struct("SDL_GPUVertexAttribute", {
 local GPUColorTargetBlendState = schema.ffi.struct(
    "SDL_GPUColorTargetBlendState",
    {
-      src_color_blendfactor = schema.integer():non_negative():optional(),
-      dst_color_blendfactor = schema.integer():non_negative():optional(),
-      color_blend_op = schema.integer():non_negative():optional(),
-      src_alpha_blendfactor = schema.integer():non_negative():optional(),
-      dst_alpha_blendfactor = schema.integer():non_negative():optional(),
-      alpha_blend_op = schema.integer():non_negative():optional(),
-      color_write_mask = schema.integer():non_negative():optional(),
+      src_color_blendfactor = M.GPUBlendFactor:optional(),
+      dst_color_blendfactor = M.GPUBlendFactor:optional(),
+      color_blend_op = M.GPUBlendOp:optional(),
+      src_alpha_blendfactor = M.GPUBlendFactor:optional(),
+      dst_alpha_blendfactor = M.GPUBlendFactor:optional(),
+      alpha_blend_op = M.GPUBlendOp:optional(),
+      color_write_mask = M.GPUColorComponentFlags:optional(),
       enable_blend = schema.boolean():optional(),
       enable_color_write_mask = schema.boolean():optional(),
    }
@@ -610,7 +798,7 @@ local GPUVertexInputState = schema.ffi.struct(
 local GPUBufferCreateInfo = schema.ffi.struct(
    "SDL_GPUBufferCreateInfo",
    {
-      usage = schema.integer():non_negative(),
+      usage = M.GPUBufferUsageFlags,
       size = schema.integer():non_negative(),
       props = properties_id_schema,
    }
@@ -637,8 +825,8 @@ local GPUShaderCreateInfo = schema.ffi.struct(
          end,
       },
       entrypoint = schema.string():optional("main"),
-      format = schema.integer():non_negative(),
-      stage = schema.integer():non_negative(),
+      format = M.GPUShaderFormat,
+      stage = M.GPUShaderStage,
       num_samplers = schema.integer():non_negative():optional(0),
       num_storage_textures = schema.integer():non_negative():optional(0),
       num_storage_buffers = schema.integer():non_negative():optional(0),
@@ -650,9 +838,9 @@ local GPUShaderCreateInfo = schema.ffi.struct(
 local GPURasterizerState = schema.ffi.struct(
    "SDL_GPURasterizerState",
    {
-      fill_mode = schema.integer():non_negative():optional(),
-      cull_mode = schema.integer():non_negative():optional(),
-      front_face = schema.integer():non_negative():optional(),
+      fill_mode = M.GPUFillMode:optional(),
+      cull_mode = M.GPUCullMode:optional(),
+      front_face = M.GPUFrontFace:optional(),
       depth_bias_constant_factor = schema.number():optional(),
       depth_bias_clamp = schema.number():optional(),
       depth_bias_slope_factor = schema.number():optional(),
@@ -664,22 +852,34 @@ local GPURasterizerState = schema.ffi.struct(
 local GPUMultisampleState = schema.ffi.struct(
    "SDL_GPUMultisampleState",
    {
-      sample_count = schema.integer():non_negative():optional(),
+      sample_count = M.GPUSampleCount:optional(),
       sample_mask = schema.integer():non_negative():optional(),
       enable_mask = schema.boolean():optional(),
       enable_alpha_to_coverage = schema.boolean():optional(),
    }
 )
 
+local GPUStencilOpState = schema.ffi.struct(
+   "SDL_GPUStencilOpState",
+   {
+      fail_op = M.GPUStencilOp:optional(),
+      pass_op = M.GPUStencilOp:optional(),
+      depth_fail_op = M.GPUStencilOp:optional(),
+      compare_op = M.GPUCompareOp:optional(),
+   }
+)
+
 local GPUDepthStencilState = schema.ffi.struct(
    "SDL_GPUDepthStencilState",
    {
-      compare_op = schema.integer():non_negative():optional(),
+      compare_op = M.GPUCompareOp:optional(),
+      back_stencil_state = GPUStencilOpState:optional(),
+      front_stencil_state = GPUStencilOpState:optional(),
       enable_depth_test = schema.boolean():optional(),
       enable_depth_write = schema.boolean():optional(),
       enable_stencil_test = schema.boolean():optional(),
-      compare_mask = schema.integer():non_negative():optional(),
-      write_mask = schema.integer():non_negative():optional(),
+      compare_mask = Uint8Value:optional(),
+      write_mask = Uint8Value:optional(),
    }
 )
 
@@ -722,7 +922,7 @@ local GPUGraphicsPipelineCreateInfo = schema.ffi.struct(
             dst.fragment_shader = value
          end,
       },
-      primitive_type = schema.integer():non_negative(),
+      primitive_type = M.GPUPrimitiveType,
       vertex_input = {
          schema = schema.any():optional(),
          assign = function(dst, value, bundle)
@@ -2488,12 +2688,12 @@ local sdl3_gpu_mesh_service = {
                   attributes = {
                      {
                         location = 0,
-                        format = "float3",
+                        format = "FLOAT3",
                         offset = mesh.attribute_offsets.position,
                      },
                      {
                         location = 1,
-                        format = "float3",
+                        format = "FLOAT3",
                         offset = mesh.attribute_offsets.color,
                      },
                   },

@@ -385,12 +385,14 @@ end)
 test.case("sdl3x GPU builders accept sdl3x.Properties", function()
    with_sdl3_property_stubs(function()
       local props = sdl3x.Properties()
+      local usage = sdl3.GPU_BUFFERUSAGE_VERTEX + sdl3.GPU_BUFFERUSAGE_INDIRECT
       local buffer_info = sdl3x.build_gpu_buffer_create_info({
-         usage = 5,
+         usage = usage,
          size = 64,
          props = props,
       })
 
+      test.equal(tonumber(buffer_info[0].usage), usage)
       test.equal(tonumber(buffer_info[0].props), 101)
       props:release()
    end)
@@ -419,7 +421,7 @@ test.case("sdl3x GPU descriptor builders populate FFI structs", function()
    local attributes = sdl3x.build_vertex_attributes({
       {
          location = 3,
-         format = "float3",
+         format = "FLOAT3",
          offset = 12,
       },
    })
@@ -431,12 +433,32 @@ test.case("sdl3x GPU descriptor builders populate FFI structs", function()
          format = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
          blend_state = {
             enable_blend = true,
+            src_color_blendfactor = sdl3.GPU_BLENDFACTOR_SRC_ALPHA,
+            dst_color_blendfactor = sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            color_blend_op = sdl3.GPU_BLENDOP_ADD,
+            color_write_mask = sdl3.GPU_COLORCOMPONENT_R + sdl3.GPU_COLORCOMPONENT_A,
          },
       },
    })
    test.equal(
       tonumber(color_targets[0].format),
       sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+   )
+   test.equal(
+      tonumber(color_targets[0].blend_state.src_color_blendfactor),
+      sdl3.GPU_BLENDFACTOR_SRC_ALPHA
+   )
+   test.equal(
+      tonumber(color_targets[0].blend_state.dst_color_blendfactor),
+      sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+   )
+   test.equal(
+      tonumber(color_targets[0].blend_state.color_blend_op),
+      sdl3.GPU_BLENDOP_ADD
+   )
+   test.equal(
+      tonumber(color_targets[0].blend_state.color_write_mask),
+      sdl3.GPU_COLORCOMPONENT_R + sdl3.GPU_COLORCOMPONENT_A
    )
    test.truthy(color_targets[0].blend_state.enable_blend)
 end)
@@ -449,7 +471,7 @@ test.case("sdl3x vertex input state builder retains descriptor storage", functio
             attributes = {
                {
                   location = 0,
-                  format = "float3",
+                  format = "FLOAT3",
                   offset = 0,
                },
             },
@@ -474,7 +496,7 @@ test.case("sdl3x vertex input state builder rejects unsupported numeric input ra
                attributes = {
                   {
                      location = 0,
-                     format = "float3",
+                     format = "FLOAT3",
                      offset = 0,
                   },
                },
@@ -492,6 +514,62 @@ end)
 
 test.case("sdl3x value schemas normalize supported values", function()
    test.equal(
+      sdl3x.GPUShaderFormat("SPIRV"),
+      sdl3.GPU_SHADERFORMAT_SPIRV
+   )
+   test.equal(
+      sdl3x.GPUShaderStage("VERTEX"),
+      sdl3.GPU_SHADERSTAGE_VERTEX
+   )
+   test.equal(
+      sdl3x.GPUPrimitiveType("TRIANGLELIST"),
+      sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST
+   )
+   test.equal(
+      sdl3x.GPUSampleCount("4"),
+      sdl3.GPU_SAMPLECOUNT_4
+   )
+   test.equal(
+      sdl3x.GPUFillMode("FILL"),
+      sdl3.GPU_FILLMODE_FILL
+   )
+   test.equal(
+      sdl3x.GPUCullMode("BACK"),
+      sdl3.GPU_CULLMODE_BACK
+   )
+   test.equal(
+      sdl3x.GPUFrontFace("COUNTER_CLOCKWISE"),
+      sdl3.GPU_FRONTFACE_COUNTER_CLOCKWISE
+   )
+   test.equal(
+      sdl3x.GPUCompareOp("LESS"),
+      sdl3.GPU_COMPAREOP_LESS
+   )
+   test.equal(
+      sdl3x.GPUStencilOp("KEEP"),
+      sdl3.GPU_STENCILOP_KEEP
+   )
+   test.equal(
+      sdl3x.GPUBlendOp("ADD"),
+      sdl3.GPU_BLENDOP_ADD
+   )
+   test.equal(
+      sdl3x.GPUBlendFactor("SRC_ALPHA"),
+      sdl3.GPU_BLENDFACTOR_SRC_ALPHA
+   )
+   test.equal(
+      sdl3x.GPUColorComponentFlags(
+         sdl3.GPU_COLORCOMPONENT_R + sdl3.GPU_COLORCOMPONENT_A
+      ),
+      sdl3.GPU_COLORCOMPONENT_R + sdl3.GPU_COLORCOMPONENT_A
+   )
+   test.equal(
+      sdl3x.GPUBufferUsageFlags(
+         sdl3.GPU_BUFFERUSAGE_VERTEX + sdl3.GPU_BUFFERUSAGE_INDIRECT
+      ),
+      sdl3.GPU_BUFFERUSAGE_VERTEX + sdl3.GPU_BUFFERUSAGE_INDIRECT
+   )
+   test.equal(
       sdl3x.GPUVertexInputRate("vertex"),
       sdl3.GPU_VERTEXINPUTRATE_VERTEX
    )
@@ -500,8 +578,16 @@ test.case("sdl3x value schemas normalize supported values", function()
       sdl3.GPU_VERTEXINPUTRATE_INSTANCE
    )
    test.equal(
-      sdl3x.GPUVertexElementFormat("float3"),
+      sdl3x.GPUVertexElementFormat("FLOAT3"),
       sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
+   )
+   test.equal(
+      sdl3x.GPUVertexElementFormat("INT2"),
+      sdl3.GPU_VERTEXELEMENTFORMAT_INT2
+   )
+   test.equal(
+      sdl3x.GPUVertexElementFormat("HALF4"),
+      sdl3.GPU_VERTEXELEMENTFORMAT_HALF4
    )
    test.equal(
       sdl3x.GPUVertexElementFormat(sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4),
@@ -542,12 +628,63 @@ test.case("sdl3x value schemas normalize supported values", function()
       tostring(texture_format_err),
       "value expects a GPU texture format"
    )
+
+   local primitive_type_ok, primitive_type_err = pcall(function()
+      sdl3x.GPUPrimitiveType("BAD")
+   end)
+   test.falsey(primitive_type_ok)
+   test.match(
+      tostring(primitive_type_err),
+      "value expects a GPU primitive type"
+   )
+
+   local usage_ok, usage_err = pcall(function()
+      sdl3x.GPUBufferUsageFlags(64)
+   end)
+   test.falsey(usage_ok)
+   test.match(
+      tostring(usage_err),
+      "value expects GPU buffer usage flags"
+   )
+
+   local color_component_ok, color_component_err = pcall(function()
+      sdl3x.GPUColorComponentFlags(16)
+   end)
+   test.falsey(color_component_ok)
+   test.match(
+      tostring(color_component_err),
+      "value expects GPU color component flags"
+   )
+
+   local stencil_op_ok, stencil_op_err = pcall(function()
+      sdl3x.GPUStencilOp("BAD")
+   end)
+   test.falsey(stencil_op_ok)
+   test.match(
+      tostring(stencil_op_err),
+      "value expects a GPU stencil op"
+   )
 end)
 
 test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    local bundle = sdl3x.build_graphics_pipeline_create_info({
-      primitive_type = 3,
+      primitive_type = sdl3.GPU_PRIMITIVETYPE_LINESTRIP,
       props = 22,
+      depth_stencil_state = {
+         compare_op = sdl3.GPU_COMPAREOP_LESS,
+         back_stencil_state = {
+            fail_op = sdl3.GPU_STENCILOP_KEEP,
+            pass_op = sdl3.GPU_STENCILOP_REPLACE,
+            depth_fail_op = sdl3.GPU_STENCILOP_ZERO,
+            compare_op = sdl3.GPU_COMPAREOP_ALWAYS,
+         },
+         front_stencil_state = {
+            fail_op = sdl3.GPU_STENCILOP_INVERT,
+            pass_op = sdl3.GPU_STENCILOP_INCREMENT_AND_WRAP,
+            depth_fail_op = sdl3.GPU_STENCILOP_DECREMENT_AND_WRAP,
+            compare_op = sdl3.GPU_COMPAREOP_NOT_EQUAL,
+         },
+      },
       target_info = {
          depth_stencil_format = sdl3.GPU_TEXTUREFORMAT_D32_FLOAT,
          has_depth_stencil_target = true,
@@ -559,8 +696,47 @@ test.case("sdl3x graphics pipeline builder populates FFI structs", function()
       },
    })
 
-   test.equal(tonumber(bundle.create_info[0].primitive_type), 3)
+   test.equal(
+      tonumber(bundle.create_info[0].primitive_type),
+      sdl3.GPU_PRIMITIVETYPE_LINESTRIP
+   )
    test.equal(tonumber(bundle.create_info[0].props), 22)
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.compare_op),
+      sdl3.GPU_COMPAREOP_LESS
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.back_stencil_state.fail_op),
+      sdl3.GPU_STENCILOP_KEEP
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.back_stencil_state.pass_op),
+      sdl3.GPU_STENCILOP_REPLACE
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.back_stencil_state.depth_fail_op),
+      sdl3.GPU_STENCILOP_ZERO
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.back_stencil_state.compare_op),
+      sdl3.GPU_COMPAREOP_ALWAYS
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.front_stencil_state.fail_op),
+      sdl3.GPU_STENCILOP_INVERT
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.front_stencil_state.pass_op),
+      sdl3.GPU_STENCILOP_INCREMENT_AND_WRAP
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.front_stencil_state.depth_fail_op),
+      sdl3.GPU_STENCILOP_DECREMENT_AND_WRAP
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].depth_stencil_state.front_stencil_state.compare_op),
+      sdl3.GPU_COMPAREOP_NOT_EQUAL
+   )
    test.equal(
       tonumber(bundle.create_info[0].target_info.depth_stencil_format),
       sdl3.GPU_TEXTUREFORMAT_D32_FLOAT
@@ -571,6 +747,23 @@ test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    )
    test.equal(tonumber(bundle.create_info[0].target_info.num_color_targets), 1)
    test.truthy(bundle.create_info[0].target_info.has_depth_stencil_target)
+end)
+
+test.case("sdl3x graphics pipeline builder rejects out-of-range Uint8 masks", function()
+   local ok, err = pcall(function()
+      sdl3x.build_graphics_pipeline_create_info({
+         primitive_type = sdl3.GPU_PRIMITIVETYPE_LINESTRIP,
+         depth_stencil_state = {
+            compare_mask = 256,
+         },
+      })
+   end)
+
+   test.falsey(ok)
+   test.match(
+      tostring(err),
+      "sdl3x%.build_graphics_pipeline_create_info spec%.depth_stencil_state%.compare_mask expects an integer >= 0 and <= 255"
+   )
 end)
 
 test.case("sdl3x graphics pipeline builder accepts sdl3x.GPUShader objects", function()
@@ -588,7 +781,7 @@ test.case("sdl3x graphics pipeline builder accepts sdl3x.GPUShader objects", fun
    }, sdl3x.GPUShader)
 
    local bundle = sdl3x.build_graphics_pipeline_create_info({
-      primitive_type = 3,
+      primitive_type = sdl3.GPU_PRIMITIVETYPE_LINESTRIP,
       vertex_shader = vertex_shader,
       fragment_shader = fragment_shader,
       props = 0,

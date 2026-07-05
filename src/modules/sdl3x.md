@@ -27,6 +27,19 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.get_error([fallback])`
 - `sdl3x.free(ptr)`
 - `sdl3x.normalize_properties_id(props)`
+- `sdl3x.GPUShaderFormat(value[, path])`
+- `sdl3x.GPUShaderStage(value[, path])`
+- `sdl3x.GPUPrimitiveType(value[, path])`
+- `sdl3x.GPUSampleCount(value[, path])`
+- `sdl3x.GPUFillMode(value[, path])`
+- `sdl3x.GPUCullMode(value[, path])`
+- `sdl3x.GPUFrontFace(value[, path])`
+- `sdl3x.GPUCompareOp(value[, path])`
+- `sdl3x.GPUStencilOp(value[, path])`
+- `sdl3x.GPUBlendOp(value[, path])`
+- `sdl3x.GPUBlendFactor(value[, path])`
+- `sdl3x.GPUColorComponentFlags(value[, path])`
+- `sdl3x.GPUBufferUsageFlags(value[, path])`
 - `sdl3x.GPUVertexInputRate(value[, path])`
 - `sdl3x.GPUVertexElementFormat(value[, path])`
 - `sdl3x.GPUTextureFormat(value[, path])`
@@ -100,11 +113,52 @@ Additional `sdl3_gpu` fields:
 - `sdl3x.normalize_properties_id(props)`
   - Accepts `nil`, a raw numeric/cdata `SDL_PropertiesID`, or an `sdl3x.Properties` instance.
   - Returns the normalized SDL properties handle.
+- `sdl3x.GPUShaderFormat(value[, path])`
+  - Accepts an SDL-style shader format name like `"SPIRV"` or the corresponding `sdl3.GPU_SHADERFORMAT_*` numeric constant.
+  - Returns the normalized numeric SDL shader format value.
+- `sdl3x.GPUShaderStage(value[, path])`
+  - Accepts an SDL-style shader stage name like `"VERTEX"` or the corresponding `sdl3.GPU_SHADERSTAGE_*` numeric constant.
+  - Returns the normalized numeric SDL shader stage value.
+- `sdl3x.GPUPrimitiveType(value[, path])`
+  - Accepts an SDL-style primitive type name like `"TRIANGLELIST"` or the corresponding `sdl3.GPU_PRIMITIVETYPE_*` numeric constant.
+  - Returns the normalized numeric SDL primitive type value.
+- `sdl3x.GPUSampleCount(value[, path])`
+  - Accepts `"1"`, `"2"`, `"4"`, `"8"`, or the corresponding `sdl3.GPU_SAMPLECOUNT_*` numeric constant.
+  - Returns the normalized numeric SDL sample count value.
+- `sdl3x.GPUFillMode(value[, path])`
+  - Accepts an SDL-style fill mode name like `"FILL"` or the corresponding `sdl3.GPU_FILLMODE_*` numeric constant.
+  - Returns the normalized numeric SDL fill mode value.
+- `sdl3x.GPUCullMode(value[, path])`
+  - Accepts an SDL-style cull mode name like `"BACK"` or the corresponding `sdl3.GPU_CULLMODE_*` numeric constant.
+  - Returns the normalized numeric SDL cull mode value.
+- `sdl3x.GPUFrontFace(value[, path])`
+  - Accepts an SDL-style front-face name like `"COUNTER_CLOCKWISE"` or the corresponding `sdl3.GPU_FRONTFACE_*` numeric constant.
+  - Returns the normalized numeric SDL front-face value.
+- `sdl3x.GPUCompareOp(value[, path])`
+  - Accepts an SDL-style compare-op name like `"LESS"` or the corresponding `sdl3.GPU_COMPAREOP_*` numeric constant.
+  - Returns the normalized numeric SDL compare-op value.
+- `sdl3x.GPUStencilOp(value[, path])`
+  - Accepts an SDL-style stencil-op name like `"KEEP"` or the corresponding `sdl3.GPU_STENCILOP_*` numeric constant.
+  - Returns the normalized numeric SDL stencil-op value.
+- `sdl3x.GPUBlendOp(value[, path])`
+  - Accepts an SDL-style blend-op name like `"ADD"` or the corresponding `sdl3.GPU_BLENDOP_*` numeric constant.
+  - Returns the normalized numeric SDL blend-op value.
+- `sdl3x.GPUBlendFactor(value[, path])`
+  - Accepts an SDL-style blend-factor name like `"SRC_ALPHA"` or the corresponding `sdl3.GPU_BLENDFACTOR_*` numeric constant.
+  - Returns the normalized numeric SDL blend-factor value.
+- `sdl3x.GPUColorComponentFlags(value[, path])`
+  - Accepts a numeric bitmask composed from exposed `sdl3.GPU_COLORCOMPONENT_*` constants.
+  - Rejects unknown bits.
+  - Returns the normalized numeric SDL color-component flags value.
+- `sdl3x.GPUBufferUsageFlags(value[, path])`
+  - Accepts a numeric bitmask composed from exposed `sdl3.GPU_BUFFERUSAGE_*` constants.
+  - Rejects zero and any unknown bits.
+  - Returns the normalized numeric SDL buffer-usage flags value.
 - `sdl3x.GPUVertexInputRate(value[, path])`
   - Accepts `"vertex"`, `"instance"`, or the corresponding SDL numeric constants.
   - Returns the normalized numeric SDL vertex input rate value.
 - `sdl3x.GPUVertexElementFormat(value[, path])`
-  - Accepts `"float"`, `"float2"`, `"float3"`, `"float4"`, or the corresponding SDL numeric constants.
+  - Accepts an SDL-style vertex element format name like `"INT2"` or `"HALF4"`, or the corresponding SDL numeric constant.
   - Returns the normalized numeric SDL vertex element format value.
 - `sdl3x.GPUTextureFormat(value[, path])`
   - Accepts an SDL-style texture format name like `"R8G8B8A8_UNORM"` or the corresponding `sdl3.GPU_TEXTUREFORMAT_*` numeric constant.
