@@ -508,6 +508,10 @@ test.case("sdl3x value schemas normalize supported values", function()
       sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4
    )
    test.equal(
+      sdl3x.GPUTextureFormat("R8G8B8A8_UNORM"),
+      sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+   )
+   test.equal(
       sdl3x.GPUTextureFormat(sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM),
       sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
    )

@@ -416,7 +416,7 @@ M.GPUVertexElementFormat = schema.named_value(
    "vertex element format"
 )
 
-M.GPUTextureFormat = schema.enum_values({
+M.GPUTextureFormat = schema.named_value({
    A8_UNORM = sdl3.GPU_TEXTUREFORMAT_A8_UNORM,
    ASTC_10x10_FLOAT = sdl3.GPU_TEXTUREFORMAT_ASTC_10x10_FLOAT,
    ASTC_10x10_UNORM = sdl3.GPU_TEXTUREFORMAT_ASTC_10x10_UNORM,
@@ -522,7 +522,7 @@ M.GPUTextureFormat = schema.enum_values({
    R8G8B8A8_UINT = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UINT,
    R8G8B8A8_UNORM = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
    R8G8B8A8_UNORM_SRGB = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
-}, "a GPU texture format")
+}, "GPU texture format")
 
 local GPUVertexBufferDescription = schema.ffi.struct(
    "SDL_GPUVertexBufferDescription",

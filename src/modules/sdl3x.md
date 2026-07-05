@@ -107,7 +107,7 @@ Additional `sdl3_gpu` fields:
   - Accepts `"float"`, `"float2"`, `"float3"`, `"float4"`, or the corresponding SDL numeric constants.
   - Returns the normalized numeric SDL vertex element format value.
 - `sdl3x.GPUTextureFormat(value[, path])`
-  - Accepts any exposed `sdl3.GPU_TEXTUREFORMAT_*` numeric constant.
+  - Accepts an SDL-style texture format name like `"R8G8B8A8_UNORM"` or the corresponding `sdl3.GPU_TEXTUREFORMAT_*` numeric constant.
   - Returns the normalized numeric SDL texture format value.
 
 ## `sdl3x.ResourceScope`
