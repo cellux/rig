@@ -250,7 +250,7 @@ test.case("sdl3x.normalize_properties_id rejects ad hoc props tables", function(
    test.falsey(ok)
    test.match(
       tostring(err),
-      "props must be a number, cdata SDL_PropertiesID, or sdl3x%.Properties"
+      "props expects a number, cdata SDL_PropertiesID, or sdl3x%.Properties"
    )
 end)
 

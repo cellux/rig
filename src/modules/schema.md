@@ -67,6 +67,7 @@ Schemas decode input values into validated, normalized output values.
 - `schema.enum(values[, description])`
 - `schema.enum_values(mapping[, description])`
 - `schema.named_value(mapping[, label])`
+- `schema.cdata([ctype_name])`
 - `schema.one_of(choices[, description])`
   - Tries each choice in order until one succeeds.
   - If `description` is provided, it is used as the failure message instead of exposing the last branch error.
@@ -91,6 +92,8 @@ All schema objects provide:
 - `schema_object:optional_with(default_factory)`
 - `schema_object:transform(transform_fn)`
   - Applies caller-supplied normalization after the inner schema succeeds.
+- `schema_object:extract(field)`
+  - Equivalent to `schema_object:transform(function(value) return value[field] end)`.
 - `schema_object:where(description, predicate)`
   - Adds one extra predicate check after the inner schema succeeds.
   - Raises `"... expects <description>"` when `predicate` returns false.

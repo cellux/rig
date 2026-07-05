@@ -1,4 +1,5 @@
 local M = ... or {}
+local ffi = require("ffi")
 local prelude = require("prelude")
 local Class = prelude.Class
 local is_class = prelude.is_class
@@ -102,6 +103,12 @@ end
 
 function M.Schema:transform(transform_fn)
    return M.TransformSchema(self, transform_fn)
+end
+
+function M.Schema:extract(field)
+   return self:transform(function(value)
+      return value[field]
+   end)
 end
 
 function M.Schema:where(description, predicate)
@@ -369,6 +376,25 @@ end
 
 function M.any()
    return M.DecodeSchema("any value", function(value)
+      return value
+   end)
+end
+
+function M.cdata(ctype_name)
+   if ctype_name ~= nil and type(ctype_name) ~= "string" then
+      raise("schema.cdata expects ctype_name to be a string if provided")
+   end
+
+   local ctype = ctype_name ~= nil and ffi.typeof(ctype_name) or nil
+   local description = ctype_name ~= nil and ("cdata " .. ctype_name) or "cdata"
+
+   return M.DecodeSchema(description, function(value, path)
+      if type(value) ~= "cdata" then
+         fail(path, description)
+      end
+      if ctype ~= nil and not ffi.istype(ctype, value) then
+         fail(path, description)
+      end
       return value
    end)
 end

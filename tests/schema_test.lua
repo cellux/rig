@@ -56,6 +56,29 @@ test.case("schema objects are callable", function()
    test.equal(schema.number_like():positive()("4", "jobs"), 4)
 end)
 
+test.case("schema cdata and pluck simplify structured normalization", function()
+   local point_storage = ffi.new("rig_schema_test_Point[1]")
+   point_storage[0].x = 7
+   point_storage[0].y = 9
+   local point = ffi.cast("rig_schema_test_Point *", point_storage)
+
+   local point_pointer_schema = schema.cdata("rig_schema_test_Point *")
+   test.equal(schema.assert(point_pointer_schema, point, "point"), point)
+
+   local Holder = rig.Class()
+   function Holder:init(id)
+      self.id = id
+   end
+
+   local record_schema = schema.instance_of(Holder):extract("id")
+   local holder = Holder(77)
+   test.equal(schema.assert(record_schema, holder, "holder"), 77)
+
+   local ok, err = schema.check(point_pointer_schema, {}, "point")
+   test.falsey(ok)
+   test.match(err, "point expects cdata rig_schema_test_Point %*")
+end)
+
 test.case("schema enum_values builds an enum from mapping values", function()
    local kind_schema = schema.enum_values({
       beta = 2,

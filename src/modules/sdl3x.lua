@@ -36,42 +36,18 @@ end
 
 local Properties = rig.Class()
 
-local function schema_path_label(path)
-   if type(path) == "string" and path ~= "" then
-      return path
-   end
-   return "value"
+local properties_id_schema = schema.optional(
+   schema.one_of({
+      schema.number(),
+      schema.cdata("SDL_PropertiesID"),
+      schema.instance_of(Properties, "sdl3x.Properties"):extract("id"),
+   }, "a number, cdata SDL_PropertiesID, or sdl3x.Properties"),
+   0
+)
+
+function M.normalize_properties_id(props)
+   return properties_id_schema(props, "props")
 end
-
-local function normalize_properties_id(props, path)
-   if props == nil or props == 0 then
-      return 0
-   end
-
-   local value_type = type(props)
-   if value_type == "number" or value_type == "cdata" then
-      return props
-   end
-
-   if Properties:is_instance(props) then
-      return props.id
-   end
-
-   if path == nil then
-      rig.raise("props must be a number, cdata SDL_PropertiesID, or sdl3x.Properties")
-   end
-
-   rig.raise(
-      schema_path_label(path)
-         .. " expects a number, cdata SDL_PropertiesID, or sdl3x.Properties"
-   )
-end
-
-M.normalize_properties_id = normalize_properties_id
-
-local properties_id_schema = schema.optional(schema.any(), 0):transform(function(value, path)
-   return normalize_properties_id(value, path)
-end)
 
 local function ensure_properties(properties)
    if not Properties:is_instance(properties) then
