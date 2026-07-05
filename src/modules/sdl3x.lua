@@ -403,7 +403,7 @@ local VERTEX_INPUT_RATES = {
    instance = sdl3.GPU_VERTEXINPUTRATE_INSTANCE,
 }
 
-local vertex_input_rate_schema = schema.one_of({
+M.VertexInputRate = schema.one_of({
    schema.string_lookup(VERTEX_INPUT_RATES, "vertex input rate"),
    schema.enum({
       sdl3.GPU_VERTEXINPUTRATE_VERTEX,
@@ -418,28 +418,33 @@ local VERTEX_ATTRIBUTE_FORMATS = {
    float4 = sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
 }
 
-local vertex_attribute_format_schema = schema.one_of({
+M.VertexAttributeFormat = schema.one_of({
    schema.string_lookup(VERTEX_ATTRIBUTE_FORMATS, "vertex attribute format"),
-   schema.number_like(),
-}, "a string or number")
+   schema.enum({
+      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT,
+      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT2,
+      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3,
+      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4,
+   }),
+}, "a vertex attribute format")
 
 local GPUVertexBufferDescription = schema.ffi.struct(
    "SDL_GPUVertexBufferDescription",
    {
       slot = schema.integer_like():non_negative(),
       pitch = schema.integer_like():non_negative(),
-      input_rate = vertex_input_rate_schema:optional(
+      input_rate = M.VertexInputRate:optional(
          VERTEX_INPUT_RATES.vertex
       ),
       instance_step_rate = schema.integer_like():non_negative():optional(0),
    }
 )
 
-local gpu_vertex_attribute_source_schema = schema.record({
+local GPUVertexAttributeSource = schema.record({
    location = schema.integer_like():non_negative(),
    buffer_slot = schema.integer_like():non_negative():optional(),
    slot = schema.integer_like():non_negative():optional(),
-   format = vertex_attribute_format_schema,
+   format = M.VertexAttributeFormat,
    offset = schema.integer_like():non_negative(),
 }):transform(function(value)
    value.buffer_slot = value.buffer_slot or value.slot or 0
@@ -450,11 +455,11 @@ end)
 local GPUVertexAttribute = schema.ffi.struct("SDL_GPUVertexAttribute", {
    location = schema.integer_like():non_negative(),
    buffer_slot = schema.integer_like():non_negative():optional(0),
-   format = vertex_attribute_format_schema,
+   format = M.VertexAttributeFormat,
    offset = schema.integer_like():non_negative(),
 })
 
-local gpu_color_target_blend_state_schema = schema.ffi.struct(
+local GPUColorTargetBlendState = schema.ffi.struct(
    "SDL_GPUColorTargetBlendState",
    {
       src_color_blendfactor = schema.number_like():optional(),
@@ -473,7 +478,7 @@ local GPUColorTargetDescription = schema.ffi.struct(
    "SDL_GPUColorTargetDescription",
    {
       format = schema.number_like(),
-      blend_state = gpu_color_target_blend_state_schema:optional(),
+      blend_state = GPUColorTargetBlendState:optional(),
    }
 )
 
@@ -506,7 +511,7 @@ local GPUVertexInputState = schema.ffi.struct(
    }
 )
 
-local gpu_buffer_create_info_schema = schema.ffi.struct(
+local GPUBufferCreateInfo = schema.ffi.struct(
    "SDL_GPUBufferCreateInfo",
    {
       usage = schema.number_like(),
@@ -515,14 +520,14 @@ local gpu_buffer_create_info_schema = schema.ffi.struct(
    }
 )
 
-local gpu_shader_resource_info_schema = schema.record({
+local GPUShaderResourceInfo = schema.record({
    num_samplers = schema.integer_like():non_negative():optional(0),
    num_storage_textures = schema.integer_like():non_negative():optional(0),
    num_storage_buffers = schema.integer_like():non_negative():optional(0),
    num_uniform_buffers = schema.integer_like():non_negative():optional(0),
 })
 
-local gpu_shader_create_info_schema = schema.ffi.struct(
+local GPUShaderCreateInfo = schema.ffi.struct(
    "SDL_GPUShaderCreateInfo",
    {
       code = {
@@ -546,7 +551,7 @@ local gpu_shader_create_info_schema = schema.ffi.struct(
    }
 )
 
-local graphics_pipeline_rasterizer_state_schema = schema.ffi.struct(
+local GPURasterizerState = schema.ffi.struct(
    "SDL_GPURasterizerState",
    {
       fill_mode = schema.number_like():optional(),
@@ -560,7 +565,7 @@ local graphics_pipeline_rasterizer_state_schema = schema.ffi.struct(
    }
 )
 
-local graphics_pipeline_multisample_state_schema = schema.ffi.struct(
+local GPUMultisampleState = schema.ffi.struct(
    "SDL_GPUMultisampleState",
    {
       sample_count = schema.number_like():optional(),
@@ -570,7 +575,7 @@ local graphics_pipeline_multisample_state_schema = schema.ffi.struct(
    }
 )
 
-local graphics_pipeline_depth_stencil_state_schema = schema.ffi.struct(
+local GPUDepthStencilState = schema.ffi.struct(
    "SDL_GPUDepthStencilState",
    {
       compare_op = schema.number_like():optional(),
@@ -582,7 +587,7 @@ local graphics_pipeline_depth_stencil_state_schema = schema.ffi.struct(
    }
 )
 
-local graphics_pipeline_target_info_schema = schema.ffi.struct(
+local GPUGraphicsPipelineTargetInfo = schema.ffi.struct(
    "SDL_GPUGraphicsPipelineTargetInfo",
    {
       color_target_descriptions = {
@@ -594,7 +599,7 @@ local graphics_pipeline_target_info_schema = schema.ffi.struct(
    }
 )
 
-local graphics_pipeline_create_info_schema = schema.ffi.struct(
+local GPUGraphicsPipelineCreateInfo = schema.ffi.struct(
    "SDL_GPUGraphicsPipelineCreateInfo",
    {
       vertex_shader = {
@@ -633,26 +638,26 @@ local graphics_pipeline_create_info_schema = schema.ffi.struct(
             dst.vertex_input_state = value
          end,
       },
-      rasterizer_state = graphics_pipeline_rasterizer_state_schema:optional(),
-      multisample_state = graphics_pipeline_multisample_state_schema:optional(),
-      depth_stencil_state = graphics_pipeline_depth_stencil_state_schema:optional(),
-      target_info = graphics_pipeline_target_info_schema:optional(),
+      rasterizer_state = GPURasterizerState:optional(),
+      multisample_state = GPUMultisampleState:optional(),
+      depth_stencil_state = GPUDepthStencilState:optional(),
+      target_info = GPUGraphicsPipelineTargetInfo:optional(),
       props = properties_id_schema,
    }
 )
 
-local vertex_input_layout_buffer_schema = schema.record({
+local VertexInputLayoutBuffer = schema.record({
    slot = schema.integer_like():non_negative():optional(),
    pitch = schema.integer_like():non_negative(),
-   input_rate = vertex_input_rate_schema:optional(
+   input_rate = M.VertexInputRate:optional(
       VERTEX_INPUT_RATES.vertex
    ),
    instance_step_rate = schema.integer_like():non_negative():optional(0),
-   attributes = schema.array(gpu_vertex_attribute_source_schema),
+   attributes = schema.array(GPUVertexAttributeSource),
 })
 
-local vertex_input_layout_schema = schema.record({
-   buffers = schema.array(vertex_input_layout_buffer_schema),
+local VertexInputLayout = schema.record({
+   buffers = schema.array(VertexInputLayoutBuffer),
 })
 
 function M.build_vertex_buffer_descriptions(buffers)
@@ -679,7 +684,7 @@ end
 
 function M.build_vertex_attributes(attributes)
    local normalized = schema.assert(
-      schema.array(gpu_vertex_attribute_source_schema),
+      schema.array(GPUVertexAttributeSource),
       attributes,
       "sdl3x.build_vertex_attributes attributes"
    )
@@ -691,8 +696,7 @@ function M.build_vertex_attributes(attributes)
 end
 
 function M.build_vertex_input_state(layout)
-   local decoded = schema.assert(
-      vertex_input_layout_schema,
+   local decoded = VertexInputLayout(
       layout,
       "sdl3x.build_vertex_input_state layout"
    )
@@ -736,16 +740,14 @@ function M.build_color_target_descriptions(specs)
 end
 
 function M.build_gpu_buffer_create_info(spec)
-   return schema.assert(
-      gpu_buffer_create_info_schema,
+   return GPUBufferCreateInfo(
       spec,
       "sdl3x.build_gpu_buffer_create_info spec"
    ).cdata
 end
 
 function M.build_graphics_pipeline_create_info(spec)
-   local bundle = schema.assert(
-      graphics_pipeline_create_info_schema,
+   local bundle = GPUGraphicsPipelineCreateInfo(
       spec,
       "sdl3x.build_graphics_pipeline_create_info spec"
    )
@@ -859,14 +861,12 @@ function GPUShader:init(device, compiled, props)
       rig.raise("compiled shader is missing reflection.resource_info")
    end
 
-   local resource_info = schema.assert(
-      gpu_shader_resource_info_schema,
+   local resource_info = GPUShaderResourceInfo(
       reflection.resource_info,
       "compiled shader reflection.resource_info"
    )
 
-   local create_info = schema.assert(
-      gpu_shader_create_info_schema,
+   local create_info = GPUShaderCreateInfo(
       {
          code = compiled.bytecode,
          entrypoint = compiled.entrypoint,
@@ -975,10 +975,10 @@ local runtime_gl_context = nil
 local runtime_owned_init_flags = nil
 local runtime_scheduler = nil
 
-local driver_config_entry_schema = schema.table()
-local driver_config_schema = schema.map(
+local DriverConfigEntry = schema.table()
+local DriverConfig = schema.map(
    schema.non_empty_string(),
-   driver_config_entry_schema
+   DriverConfigEntry
 )
 
 --[ Runtime configuration ]--
@@ -1148,8 +1148,7 @@ local function normalize_driver_config(options)
    if options == nil then
       return {}
    end
-   return schema.assert(
-      driver_config_entry_schema,
+   return DriverConfigEntry(
       options,
       "sdl3 driver configuration"
    )
@@ -1160,8 +1159,7 @@ local function get_driver_config(options, driver_id)
    if driver_config == nil then
       return {}
    end
-   driver_config = schema.assert(
-      driver_config_schema,
+   driver_config = DriverConfig(
       driver_config,
       "rig.run options.driver_config"
    )
@@ -1390,36 +1388,36 @@ end
 
 --[ OpenGL schemas ]--
 
-local gl_attribute_value_schema = schema.one_of({
+local GLAttributeValue = schema.one_of({
    schema.boolean(),
    schema.number_like(),
 }, "a boolean or number"):transform(function(value)
    return gl_attribute_int(value)
 end)
 
-local gl_context_profile_schema = schema.one_of({
+local GLContextProfile = schema.one_of({
    schema.string_lookup(GL_PROFILE_VALUES, "OpenGL context profile"),
-   gl_attribute_value_schema,
+   GLAttributeValue,
 }, "a supported OpenGL context profile or boolean/number")
 
-local gl_attributes_schema = schema.record({
-   red_size = gl_attribute_value_schema:optional(),
-   green_size = gl_attribute_value_schema:optional(),
-   blue_size = gl_attribute_value_schema:optional(),
-   alpha_size = gl_attribute_value_schema:optional(),
-   buffer_size = gl_attribute_value_schema:optional(),
-   doublebuffer = gl_attribute_value_schema:optional(),
-   depth_size = gl_attribute_value_schema:optional(),
-   stencil_size = gl_attribute_value_schema:optional(),
-   multisamplebuffers = gl_attribute_value_schema:optional(),
-   multisamplesamples = gl_attribute_value_schema:optional(),
-   accelerated_visual = gl_attribute_value_schema:optional(),
-   context_major_version = gl_attribute_value_schema:optional(),
-   context_minor_version = gl_attribute_value_schema:optional(),
-   context_flags = gl_attribute_value_schema:optional(),
-   context_profile = gl_context_profile_schema:optional(),
-   share_with_current_context = gl_attribute_value_schema:optional(),
-   framebuffer_srgb_capable = gl_attribute_value_schema:optional(),
+local GLAttributes = schema.record({
+   red_size = GLAttributeValue:optional(),
+   green_size = GLAttributeValue:optional(),
+   blue_size = GLAttributeValue:optional(),
+   alpha_size = GLAttributeValue:optional(),
+   buffer_size = GLAttributeValue:optional(),
+   doublebuffer = GLAttributeValue:optional(),
+   depth_size = GLAttributeValue:optional(),
+   stencil_size = GLAttributeValue:optional(),
+   multisamplebuffers = GLAttributeValue:optional(),
+   multisamplesamples = GLAttributeValue:optional(),
+   accelerated_visual = GLAttributeValue:optional(),
+   context_major_version = GLAttributeValue:optional(),
+   context_minor_version = GLAttributeValue:optional(),
+   context_flags = GLAttributeValue:optional(),
+   context_profile = GLContextProfile:optional(),
+   share_with_current_context = GLAttributeValue:optional(),
+   framebuffer_srgb_capable = GLAttributeValue:optional(),
 })
 
 local default_gl_attributes = {
@@ -1433,8 +1431,7 @@ local default_gl_attributes = {
 local function apply_gl_attributes(attributes)
    sdl3.GL_ResetAttributes()
 
-   local requested = schema.assert(
-      gl_attributes_schema,
+   local requested = GLAttributes(
       attributes or default_gl_attributes,
       "sdl3_gl gl_attributes"
    )
@@ -2695,7 +2692,7 @@ rig.register_runtime_preset("sdl3_gl", {
 
 --[ App support ]--
 
-local module_config_schema = schema.record({
+local ModuleConfig = schema.record({
    frame_profiler = schema.one_of({
       schema.boolean(),
       schema.table(),
@@ -2708,7 +2705,7 @@ local function get_module_config(runtime_options)
    return rig.get_module_config(
       runtime_options,
       "sdl3x",
-      module_config_schema,
+      ModuleConfig,
       "sdl3x module configuration"
    )
 end

@@ -487,6 +487,43 @@ test.case("sdl3x vertex input state builder rejects unsupported numeric input ra
    )
 end)
 
+test.case("sdl3x.VertexInputRate and VertexAttributeFormat normalize named values", function()
+   test.equal(
+      sdl3x.VertexInputRate("vertex"),
+      sdl3.GPU_VERTEXINPUTRATE_VERTEX
+   )
+   test.equal(
+      sdl3x.VertexInputRate(sdl3.GPU_VERTEXINPUTRATE_INSTANCE),
+      sdl3.GPU_VERTEXINPUTRATE_INSTANCE
+   )
+   test.equal(
+      sdl3x.VertexAttributeFormat("float3"),
+      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT3
+   )
+   test.equal(
+      sdl3x.VertexAttributeFormat(sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4),
+      sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4
+   )
+
+   local input_rate_ok, input_rate_err = pcall(function()
+      sdl3x.VertexInputRate("bad")
+   end)
+   test.falsey(input_rate_ok)
+   test.match(
+      tostring(input_rate_err),
+      "value expects a vertex input rate"
+   )
+
+   local format_ok, format_err = pcall(function()
+      sdl3x.VertexAttributeFormat("bad")
+   end)
+   test.falsey(format_ok)
+   test.match(
+      tostring(format_err),
+      "value expects a vertex attribute format"
+   )
+end)
+
 test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    local bundle = sdl3x.build_graphics_pipeline_create_info({
       primitive_type = 3,

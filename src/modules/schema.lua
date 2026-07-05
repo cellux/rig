@@ -38,25 +38,35 @@ local function ensure_non_empty_string(value, label)
    return value
 end
 
-M.Schema = Class()
+local function call_schema(self, value, path)
+   return self:build_value(value, path)
+end
 
-M.DecodeSchema = Class(M.Schema)
-M.OptionalSchema = Class(M.Schema)
-M.ArraySchema = Class(M.Schema)
-M.MapSchema = Class(M.Schema)
-M.RecordSchema = Class(M.Schema)
-M.EnumSchema = Class(M.Schema)
-M.OneOfSchema = Class(M.Schema)
-M.NumberSchema = Class(M.Schema)
-M.IntegerSchema = Class(M.NumberSchema)
-M.InstanceSchema = Class(M.Schema)
-M.TransformSchema = Class(M.Schema)
-M.PredicateSchema = Class(M.Schema)
+M.Schema = Class()
 
 M.ffi = {}
 
-M.ffi.StructSchema = Class(M.Schema)
-M.ffi.ArraySchema = Class(M.Schema)
+local function SchemaClass(parent)
+   local c = Class(parent or M.Schema)
+   c.__call = call_schema
+   return c
+end
+
+M.DecodeSchema = SchemaClass()
+M.OptionalSchema = SchemaClass()
+M.ArraySchema = SchemaClass()
+M.MapSchema = SchemaClass()
+M.RecordSchema = SchemaClass()
+M.EnumSchema = SchemaClass()
+M.OneOfSchema = SchemaClass()
+M.NumberSchema = SchemaClass()
+M.IntegerSchema = SchemaClass(M.NumberSchema)
+M.InstanceSchema = SchemaClass()
+M.TransformSchema = SchemaClass()
+M.PredicateSchema = SchemaClass()
+
+M.ffi.StructSchema = SchemaClass()
+M.ffi.ArraySchema = SchemaClass()
 
 function M.Schema:decode(value, path)
    raise("Schema:decode must be implemented by subclasses")
@@ -76,6 +86,10 @@ function M.Schema:assert(value, path)
       raise(normalized_or_err)
    end
    return normalized_or_err
+end
+
+function M.Schema:build_value(value, path)
+   return self:assert(value, path)
 end
 
 function M.Schema:optional(default_value)
@@ -820,14 +834,6 @@ function M.ffi.ArraySchema:decode(value, path)
    end
 
    return bundle
-end
-
-function M.ffi.StructSchema:__call(value, path)
-   return self:assert(value, path)
-end
-
-function M.ffi.ArraySchema:__call(value, path)
-   return self:assert(value, path)
 end
 
 function M.optional(inner, default_value)

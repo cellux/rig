@@ -52,6 +52,10 @@ test.case("schema numeric helpers can be qualified immutably", function()
    test.match(err, "count expects a positive integer")
 end)
 
+test.case("schema objects are callable", function()
+   test.equal(schema.number_like():positive()("4", "jobs"), 4)
+end)
+
 test.case("schema positive_integer coerces integers and rejects non-positive or fractional values", function()
    local history_schema = schema.integer_like():positive()
 
