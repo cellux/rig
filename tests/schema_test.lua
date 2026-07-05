@@ -71,6 +71,17 @@ test.case("schema enum_values builds an enum from mapping values", function()
    test.match(err, "kind expects one of 1, 2")
 end)
 
+test.case("schema enum_values accepts a custom description", function()
+   local format_schema = schema.enum_values({
+      rgba8 = 11,
+      bgra8 = 22,
+   }, "a texture format")
+
+   local ok, err = schema.check(format_schema, 33, "format")
+   test.falsey(ok)
+   test.match(err, "format expects a texture format")
+end)
+
 test.case("schema named_value accepts mapping keys and mapped values", function()
    local mode_schema = schema.named_value({
       alpha = 1,

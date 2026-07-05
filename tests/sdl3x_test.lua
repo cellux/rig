@@ -428,13 +428,16 @@ test.case("sdl3x GPU descriptor builders populate FFI structs", function()
 
    local color_targets = sdl3x.build_color_target_descriptions({
       {
-         format = 9,
+         format = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
          blend_state = {
             enable_blend = true,
          },
       },
    })
-   test.equal(tonumber(color_targets[0].format), 9)
+   test.equal(
+      tonumber(color_targets[0].format),
+      sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+   )
    test.truthy(color_targets[0].blend_state.enable_blend)
 end)
 
@@ -487,7 +490,7 @@ test.case("sdl3x vertex input state builder rejects unsupported numeric input ra
    )
 end)
 
-test.case("sdl3x.VertexInputRate and VertexAttributeFormat normalize named values", function()
+test.case("sdl3x value schemas normalize supported values", function()
    test.equal(
       sdl3x.VertexInputRate("vertex"),
       sdl3.GPU_VERTEXINPUTRATE_VERTEX
@@ -503,6 +506,10 @@ test.case("sdl3x.VertexInputRate and VertexAttributeFormat normalize named value
    test.equal(
       sdl3x.VertexAttributeFormat(sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4),
       sdl3.GPU_VERTEXELEMENTFORMAT_FLOAT4
+   )
+   test.equal(
+      sdl3x.GPUTextureFormat(sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM),
+      sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
    )
 
    local input_rate_ok, input_rate_err = pcall(function()
@@ -522,6 +529,15 @@ test.case("sdl3x.VertexInputRate and VertexAttributeFormat normalize named value
       tostring(format_err),
       "value expects a vertex attribute format"
    )
+
+   local texture_format_ok, texture_format_err = pcall(function()
+      sdl3x.GPUTextureFormat(12345)
+   end)
+   test.falsey(texture_format_ok)
+   test.match(
+      tostring(texture_format_err),
+      "value expects a GPU texture format"
+   )
 end)
 
 test.case("sdl3x graphics pipeline builder populates FFI structs", function()
@@ -529,11 +545,11 @@ test.case("sdl3x graphics pipeline builder populates FFI structs", function()
       primitive_type = 3,
       props = 22,
       target_info = {
-         depth_stencil_format = 7,
+         depth_stencil_format = sdl3.GPU_TEXTUREFORMAT_D32_FLOAT,
          has_depth_stencil_target = true,
          color_target_descriptions = {
             {
-               format = 9,
+               format = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
             },
          },
       },
@@ -543,7 +559,11 @@ test.case("sdl3x graphics pipeline builder populates FFI structs", function()
    test.equal(tonumber(bundle.create_info[0].props), 22)
    test.equal(
       tonumber(bundle.create_info[0].target_info.depth_stencil_format),
-      7
+      sdl3.GPU_TEXTUREFORMAT_D32_FLOAT
+   )
+   test.equal(
+      tonumber(bundle.create_info[0].target_info.color_target_descriptions[0].format),
+      sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
    )
    test.equal(tonumber(bundle.create_info[0].target_info.num_color_targets), 1)
    test.truthy(bundle.create_info[0].target_info.has_depth_stencil_target)

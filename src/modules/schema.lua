@@ -254,23 +254,30 @@ function M.RecordSchema:decode(value, path)
    return normalized
 end
 
-function M.EnumSchema:init(values)
+function M.EnumSchema:init(values, description)
    if type(values) ~= "table" then
       raise("schema.EnumSchema expects values to be a table")
    end
+   if description ~= nil and (type(description) ~= "string" or description == "") then
+      raise("schema.EnumSchema expects description to be a non-empty string if provided")
+   end
 
    self.values = set(values)
-   self.descriptions = {}
+   self.value_descriptions = {}
+   self.description = description
 
    for i = 1, #values do
       local value = values[i]
-      self.descriptions[i] = tostring(value)
+      self.value_descriptions[i] = tostring(value)
    end
 end
 
 function M.EnumSchema:decode(value, path)
    if not self.values[value] then
-      fail(path, "one of " .. table.concat(self.descriptions, ", "))
+      if self.description ~= nil then
+         fail(path, self.description)
+      end
+      fail(path, "one of " .. table.concat(self.value_descriptions, ", "))
    end
    return value
 end
@@ -856,13 +863,16 @@ function M.record(fields, options)
    return M.RecordSchema(fields, options)
 end
 
-function M.enum(values)
-   return M.EnumSchema(values)
+function M.enum(values, description)
+   return M.EnumSchema(values, description)
 end
 
-function M.enum_values(mapping)
+function M.enum_values(mapping, description)
    if type(mapping) ~= "table" then
       raise("schema.enum_values expects mapping to be a table")
+   end
+   if description ~= nil and (type(description) ~= "string" or description == "") then
+      raise("schema.enum_values expects description to be a non-empty string if provided")
    end
 
    local keys = {}
@@ -885,7 +895,7 @@ function M.enum_values(mapping)
       end
    end
 
-   return M.EnumSchema(values)
+   return M.EnumSchema(values, description)
 end
 
 function M.named_value(mapping, label)

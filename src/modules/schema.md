@@ -64,8 +64,8 @@ Schemas decode input values into validated, normalized output values.
   - Supports:
     - `allow_extra = true`
   - Rejects extra fields by default.
-- `schema.enum(values)`
-- `schema.enum_values(mapping)`
+- `schema.enum(values[, description])`
+- `schema.enum_values(mapping[, description])`
 - `schema.named_value(mapping[, label])`
 - `schema.one_of(choices[, description])`
   - Tries each choice in order until one succeeds.

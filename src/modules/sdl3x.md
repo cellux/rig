@@ -29,6 +29,7 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 - `sdl3x.normalize_properties_id(props)`
 - `sdl3x.VertexInputRate(value[, path])`
 - `sdl3x.VertexAttributeFormat(value[, path])`
+- `sdl3x.GPUTextureFormat(value[, path])`
 - `sdl3x.Properties`
 - `sdl3x.Window`
 - `sdl3x.GPUShader`
@@ -105,6 +106,9 @@ Additional `sdl3_gpu` fields:
 - `sdl3x.VertexAttributeFormat(value[, path])`
   - Accepts `"float"`, `"float2"`, `"float3"`, `"float4"`, or the corresponding SDL numeric constants.
   - Returns the normalized numeric SDL vertex attribute format value.
+- `sdl3x.GPUTextureFormat(value[, path])`
+  - Accepts any exposed `sdl3.GPU_TEXTUREFORMAT_*` numeric constant.
+  - Returns the normalized numeric SDL texture format value.
 
 ## `sdl3x.ResourceScope`
 
