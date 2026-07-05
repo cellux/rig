@@ -23,7 +23,7 @@ function M.shallow_copy(value)
    return copy
 end
 
---[ rig.tostring ]
+--[ rig.tostring ]--
 
 local function stringify(value)
    if type(value) == "table" then
@@ -38,7 +38,7 @@ end
 
 M.tostring = stringify
 
---[ printers ]
+--[ printers ]--
 
 local function print_values(stream, with_newline, ...)
    local parts = {}
@@ -104,7 +104,7 @@ function M.fprintln(stream, ...)
    print_values(stream, true, ...)
 end
 
---[ FFI loaders ]
+--[ FFI loaders ]--
 
 function M.create_ffi_library_loader(options)
    if type(options) ~= "table" then
@@ -199,7 +199,7 @@ function M.get_module_config(options, module_id, config_schema, context_label)
    return schema.assert(config_schema, raw_config, label)
 end
 
---[ ResourceScope ]
+--[ ResourceScope ]--
 
 M.ResourceScope = M.Class()
 
@@ -288,7 +288,7 @@ function M.ResourceScope:release()
    self._released = true
 end
 
---[ ServiceRegistry ]
+--[ ServiceRegistry ]--
 
 local non_empty_string_schema = schema.non_empty_string()
 local unique_non_empty_string_array_schema = schema.array(
@@ -407,7 +407,7 @@ function M.register_service_provider(service_id, provider_id, provider)
    return _service_registry:register_service_provider(service_id, provider_id, provider)
 end
 
---[ core runtime phases ]
+--[ core runtime phases ]--
 
 local core_phase_names = {
    "before_setup",
@@ -418,7 +418,7 @@ local core_phase_names = {
 
 local core_phase_map = M.set(core_phase_names)
 
---[ runtime hooks ]
+--[ runtime hooks ]--
 
 local _runtime_hooks = {}
 
@@ -449,7 +449,7 @@ local function invoke_runtime_hooks(phase, ...)
    end
 end
 
---[ driver registration ]
+--[ driver registration ]--
 
 local _runtime_drivers = {}
 
@@ -487,7 +487,7 @@ function M.register_runtime_driver(name, driver)
    return normalized
 end
 
---[ preset registration ]
+--[ preset registration ]--
 
 local _runtime_presets = {}
 
@@ -515,11 +515,11 @@ function M.register_runtime_preset(name, preset)
    return normalized
 end
 
---[ App ]
+--[ App ]--
 
 M.App = M.Class()
 
---[ Runtime ]
+--[ Runtime ]--
 
 M.Runtime = M.Class()
 
@@ -721,7 +721,7 @@ function M.run(options)
    end
 end
 
---[ script loaders ]
+--[ script loaders ]--
 
 local function load_lua_script(source, script_path)
    local chunk, err = loadstring(source, script_path)

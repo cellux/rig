@@ -14,7 +14,7 @@ require("mesh")
 local shader = require("shader")
 require("time")
 
---[ error handling ]
+--[ error handling ]--
 
 function M.get_error(fallback)
    local err = sdl3.GetError()
@@ -24,7 +24,7 @@ function M.get_error(fallback)
    return ffi.string(err)
 end
 
---[ utilities ]
+--[ utilities ]--
 
 function M.free(ptr)
    if ptr ~= nil and ptr ~= ffi.NULL then
@@ -32,14 +32,7 @@ function M.free(ptr)
    end
 end
 
-local function schema_path_label(path)
-   if type(path) == "string" and path ~= "" then
-      return path
-   end
-   return "value"
-end
-
---[ shared schemas ]
+--[ shared schemas ]--
 
 local number_like_schema = schema.number({
    coerce = true,
@@ -50,9 +43,16 @@ local non_negative_integer_schema = schema.integer({
    min = 0,
 })
 
---[ Properties ]
+--[ Properties ]--
 
 local Properties = rig.Class()
+
+local function schema_path_label(path)
+   if type(path) == "string" and path ~= "" then
+      return path
+   end
+   return "value"
+end
 
 local function normalize_properties_id_value(props, path)
    if props == nil or props == 0 then
@@ -239,7 +239,7 @@ function Properties:release()
    self._released = true
 end
 
---[ Window ]
+--[ Window ]--
 
 local Window = rig.Class()
 
@@ -393,7 +393,7 @@ function Window:release()
    self._released = true
 end
 
---[ GPUShader ]
+--[ GPUShader ]--
 
 local GPUShader = rig.Class()
 M.GPUShader = GPUShader
@@ -411,7 +411,7 @@ local function ensure_gpu_shader_live(shader)
    end
 end
 
---[ GPU schemas ]
+--[ GPU schemas ]--
 
 local VERTEX_INPUT_RATES = {
    vertex = sdl3.GPU_VERTEXINPUTRATE_VERTEX,
@@ -699,7 +699,7 @@ local vertex_input_layout_schema = schema.record({
    buffers = schema.array(vertex_input_layout_buffer_schema),
 })
 
---[ GPU builders ]
+--[ GPU builders ]--
 
 function M.build_vertex_buffer_descriptions(buffers)
    local raw_buffers = schema.assert(
@@ -803,7 +803,7 @@ function M.build_graphics_pipeline_create_info(spec)
    return bundle
 end
 
---[ GPU shaders and resource scopes ]
+--[ GPU shaders and resource scopes ]--
 
 local STAGE_TO_SDL = {
    vertex = sdl3.GPU_SHADERSTAGE_VERTEX,
@@ -1016,7 +1016,7 @@ function ResourceScope:create_depth_texture(width, height, format)
    return texture, chosen_format
 end
 
---[ Runtime state ]
+--[ Runtime state ]--
 
 local runtime_window = nil
 local runtime_renderer = nil
@@ -1031,7 +1031,7 @@ local driver_config_schema = schema.map(
    driver_config_entry_schema
 )
 
---[ Runtime configuration ]
+--[ Runtime configuration ]--
 
 local function merge_props(base_props, override_props)
    local merged = {}
@@ -1229,7 +1229,7 @@ local gl_font_quad_vertices = ffi.new("float[24]")
 local gl_font_backend_state = nil
 local resize_state = nil
 
---[ Runtime accessors ]
+--[ Runtime accessors ]--
 
 function M.get_window()
    return runtime_window
@@ -1260,7 +1260,7 @@ function M.get_gl_proc_address(name)
    return ptr
 end
 
---[ SDL runtime setup ]
+--[ SDL runtime setup ]--
 
 local function get_window_size()
    if runtime_window == nil then
@@ -1399,7 +1399,7 @@ local function setup_gpu(options)
    resize_state = nil
 end
 
---[ OpenGL runtime setup ]
+--[ OpenGL runtime setup ]--
 
 local GL_PROFILE_VALUES = {
    core = "GL_CONTEXT_PROFILE_CORE",
@@ -1449,7 +1449,7 @@ local function normalize_gl_profile(value)
    return gl_attribute_int(value)
 end
 
---[ OpenGL schemas ]
+--[ OpenGL schemas ]--
 
 local gl_attribute_value_schema = schema.one_of({
    schema.boolean(),
@@ -1575,7 +1575,7 @@ local function setup_gl(options)
    resize_state = nil
 end
 
---[ Runtime teardown and presentation ]
+--[ Runtime teardown and presentation ]--
 
 shutdown = function()
    destroy_gl_font_backend_state()
@@ -1624,7 +1624,7 @@ local function present_gl()
    end
 end
 
---[ Window resize tracking ]
+--[ Window resize tracking ]--
 
 local function get_window_size_in_pixels()
    if runtime_window == nil then
@@ -1669,7 +1669,7 @@ local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
    })
 end
 
---[ OpenGL font backend ]
+--[ OpenGL font backend ]--
 
 local gl_font_vertex_source = [[
 #version 330 core
@@ -1870,7 +1870,7 @@ local function write_gl_font_quad_vertices(packed, x, y, scale)
    gl_font_quad_vertices[23] = packed.v1
 end
 
---[ SDL font backend ]
+--[ SDL font backend ]--
 
 local font_src_rect = ffi.new("SDL_FRect[1]")
 local font_dst_rect = ffi.new("SDL_FRect[1]")
@@ -2100,7 +2100,7 @@ function sdl3_gl_font_provider.draw_text_run(text_renderer, run, base_x, baselin
    end
 end
 
---[ GPU and rendering utilities ]
+--[ GPU and rendering utilities ]--
 
 function M.upload_to_gpu_buffer(device, buffer, data)
    if device == nil then
@@ -2246,7 +2246,7 @@ function M.clear(r, g, b, a)
    end
 end
 
---[ Event dispatch and frame drivers ]
+--[ Event dispatch and frame drivers ]--
 
 local function dispatch_keyboard_event(event, runtime)
    local key_name = sdl3.GetKeyName(event.key)
@@ -2432,7 +2432,7 @@ local function current_time_seconds()
    return tonumber(ticks[0]) / 1000000000.0
 end
 
---[ Runtime services ]
+--[ Runtime services ]--
 
 local sdl3_time_service = {
    now = function()
@@ -2551,7 +2551,7 @@ rig.register_service_provider("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_ser
 rig.register_service_provider("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
 rig.register_service_provider("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
 
---[ Scheduler ]
+--[ Scheduler ]--
 
 local function setup_scheduler(label)
    runtime_scheduler = sched.Scheduler(label)
@@ -2592,7 +2592,7 @@ local function require_render_callback(mode_options, mode_key, runtime)
    return callback
 end
 
---[ Runtime drivers ]
+--[ Runtime drivers ]--
 
 rig.register_runtime_driver("sdl3", {
    events = {
@@ -2756,7 +2756,7 @@ rig.register_runtime_preset("sdl3_gl", {
    },
 })
 
---[ App support ]
+--[ App support ]--
 
 local module_config_schema = schema.record({
    frame_profiler = schema.one_of({
@@ -2980,7 +2980,7 @@ local function on_resize_common(self, resize_info)
    self.pixel_height = resize_info.pixel_height or 0
 end
 
---[ App classes ]
+--[ App classes ]--
 
 local App = rig.Class(rig.App)
 local SceneApp = rig.Class(animator.App)
@@ -3020,7 +3020,7 @@ function SceneApp:before_shutdown()
    end
 end
 
---[ App method wiring ]
+--[ App method wiring ]--
 
 App.before_frame = before_frame_common
 App.after_frame = after_frame_common
