@@ -74,8 +74,12 @@ Schemas decode input values into validated, normalized output values.
   - Accepts subclass instances.
 - `schema.ffi.struct(ctype, fields[, options])`
   - Validates a plain Lua spec table and materializes a `ctype[1]` FFI struct bundle.
+  - The returned schema object is callable:
+    `schema_object(value[, path])` is equivalent to `schema_object:assert(value[, path])`.
 - `schema.ffi.array(ctype, item_schema[, options])`
   - Validates an array and materializes a `ctype[?]` FFI array bundle.
+  - The returned schema object is callable:
+    `schema_object(value[, path])` is equivalent to `schema_object:assert(value[, path])`.
 
 ## Schema Methods
 

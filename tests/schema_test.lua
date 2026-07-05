@@ -230,6 +230,37 @@ test.case("schema.ffi.struct populates simple and nested structs", function()
    test.equal(#line.keepalive, 2)
 end)
 
+test.case("schema.ffi struct schemas are callable and composable", function()
+   local Point = schema.ffi.struct("rig_schema_test_Point", {
+      x = schema.integer_like(),
+      y = schema.integer_like(),
+   })
+   local Line = schema.ffi.struct("rig_schema_test_Line", {
+      start = Point,
+      ["end"] = {
+         schema = Point,
+         to = "finish",
+      },
+   })
+
+   local line = Line({
+      start = {
+         x = "1",
+         y = "2",
+      },
+      ["end"] = {
+         x = "3",
+         y = "4",
+      },
+   }, "line")
+
+   test.equal(line.value.start.x, 1)
+   test.equal(line.value.start.y, 2)
+   test.equal(line.value.finish.x, 3)
+   test.equal(line.value.finish.y, 4)
+   test.equal(#line.keepalive, 2)
+end)
+
 test.case("schema.ffi.array and count_field populate pointer fields", function()
    local int_array_schema = schema.ffi.array("int", schema.integer_like())
    local list_schema = schema.ffi.struct("rig_schema_test_IntList", {

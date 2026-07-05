@@ -423,7 +423,7 @@ local vertex_attribute_format_schema = schema.one_of({
    schema.number_like(),
 }, "a string or number")
 
-local gpu_vertex_buffer_description_schema = schema.ffi.struct(
+local GPUVertexBufferDescription = schema.ffi.struct(
    "SDL_GPUVertexBufferDescription",
    {
       slot = schema.integer_like():non_negative(),
@@ -447,7 +447,7 @@ local gpu_vertex_attribute_source_schema = schema.record({
    return value
 end)
 
-local gpu_vertex_attribute_schema = schema.ffi.struct("SDL_GPUVertexAttribute", {
+local GPUVertexAttribute = schema.ffi.struct("SDL_GPUVertexAttribute", {
    location = schema.integer_like():non_negative(),
    buffer_slot = schema.integer_like():non_negative():optional(0),
    format = vertex_attribute_format_schema,
@@ -469,7 +469,7 @@ local gpu_color_target_blend_state_schema = schema.ffi.struct(
    }
 )
 
-local gpu_color_target_description_schema = schema.ffi.struct(
+local GPUColorTargetDescription = schema.ffi.struct(
    "SDL_GPUColorTargetDescription",
    {
       format = schema.number_like(),
@@ -477,30 +477,30 @@ local gpu_color_target_description_schema = schema.ffi.struct(
    }
 )
 
-local gpu_vertex_buffer_descriptions_schema = schema.ffi.array(
+local GPUVertexBufferDescriptions = schema.ffi.array(
    "SDL_GPUVertexBufferDescription",
-   gpu_vertex_buffer_description_schema
+   GPUVertexBufferDescription
 )
 
-local gpu_vertex_attributes_schema = schema.ffi.array(
+local GPUVertexAttributes = schema.ffi.array(
    "SDL_GPUVertexAttribute",
-   gpu_vertex_attribute_schema
+   GPUVertexAttribute
 )
 
-local gpu_color_target_descriptions_schema = schema.ffi.array(
+local GPUColorTargetDescriptions = schema.ffi.array(
    "SDL_GPUColorTargetDescription",
-   gpu_color_target_description_schema
+   GPUColorTargetDescription
 )
 
-local gpu_vertex_input_state_schema = schema.ffi.struct(
+local GPUVertexInputState = schema.ffi.struct(
    "SDL_GPUVertexInputState",
    {
       vertex_buffer_descriptions = {
-         schema = gpu_vertex_buffer_descriptions_schema,
+         schema = GPUVertexBufferDescriptions,
          count_field = "num_vertex_buffers",
       },
       vertex_attributes = {
-         schema = gpu_vertex_attributes_schema,
+         schema = GPUVertexAttributes,
          count_field = "num_vertex_attributes",
       },
    }
@@ -586,7 +586,7 @@ local graphics_pipeline_target_info_schema = schema.ffi.struct(
    "SDL_GPUGraphicsPipelineTargetInfo",
    {
       color_target_descriptions = {
-         schema = gpu_color_target_descriptions_schema:optional(),
+         schema = GPUColorTargetDescriptions:optional(),
          count_field = "num_color_targets",
       },
       depth_stencil_format = schema.number_like():optional(),
@@ -671,8 +671,7 @@ function M.build_vertex_buffer_descriptions(buffers)
       normalized[i] = spec
    end
 
-   return schema.assert(
-      gpu_vertex_buffer_descriptions_schema,
+   return GPUVertexBufferDescriptions(
       normalized,
       "sdl3x.build_vertex_buffer_descriptions buffers"
    ).cdata
@@ -685,8 +684,7 @@ function M.build_vertex_attributes(attributes)
       "sdl3x.build_vertex_attributes attributes"
    )
 
-   return schema.assert(
-      gpu_vertex_attributes_schema,
+   return GPUVertexAttributes(
       normalized,
       "sdl3x.build_vertex_attributes attributes"
    ).cdata
@@ -718,8 +716,7 @@ function M.build_vertex_input_state(layout)
       end
    end
 
-   local vertex_input_state = schema.assert(
-      gpu_vertex_input_state_schema,
+   local vertex_input_state = GPUVertexInputState(
       {
          vertex_buffer_descriptions = buffer_specs,
          vertex_attributes = attribute_specs,
@@ -732,8 +729,7 @@ function M.build_vertex_input_state(layout)
 end
 
 function M.build_color_target_descriptions(specs)
-   return schema.assert(
-      gpu_color_target_descriptions_schema,
+   return GPUColorTargetDescriptions(
       specs,
       "sdl3x.build_color_target_descriptions specs"
    ).cdata

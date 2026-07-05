@@ -822,6 +822,14 @@ function M.ffi.ArraySchema:decode(value, path)
    return bundle
 end
 
+function M.ffi.StructSchema:__call(value, path)
+   return self:assert(value, path)
+end
+
+function M.ffi.ArraySchema:__call(value, path)
+   return self:assert(value, path)
+end
+
 function M.optional(inner, default_value)
    return M.OptionalSchema(inner, default_value)
 end
