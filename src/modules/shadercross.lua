@@ -215,24 +215,24 @@ local spirv_info_options_schema = schema.record({
 })
 
 local graphics_resource_info_schema = schema.record({
-   num_samplers = schema.integer({ min = 0 }):optional(0),
-   num_storage_textures = schema.integer({ min = 0 }):optional(0),
-   num_storage_buffers = schema.integer({ min = 0 }):optional(0),
-   num_uniform_buffers = schema.integer({ min = 0 }):optional(0),
+   num_samplers = schema.integer():non_negative():optional(0),
+   num_storage_textures = schema.integer():non_negative():optional(0),
+   num_storage_buffers = schema.integer():non_negative():optional(0),
+   num_uniform_buffers = schema.integer():non_negative():optional(0),
 }, {
    allow_extra = true,
 })
 
 local compute_metadata_schema = schema.record({
-   num_samplers = schema.integer({ min = 0 }):optional(0),
-   num_readonly_storage_textures = schema.integer({ min = 0 }):optional(0),
-   num_readonly_storage_buffers = schema.integer({ min = 0 }):optional(0),
-   num_readwrite_storage_textures = schema.integer({ min = 0 }):optional(0),
-   num_readwrite_storage_buffers = schema.integer({ min = 0 }):optional(0),
-   num_uniform_buffers = schema.integer({ min = 0 }):optional(0),
-   threadcount_x = schema.integer({ min = 0 }):optional(0),
-   threadcount_y = schema.integer({ min = 0 }):optional(0),
-   threadcount_z = schema.integer({ min = 0 }):optional(0),
+   num_samplers = schema.integer():non_negative():optional(0),
+   num_readonly_storage_textures = schema.integer():non_negative():optional(0),
+   num_readonly_storage_buffers = schema.integer():non_negative():optional(0),
+   num_readwrite_storage_textures = schema.integer():non_negative():optional(0),
+   num_readwrite_storage_buffers = schema.integer():non_negative():optional(0),
+   num_uniform_buffers = schema.integer():non_negative():optional(0),
+   threadcount_x = schema.integer():non_negative():optional(0),
+   threadcount_y = schema.integer():non_negative():optional(0),
+   threadcount_z = schema.integer():non_negative():optional(0),
 }, {
    allow_extra = true,
 })

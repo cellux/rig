@@ -47,6 +47,8 @@ M.MapSchema = Class(M.Schema)
 M.RecordSchema = Class(M.Schema)
 M.EnumSchema = Class(M.Schema)
 M.OneOfSchema = Class(M.Schema)
+M.NumberSchema = Class(M.Schema)
+M.IntegerSchema = Class(M.NumberSchema)
 M.InstanceSchema = Class(M.Schema)
 M.TransformSchema = Class(M.Schema)
 M.PredicateSchema = Class(M.Schema)
@@ -385,63 +387,217 @@ function M.non_empty_string()
    }
 end
 
-function M.number(options)
-   local opts = options or {}
+local function validate_number_schema_options(label, opts)
    if type(opts) ~= "table" then
-      raise("schema.number expects options to be a table if provided")
+      raise(label .. " expects options to be a table if provided")
+   end
+end
+
+local function number_expectation(schema_object)
+   local base = schema_object.integer and "an integer" or "a number"
+
+   if schema_object.minimum ~= nil and schema_object.maximum == nil then
+      if schema_object.minimum == 0 then
+         if schema_object.minimum_exclusive then
+            return schema_object.integer and "a positive integer" or "a positive number"
+         end
+         return schema_object.integer and "a non-negative integer" or "a non-negative number"
+      end
+      return base
+         .. " "
+         .. (schema_object.minimum_exclusive and ">" or ">=")
+         .. " "
+         .. tostring(schema_object.minimum)
    end
 
-   local coerce = opts.coerce == true
-   local integer = opts.integer == true
-   local min = opts.min
-   local max = opts.max
+   if schema_object.maximum ~= nil and schema_object.minimum == nil then
+      if schema_object.maximum == 0 and schema_object.maximum_exclusive then
+         return schema_object.integer and "a negative integer" or "a negative number"
+      end
+      return base
+         .. " "
+         .. (schema_object.maximum_exclusive and "<" or "<=")
+         .. " "
+         .. tostring(schema_object.maximum)
+   end
 
-   return M.DecodeSchema("a number", function(value, path)
-      local normalized = value
-      if coerce then
-         normalized = tonumber(normalized)
+   if schema_object.minimum ~= nil and schema_object.maximum ~= nil then
+      local lower = (schema_object.minimum_exclusive and ">" or ">=")
+         .. " "
+         .. tostring(schema_object.minimum)
+      local upper = (schema_object.maximum_exclusive and "<" or "<=")
+         .. " "
+         .. tostring(schema_object.maximum)
+      return base .. " " .. lower .. " and " .. upper
+   end
+
+   return base
+end
+
+local function copy_number_schema_options(schema_object)
+   return {
+      coerce = schema_object.coerce,
+      integer = schema_object.integer,
+      min = schema_object.minimum,
+      min_exclusive = schema_object.minimum_exclusive,
+      max = schema_object.maximum,
+      max_exclusive = schema_object.maximum_exclusive,
+   }
+end
+
+function M.NumberSchema:init(options)
+   local opts = options or {}
+   validate_number_schema_options("schema.NumberSchema", opts)
+
+   self.coerce = opts.coerce == true
+   self.integer = opts.integer == true
+   self.minimum = opts.min
+   self.minimum_exclusive = opts.min_exclusive == true
+   self.maximum = opts.max
+   self.maximum_exclusive = opts.max_exclusive == true
+end
+
+function M.NumberSchema:with(options)
+   validate_number_schema_options("schema.NumberSchema:with", options)
+
+   local next_options = copy_number_schema_options(self)
+   for key, value in pairs(options) do
+      next_options[key] = value
+   end
+   return getmetatable(self)(next_options)
+end
+
+function M.NumberSchema:min(value)
+   return self:with({
+      min = value,
+      min_exclusive = false,
+   })
+end
+
+function M.NumberSchema:max(value)
+   return self:with({
+      max = value,
+      max_exclusive = false,
+   })
+end
+
+function M.NumberSchema:negative()
+   return self:with({
+      max = 0,
+      max_exclusive = true,
+   })
+end
+
+function M.NumberSchema:non_negative()
+   return self:with({
+      min = 0,
+      min_exclusive = false,
+   })
+end
+
+function M.NumberSchema:positive()
+   return self:with({
+      min = 0,
+      min_exclusive = true,
+   })
+end
+
+function M.NumberSchema:decode(value, path)
+   local normalized = value
+   if self.coerce then
+      normalized = tonumber(normalized)
+   end
+
+   local expectation = number_expectation(self)
+
+   if type(normalized) ~= "number" then
+      fail(path, expectation)
+   end
+   if self.integer and normalized ~= math.floor(normalized) then
+      fail(path, expectation)
+   end
+   if self.minimum ~= nil then
+      if self.minimum_exclusive then
+         if normalized <= self.minimum then
+            fail(path, expectation)
+         end
+      elseif normalized < self.minimum then
+         fail(path, expectation)
       end
-      if type(normalized) ~= "number" then
-         fail(path, "a number")
+   end
+   if self.maximum ~= nil then
+      if self.maximum_exclusive then
+         if normalized >= self.maximum then
+            fail(path, expectation)
+         end
+      elseif normalized > self.maximum then
+         fail(path, expectation)
       end
-      if integer and normalized ~= math.floor(normalized) then
-         fail(path, "an integer")
-      end
-      if min ~= nil and normalized < min then
-         fail(path, "a number >= " .. tostring(min))
-      end
-      if max ~= nil and normalized > max then
-         fail(path, "a number <= " .. tostring(max))
-      end
-      return normalized
-   end)
+   end
+
+   return normalized
+end
+
+function M.IntegerSchema:init(options)
+   local opts = options or {}
+   validate_number_schema_options("schema.IntegerSchema", opts)
+
+   local next_options = {
+      coerce = opts.coerce == true,
+      integer = true,
+      min = opts.min,
+      min_exclusive = opts.min_exclusive == true,
+      max = opts.max,
+      max_exclusive = opts.max_exclusive == true,
+   }
+   M.NumberSchema.init(self, next_options)
+end
+
+function M.number(options)
+   return M.NumberSchema(options)
 end
 
 function M.integer(options)
+   return M.IntegerSchema(options)
+end
+
+function M.number_like(options)
    local opts = options or {}
-   opts.integer = true
-   return M.number(opts)
+   validate_number_schema_options("schema.number_like", opts)
+   local next_options = copy_number_schema_options({
+      coerce = true,
+      integer = opts.integer == true,
+      min = opts.min,
+      min_exclusive = opts.min_exclusive == true,
+      max = opts.max,
+      max_exclusive = opts.max_exclusive == true,
+   })
+   return M.NumberSchema(next_options)
+end
+
+function M.integer_like(options)
+   local opts = options or {}
+   validate_number_schema_options("schema.integer_like", opts)
+   local next_options = {
+      coerce = true,
+      min = opts.min,
+      min_exclusive = opts.min_exclusive == true,
+      max = opts.max,
+      max_exclusive = opts.max_exclusive == true,
+   }
+   return M.IntegerSchema(next_options)
 end
 
 function M.non_negative_number(options)
-   local opts = options or {}
-   opts.min = 0
-   return M.number(opts)
+   return M.number(options):non_negative()
 end
 
 function M.positive_number(options)
-   local opts = options or {}
-   opts.min = opts.min or 0
-   return M.number(opts):where("a positive number", function(value)
-      return value > 0
-   end)
+   return M.number(options):positive()
 end
 
 function M.positive_integer(options)
-   local opts = options or {}
-   return M.number(opts):where("a positive integer", function(value)
-      return value == math.floor(value) and value > 0
-   end)
+   return M.integer(options):positive()
 end
 
 function M.boolean()

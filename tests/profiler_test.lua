@@ -82,7 +82,7 @@ test.case("profiler.FrameProfiler validates options through schema", function()
    test.falsey(missing_fps_ok)
    test.match(
       tostring(missing_fps_err),
-      "profiler%.FrameProfiler options%.fps expects a number"
+      "profiler%.FrameProfiler options%.fps expects a positive number"
    )
 
    local bad_history_ok, bad_history_err = pcall(function()

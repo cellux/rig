@@ -26,22 +26,34 @@ typedef struct rig_schema_test_Message {
 ]]
 
 test.case("schema number can coerce and constrain values", function()
-   local jobs_schema = schema.positive_number {
-      coerce = true,
-      integer = true,
-   }
+   local jobs_schema = schema.number_like():positive():max(10)
 
    test.equal(schema.assert(jobs_schema, "4", "jobs"), 4)
 
    local ok, err = schema.check(jobs_schema, "0", "jobs")
    test.falsey(ok)
-   test.match(err, "jobs expects a positive number")
+   test.match(err, "jobs expects a number > 0 and <= 10")
+end)
+
+test.case("schema numeric helpers can be qualified immutably", function()
+   local base_schema = schema.integer_like()
+   local non_negative_schema = base_schema:non_negative()
+   local positive_schema = base_schema:positive()
+
+   test.equal(schema.assert(non_negative_schema, "0", "count"), 0)
+   test.equal(schema.assert(positive_schema, "4", "count"), 4)
+
+   local base_ok, base_value = schema.check(base_schema, "-3", "count")
+   test.truthy(base_ok)
+   test.equal(base_value, -3)
+
+   local ok, err = schema.check(positive_schema, "0", "count")
+   test.falsey(ok)
+   test.match(err, "count expects a positive integer")
 end)
 
 test.case("schema positive_integer coerces integers and rejects non-positive or fractional values", function()
-   local history_schema = schema.positive_integer {
-      coerce = true,
-   }
+   local history_schema = schema.integer_like():positive()
 
    test.equal(schema.assert(history_schema, "4", "history"), 4)
 
@@ -176,12 +188,8 @@ end)
 
 test.case("schema.ffi.struct populates simple and nested structs", function()
    local point_schema = schema.ffi.struct("rig_schema_test_Point", {
-      x = schema.integer({
-         coerce = true,
-      }),
-      y = schema.integer({
-         coerce = true,
-      }),
+      x = schema.integer_like(),
+      y = schema.integer_like(),
    })
    local line_schema = schema.ffi.struct("rig_schema_test_Line", {
       start = point_schema,
@@ -210,9 +218,7 @@ test.case("schema.ffi.struct populates simple and nested structs", function()
 end)
 
 test.case("schema.ffi.array and count_field populate pointer fields", function()
-   local int_array_schema = schema.ffi.array("int", schema.integer({
-      coerce = true,
-   }))
+   local int_array_schema = schema.ffi.array("int", schema.integer_like())
    local list_schema = schema.ffi.struct("rig_schema_test_IntList", {
       values = {
          schema = int_array_schema,
@@ -233,12 +239,8 @@ end)
 
 test.case("schema.ffi count_field rejects struct bundles", function()
    local point_schema = schema.ffi.struct("rig_schema_test_Point", {
-      x = schema.integer({
-         coerce = true,
-      }),
-      y = schema.integer({
-         coerce = true,
-      }),
+      x = schema.integer_like(),
+      y = schema.integer_like(),
    })
    local line_schema = schema.ffi.struct("rig_schema_test_Line", {
       start = {

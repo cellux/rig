@@ -4,12 +4,8 @@ local rig = require("rig")
 local schema = require("schema")
 
 local non_empty_string_schema = schema.non_empty_string()
-local positive_integer_schema = schema.positive_integer {
-   coerce = true,
-}
-local positive_number_schema = schema.positive_number {
-   coerce = true,
-}
+local positive_integer_schema = schema.integer_like():positive()
+local positive_number_schema = schema.number_like():positive()
 local metric_names_schema = schema.array(non_empty_string_schema, { unique = true })
 local reduce_kind_schema = schema.enum({
    "count",

@@ -32,17 +32,6 @@ function M.free(ptr)
    end
 end
 
---[ shared schemas ]--
-
-local number_like_schema = schema.number({
-   coerce = true,
-})
-
-local non_negative_integer_schema = schema.integer({
-   coerce = true,
-   min = 0,
-})
-
 --[ Properties ]--
 
 local Properties = rig.Class()
@@ -457,34 +446,34 @@ local vertex_input_rate_schema = schema.one_of({
    schema.non_empty_string():transform(function(value)
       return normalize_vertex_input_rate(value)
    end),
-   number_like_schema,
+   schema.number_like(),
 }, "a string or number")
 
 local vertex_attribute_format_schema = schema.one_of({
    schema.non_empty_string():transform(function(value)
       return normalize_vertex_attribute_format(value)
    end),
-   number_like_schema,
+   schema.number_like(),
 }, "a string or number")
 
 local gpu_vertex_buffer_description_schema = schema.ffi.struct(
    "SDL_GPUVertexBufferDescription",
    {
-      slot = non_negative_integer_schema,
-      pitch = non_negative_integer_schema,
+      slot = schema.integer_like():non_negative(),
+      pitch = schema.integer_like():non_negative(),
       input_rate = vertex_input_rate_schema:optional(
          normalize_vertex_input_rate("vertex")
       ),
-      instance_step_rate = non_negative_integer_schema:optional(0),
+      instance_step_rate = schema.integer_like():non_negative():optional(0),
    }
 )
 
 local gpu_vertex_attribute_source_schema = schema.record({
-   location = non_negative_integer_schema,
-   buffer_slot = non_negative_integer_schema:optional(),
-   slot = non_negative_integer_schema:optional(),
+   location = schema.integer_like():non_negative(),
+   buffer_slot = schema.integer_like():non_negative():optional(),
+   slot = schema.integer_like():non_negative():optional(),
    format = vertex_attribute_format_schema,
-   offset = non_negative_integer_schema,
+   offset = schema.integer_like():non_negative(),
 }):transform(function(value)
    value.buffer_slot = value.buffer_slot or value.slot or 0
    value.slot = nil
@@ -492,22 +481,22 @@ local gpu_vertex_attribute_source_schema = schema.record({
 end)
 
 local gpu_vertex_attribute_schema = schema.ffi.struct("SDL_GPUVertexAttribute", {
-   location = non_negative_integer_schema,
-   buffer_slot = non_negative_integer_schema:optional(0),
+   location = schema.integer_like():non_negative(),
+   buffer_slot = schema.integer_like():non_negative():optional(0),
    format = vertex_attribute_format_schema,
-   offset = non_negative_integer_schema,
+   offset = schema.integer_like():non_negative(),
 })
 
 local gpu_color_target_blend_state_schema = schema.ffi.struct(
    "SDL_GPUColorTargetBlendState",
    {
-      src_color_blendfactor = number_like_schema:optional(),
-      dst_color_blendfactor = number_like_schema:optional(),
-      color_blend_op = number_like_schema:optional(),
-      src_alpha_blendfactor = number_like_schema:optional(),
-      dst_alpha_blendfactor = number_like_schema:optional(),
-      alpha_blend_op = number_like_schema:optional(),
-      color_write_mask = number_like_schema:optional(),
+      src_color_blendfactor = schema.number_like():optional(),
+      dst_color_blendfactor = schema.number_like():optional(),
+      color_blend_op = schema.number_like():optional(),
+      src_alpha_blendfactor = schema.number_like():optional(),
+      dst_alpha_blendfactor = schema.number_like():optional(),
+      alpha_blend_op = schema.number_like():optional(),
+      color_write_mask = schema.number_like():optional(),
       enable_blend = schema.boolean():optional(),
       enable_color_write_mask = schema.boolean():optional(),
    }
@@ -516,7 +505,7 @@ local gpu_color_target_blend_state_schema = schema.ffi.struct(
 local gpu_color_target_description_schema = schema.ffi.struct(
    "SDL_GPUColorTargetDescription",
    {
-      format = number_like_schema,
+      format = schema.number_like(),
       blend_state = gpu_color_target_blend_state_schema:optional(),
    }
 )
@@ -553,17 +542,17 @@ local gpu_vertex_input_state_schema = schema.ffi.struct(
 local gpu_buffer_create_info_schema = schema.ffi.struct(
    "SDL_GPUBufferCreateInfo",
    {
-      usage = number_like_schema,
-      size = non_negative_integer_schema,
+      usage = schema.number_like(),
+      size = schema.integer_like():non_negative(),
       props = properties_id_schema,
    }
 )
 
 local gpu_shader_resource_info_schema = schema.record({
-   num_samplers = non_negative_integer_schema:optional(0),
-   num_storage_textures = non_negative_integer_schema:optional(0),
-   num_storage_buffers = non_negative_integer_schema:optional(0),
-   num_uniform_buffers = non_negative_integer_schema:optional(0),
+   num_samplers = schema.integer_like():non_negative():optional(0),
+   num_storage_textures = schema.integer_like():non_negative():optional(0),
+   num_storage_buffers = schema.integer_like():non_negative():optional(0),
+   num_uniform_buffers = schema.integer_like():non_negative():optional(0),
 })
 
 local gpu_shader_create_info_schema = schema.ffi.struct(
@@ -580,12 +569,12 @@ local gpu_shader_create_info_schema = schema.ffi.struct(
          end,
       },
       entrypoint = schema.string():optional("main"),
-      format = number_like_schema,
-      stage = number_like_schema,
-      num_samplers = non_negative_integer_schema:optional(0),
-      num_storage_textures = non_negative_integer_schema:optional(0),
-      num_storage_buffers = non_negative_integer_schema:optional(0),
-      num_uniform_buffers = non_negative_integer_schema:optional(0),
+      format = schema.number_like(),
+      stage = schema.number_like(),
+      num_samplers = schema.integer_like():non_negative():optional(0),
+      num_storage_textures = schema.integer_like():non_negative():optional(0),
+      num_storage_buffers = schema.integer_like():non_negative():optional(0),
+      num_uniform_buffers = schema.integer_like():non_negative():optional(0),
       props = properties_id_schema,
    }
 )
@@ -593,12 +582,12 @@ local gpu_shader_create_info_schema = schema.ffi.struct(
 local graphics_pipeline_rasterizer_state_schema = schema.ffi.struct(
    "SDL_GPURasterizerState",
    {
-      fill_mode = number_like_schema:optional(),
-      cull_mode = number_like_schema:optional(),
-      front_face = number_like_schema:optional(),
-      depth_bias_constant_factor = number_like_schema:optional(),
-      depth_bias_clamp = number_like_schema:optional(),
-      depth_bias_slope_factor = number_like_schema:optional(),
+      fill_mode = schema.number_like():optional(),
+      cull_mode = schema.number_like():optional(),
+      front_face = schema.number_like():optional(),
+      depth_bias_constant_factor = schema.number_like():optional(),
+      depth_bias_clamp = schema.number_like():optional(),
+      depth_bias_slope_factor = schema.number_like():optional(),
       enable_depth_bias = schema.boolean():optional(),
       enable_depth_clip = schema.boolean():optional(),
    }
@@ -607,8 +596,8 @@ local graphics_pipeline_rasterizer_state_schema = schema.ffi.struct(
 local graphics_pipeline_multisample_state_schema = schema.ffi.struct(
    "SDL_GPUMultisampleState",
    {
-      sample_count = number_like_schema:optional(),
-      sample_mask = number_like_schema:optional(),
+      sample_count = schema.number_like():optional(),
+      sample_mask = schema.number_like():optional(),
       enable_mask = schema.boolean():optional(),
       enable_alpha_to_coverage = schema.boolean():optional(),
    }
@@ -617,12 +606,12 @@ local graphics_pipeline_multisample_state_schema = schema.ffi.struct(
 local graphics_pipeline_depth_stencil_state_schema = schema.ffi.struct(
    "SDL_GPUDepthStencilState",
    {
-      compare_op = number_like_schema:optional(),
+      compare_op = schema.number_like():optional(),
       enable_depth_test = schema.boolean():optional(),
       enable_depth_write = schema.boolean():optional(),
       enable_stencil_test = schema.boolean():optional(),
-      compare_mask = number_like_schema:optional(),
-      write_mask = number_like_schema:optional(),
+      compare_mask = schema.number_like():optional(),
+      write_mask = schema.number_like():optional(),
    }
 )
 
@@ -633,7 +622,7 @@ local graphics_pipeline_target_info_schema = schema.ffi.struct(
          schema = gpu_color_target_descriptions_schema:optional(),
          count_field = "num_color_targets",
       },
-      depth_stencil_format = number_like_schema:optional(),
+      depth_stencil_format = schema.number_like():optional(),
       has_depth_stencil_target = schema.boolean():optional(),
    }
 )
@@ -665,7 +654,7 @@ local graphics_pipeline_create_info_schema = schema.ffi.struct(
             dst.fragment_shader = value
          end,
       },
-      primitive_type = number_like_schema,
+      primitive_type = schema.number_like(),
       vertex_input = {
          schema = schema.any():optional(),
          assign = function(dst, value, bundle)
@@ -686,12 +675,12 @@ local graphics_pipeline_create_info_schema = schema.ffi.struct(
 )
 
 local vertex_input_layout_buffer_schema = schema.record({
-   slot = non_negative_integer_schema:optional(),
-   pitch = non_negative_integer_schema,
+   slot = schema.integer_like():non_negative():optional(),
+   pitch = schema.integer_like():non_negative(),
    input_rate = vertex_input_rate_schema:optional(
       normalize_vertex_input_rate("vertex")
    ),
-   instance_step_rate = non_negative_integer_schema:optional(0),
+   instance_step_rate = schema.integer_like():non_negative():optional(0),
    attributes = schema.array(gpu_vertex_attribute_source_schema),
 })
 
@@ -1453,7 +1442,7 @@ end
 
 local gl_attribute_value_schema = schema.one_of({
    schema.boolean(),
-   number_like_schema,
+   schema.number_like(),
 }, "a boolean or number"):transform(function(value)
    return gl_attribute_int(value)
 end)

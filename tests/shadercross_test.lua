@@ -41,7 +41,7 @@ test.case("shadercross.compile_graphics_shader_from_spirv validates resource_inf
    test.falsey(bad_ok)
    test.match(
       tostring(bad_err),
-      "compile_graphics_shader_from_spirv options%.resource_info%.num_samplers expects a number"
+      "compile_graphics_shader_from_spirv options%.resource_info%.num_samplers expects a non%-negative integer"
    )
 end)
 
@@ -58,6 +58,6 @@ test.case("shadercross.compile_compute_pipeline_from_spirv validates metadata th
    test.falsey(bad_ok)
    test.match(
       tostring(bad_err),
-      "compile_compute_pipeline_from_spirv options%.metadata%.threadcount_x expects a number"
+      "compile_compute_pipeline_from_spirv options%.metadata%.threadcount_x expects a non%-negative integer"
    )
 end)

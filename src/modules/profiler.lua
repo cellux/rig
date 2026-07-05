@@ -4,9 +4,7 @@ local schema = require("schema")
 local stat = require("stat")
 local time = require("time")
 
-local positive_number_schema = schema.positive_number {
-   coerce = true,
-}
+local positive_number_schema = schema.number_like():positive()
 
 local frame_profiler_options_schema = schema.record({
    fps = positive_number_schema,

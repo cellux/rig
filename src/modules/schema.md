@@ -39,7 +39,9 @@ Schemas decode input values into validated, normalized output values.
     - `integer = true`
     - `min`
     - `max`
+- `schema.number_like(options?)`
 - `schema.integer(options?)`
+- `schema.integer_like(options?)`
 - `schema.non_negative_number(options?)`
 - `schema.positive_number(options?)`
 - `schema.positive_integer(options?)`
@@ -88,6 +90,15 @@ All schema objects provide:
   - Adds one extra predicate check after the inner schema succeeds.
   - Raises `"... expects <description>"` when `predicate` returns false.
 
+Numeric schema objects (`schema.NumberSchema` and `schema.IntegerSchema`) additionally provide:
+
+- `number_schema:min(value)`
+- `number_schema:max(value)`
+- `number_schema:negative()`
+- `number_schema:non_negative()`
+- `number_schema:positive()`
+- These return a fresh schema object and do not mutate the receiver.
+
 FFI builder bundles provide:
 
 - `bundle.cdata`
@@ -101,13 +112,9 @@ FFI builder bundles provide:
 ```lua
 local schema = require("schema")
 
-local jobs_schema = schema.positive_number {
-   coerce = true,
-}
+local jobs_schema = schema.number_like():positive()
 
-local history_schema = schema.positive_integer {
-   coerce = true,
-}
+local history_schema = schema.integer_like():positive()
 
 local roots_schema = schema.array(schema.non_empty_string())
 
