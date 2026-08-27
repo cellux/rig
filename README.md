@@ -1,6 +1,6 @@
 # Rig
 
-Rig is a customized version of LuaJIT providing a lot of bells and whistles through an assorted set of modules built into the interpreter.
+Rig is a customized version of LuaJIT providing an opinionated basis for application development through an assorted set of modules built into the interpreter.
 
 ## How to build
 
@@ -9,11 +9,10 @@ Build dependencies:
 - `make`
 - `cmake`
 - `pkg-config`
-- LuaJIT development files with a `luajit` pkg-config entry
-- the `luajit` executable
-- SDL3 development files with an `sdl3` pkg-config entry
-- FreeType development files with a `freetype2` pkg-config entry
-- libuv development files with a `libuv` pkg-config entry
+- `luajit`
+- `sdl3`
+- `freetype`
+- `libuv`
 
 Current build and runtime split:
 
@@ -24,8 +23,7 @@ Current build and runtime split:
   - SDL3
   - FreeType
   - libuv
-- The `rig` binary is currently not linked against the SDL3, libuv, or FreeType shared libraries.
-- Those libraries are loaded dynamically at runtime by the corresponding modules:
+- The `rig` binary is currently not linked against the SDL3, libuv, or FreeType shared libraries. Those libraries are loaded dynamically at runtime by the corresponding modules:
   - `sdl3`
   - `uv`
   - `freetype`
@@ -44,7 +42,7 @@ Run the test suite with:
 make test
 ```
 
-This rebuilds `rig` if needed and then runs `ctest`, which invokes the repo-local test runner in [`scripts/run_all_tests.lua`](scripts/run_all_tests.lua).
+This rebuilds `rig` if needed and then runs `ctest`, which invokes the [repo-local test runner](scripts/run_all_tests.lua).
 
 Notes:
 
