@@ -2242,12 +2242,27 @@ local function init_common_state(self, context, scope_label)
    self.frame_profiler_enabled = self.frame_profiler ~= nil
    self.font_faces = {}
    self.owned_resources = ResourceScope(self, scope_label)
+   self._owned_resources_adopted = false
+   if context ~= nil and context.resources ~= nil then
+      self._owned_resources_adopted = true
+      context.resources:adopt(self, self.owned_resources, function(owned_scope)
+         local errors = owned_scope:release()
+         if errors ~= nil and #errors > 0 then
+            error(table.concat(errors, "\n"), 0)
+         end
+      end)
+   end
    self._sdl3x_config = config
 end
 
 local function release_common_state(self)
    if self.owned_resources ~= nil then
-      self.owned_resources:release()
+      if not self._owned_resources_adopted then
+         local errors = self.owned_resources:release()
+         if errors ~= nil and #errors > 0 then
+            error(table.concat(errors, "\n"), 0)
+         end
+      end
       self.owned_resources = nil
    end
 
@@ -2375,7 +2390,10 @@ end
 local function create_owned_scope_common(self, label)
    local scope = rig.ResourceScope(self, label or "sdl3x owned scope")
    return self:own(scope, function(_, owned_scope)
-      owned_scope:release()
+      local errors = owned_scope:release()
+      if errors ~= nil and #errors > 0 then
+         error(table.concat(errors, "\n"), 0)
+      end
    end)
 end
 

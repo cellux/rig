@@ -442,3 +442,20 @@ initial implementation is unambiguous and testable:
   the dead old-driver helpers that maintained them.
 - `graphics.context` renderer values expose `clear(r, g, b, a)`; `sdl3x.clear` is gone.
 - Class executions can read `self.ctx`, set by the runtime after construction.
+
+## D33 — Scene/App scopes join the runtime root (option B)
+
+**Status:** Accepted (2026-10-23)
+
+- `scenegraph.Object` keeps lazily created per-object scopes for local acquisition
+  (objects acquire resources in `init`, before they are attached), but adopts each scope
+  into the runtime root when the tree is attached (`Object:set_resource_scope`), or when
+  the scope is first created after attach.
+- The runtime exposes its root scope to executions as `ctx.resources`;
+  `animator.App:after_setup` attaches it to the scene root before `activate_tree`.
+- New children inherit the runtime scope through `add_child`.
+- When attached, `release_tree()` stops releasing the object scope; the runtime root
+  releases it (reverse adoption order) with aggregated errors. Standalone scenegraph use
+  still releases locally and raises the aggregated errors.
+- `runtime.ResourceScope` gained `replace`; `rig.ResourceScope:release` now continues
+  past failures and returns an error list, so both scope kinds share semantics.

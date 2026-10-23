@@ -197,6 +197,12 @@ At startup the runtime creates `ctx` and instantiates components in `plan.order`
 Every runtime owns a `runtime.ResourceScope` (`compiled.resources`). Resources are
 adopted in acquisition order and released in reverse order.
 
+- `compiled.ctx.resources` exposes the runtime root scope to the execution class, so
+  class-owned resources (for example a scene graph's per-object scopes) can be adopted
+  into the same graph and released by the runtime at teardown.
+- `runtime.ResourceScope:replace(owner, key, resource, release_fn)` releases the
+  previous resource registered under `key` and adopts the new one.
+
 - On normal shutdown, resources are released after execution completes; if any release
   fails, cleanup continues for all remaining resources and the runtime transitions to
   `failed` with an aggregated error.

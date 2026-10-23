@@ -243,20 +243,25 @@ function M.ResourceScope:replace(key, resource, release_fn)
 end
 
 function M.ResourceScope:release()
+   local errors = {}
    if self._released then
-      return
+      return errors
    end
 
    for index = #self._entries, 1, -1 do
       local entry = self._entries[index]
       if entry.resource ~= nil then
-         entry.release_fn(self.context, entry.resource)
+         local ok, err = pcall(entry.release_fn, self.context, entry.resource)
+         if not ok then
+            errors[#errors + 1] = tostring(err)
+         end
       end
       self._entries[index] = nil
    end
 
    self._named_entries = {}
    self._released = true
+   return errors
 end
 
 --[ script loaders ]--

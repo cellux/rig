@@ -987,6 +987,7 @@ M.ResourceScope = rig.Class()
 function M.ResourceScope:init(label)
    self.label = label or "runtime resource scope"
    self._entries = {}
+   self._named_entries = {}
    self._released = false
 end
 
@@ -1006,6 +1007,44 @@ function M.ResourceScope:adopt(owner, resource, release_fn)
    return resource
 end
 
+function M.ResourceScope:replace(owner, key, resource, release_fn)
+   if self._released then
+      raise("cannot replace in a released %s", self.label)
+   end
+   if type(key) ~= "string" or key == "" then
+      raise("resource replacement requires a non-empty string key")
+   end
+   if type(release_fn) ~= "function" then
+      raise("resource replacement requires a release function")
+   end
+
+   local existing = self._named_entries[key]
+   if existing ~= nil then
+      if existing.resource ~= nil then
+         local ok, err = pcall(existing.release_fn, existing.resource)
+         if not ok then
+            local label = "unknown component"
+            if existing.owner ~= nil and existing.owner.label ~= nil then
+               label = ("component '%s'"):format(existing.owner.label)
+            end
+            raise("%s: %s", label, tostring(err))
+         end
+      end
+      existing.resource = nil
+      existing.release_fn = nil
+      self._named_entries[key] = nil
+   end
+
+   local entry = {
+      owner = owner,
+      resource = resource,
+      release_fn = release_fn,
+   }
+   self._entries[#self._entries + 1] = entry
+   self._named_entries[key] = entry
+   return resource
+end
+
 function M.ResourceScope:release()
    if self._released then
       return {}
@@ -1014,17 +1053,20 @@ function M.ResourceScope:release()
    local errors = {}
    for i = #self._entries, 1, -1 do
       local entry = self._entries[i]
-      local ok, err = pcall(entry.release_fn, entry.resource)
-      if not ok then
-         local label = "unknown component"
-         if entry.owner ~= nil and entry.owner.label ~= nil then
-            label = ("component '%s'"):format(entry.owner.label)
+      if entry.resource ~= nil then
+         local ok, err = pcall(entry.release_fn, entry.resource)
+         if not ok then
+            local label = "unknown component"
+            if entry.owner ~= nil and entry.owner.label ~= nil then
+               label = ("component '%s'"):format(entry.owner.label)
+            end
+            errors[#errors + 1] = ("%s: %s"):format(label, tostring(err))
          end
-         errors[#errors + 1] = ("%s: %s"):format(label, tostring(err))
       end
       self._entries[i] = nil
    end
 
+   self._named_entries = {}
    self._released = true
    return errors
 end
@@ -1610,6 +1652,7 @@ end
 
 function M.Compiled:_run()
    self.ctx = {}
+   self.ctx.resources = self.resources
    self:_emit_phase("core.before_setup")
    self:_instantiate()
    if self.scheduler ~= nil then

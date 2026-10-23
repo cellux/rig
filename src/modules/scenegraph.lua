@@ -13,6 +13,36 @@ function Object:init()
    self.parent = nil
    self.animator = nil
    self._resource_scope = nil
+   self._runtime_scope = nil
+   self._resource_scope_adopted = false
+end
+
+function Object:_adopt_resource_scope()
+   if self._resource_scope_adopted then
+      return
+   end
+
+   local runtime_scope = self._runtime_scope
+   local scope = self._resource_scope
+   if runtime_scope == nil or scope == nil then
+      return
+   end
+
+   self._resource_scope_adopted = true
+   runtime_scope:adopt(self, scope, function(owned_scope)
+      local errors = owned_scope:release()
+      if errors ~= nil and #errors > 0 then
+         error(table.concat(errors, "\n"), 0)
+      end
+   end)
+end
+
+function Object:set_resource_scope(scope)
+   self._runtime_scope = scope
+   self:_adopt_resource_scope()
+   for i = 1, #self.children do
+      self.children[i]:set_resource_scope(scope)
+   end
 end
 
 function Object:ensure_resource_scope(label)
@@ -23,6 +53,7 @@ function Object:ensure_resource_scope(label)
 
    scope = rig.ResourceScope(self, label or "scenegraph object resource scope")
    self._resource_scope = scope
+   self:_adopt_resource_scope()
    return scope
 end
 
@@ -37,7 +68,10 @@ end
 function Object:create_owned_scope(label)
    local scope = rig.ResourceScope(self, label or "scenegraph owned scope")
    return self:own(scope, function(_, owned_scope)
-      owned_scope:release()
+      local errors = owned_scope:release()
+      if errors ~= nil and #errors > 0 then
+         error(table.concat(errors, "\n"), 0)
+      end
    end)
 end
 
@@ -48,6 +82,9 @@ function Object:add_child(child)
 
    child.parent = self
    table.insert(self.children, child)
+   if self._runtime_scope ~= nil then
+      child:set_resource_scope(self._runtime_scope)
+   end
    if self.animator ~= nil then
       child:set_animator(self.animator)
    end
@@ -110,10 +147,15 @@ function Object:release_tree()
    if type(self.release) == "function" then
       self:release()
    end
-   if self._resource_scope ~= nil then
-      self._resource_scope:release()
-      self._resource_scope = nil
+   if self._resource_scope ~= nil and self._runtime_scope == nil then
+      local errors = self._resource_scope:release()
+      if errors ~= nil and #errors > 0 then
+         error(table.concat(errors, "\n"), 0)
+      end
    end
+   self._resource_scope = nil
+   self._runtime_scope = nil
+   self._resource_scope_adopted = false
    self.children = {}
 end
 

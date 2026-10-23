@@ -763,3 +763,36 @@ Suggested next cleanup (not required by any phase):
   baselines, spinning_cube_gl); `spinning_cube` still needs `libshaderc`, absent here.
 - No references to the removed globals/accessors remain in `src/`, `tests/`, `examples/`,
   or `scripts/`.
+
+---
+
+## 2026-10-23 — Follow-up: object scopes adopted into the runtime root
+
+**Done (option B: attach-time adoption)**
+
+- `runtime.ResourceScope` gained `replace(owner, key, resource, release_fn)` and now
+  skips already-replaced entries during release.
+- `rig.ResourceScope:release()` now continues past individual failures and returns an
+  error list (still reverse order, still idempotent). Standalone `release_tree()` raises
+  the aggregated errors.
+- The runtime exposes its root scope to executions as `compiled.ctx.resources`.
+- `animator.App:after_setup` attaches `self.ctx.resources` to the scene root via
+  `Object:set_resource_scope` before `activate_tree`.
+- `scenegraph.Object` now:
+  - keeps a lazily created `rig.ResourceScope` per object;
+  - adopts it into the runtime scope (once) when the scope is attached or when the local
+    scope is first created after attach;
+  - propagates the runtime scope to children in `add_child`/`set_resource_scope`;
+  - skips the local release in `release_tree` when a runtime scope is attached (the
+    runtime root releases it), and still releases locally otherwise.
+- `sdl3x.App`'s `owned_resources` scope is adopted into `context.resources` when present,
+  so App-owned resources share the runtime release path.
+- Added `tests/runtime_scenegraph_test.lua` (3 cases): object scopes release through the
+  runtime root in child-before-parent order, objects added after activation still reach
+  the root, and `runtime.ResourceScope:replace` releases the previous resource.
+
+**Verification**
+
+- `make test`: 43 files passed, 0 failed.
+- Examples run under `./build/rig` (keylogger, scroller, both baselines,
+  spinning_cube_gl, ants).

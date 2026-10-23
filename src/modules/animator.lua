@@ -81,6 +81,11 @@ function App:after_setup()
    self.animator = scene_animator
    root.animator = scene_animator
 
+   local resource_scope = self.ctx ~= nil and self.ctx.resources or nil
+   if resource_scope ~= nil then
+      root:set_resource_scope(resource_scope)
+   end
+
    local ok, activate_err = pcall(function()
       root:activate_tree()
    end)

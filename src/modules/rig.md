@@ -40,6 +40,8 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.
+  - `:release()` releases in reverse acquisition order, continues past individual
+    failures, and returns a list of error strings.
 - `rig.tostring(value)`
   - Returns `tostring(value)` for values with a `__tostring` metamethod.
   - Returns `rig.repr(value)` for other tables.
