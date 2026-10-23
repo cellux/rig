@@ -6,7 +6,7 @@
   (rig.println key-info))
 
 (fn App.render [self]
-  (sdl3x.clear 0 0 0 1))
+  (self.graphics:clear 0 0 0 1))
 
 (local builder (rig.runtime))
 (sdl3x.bundle_sdl3 builder)

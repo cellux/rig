@@ -903,56 +903,39 @@ test.case("sdl3x.App wraps render calls with profiler hooks when enabled", funct
    test.equal(observed[5], "end_frame")
 end)
 
-test.case("sdl3x.App toggles renderer vsync through SDL", function()
+test.case("sdl3x.App toggles renderer vsync through the graphics context", function()
    local app = sdl3x.App()
-   local old_get_renderer = sdl3x.get_renderer
-   local old_get_gl_context = sdl3x.get_gl_context
-   local old_set_render_vsync = sdl3.SetRenderVSync
-   local observed_interval = nil
+   local observed_enabled = nil
 
-   sdl3x.get_renderer = function()
-      return {}
-   end
-   sdl3x.get_gl_context = function()
-      return nil
-   end
-   sdl3.SetRenderVSync = function(_, interval)
-      observed_interval = interval
-      return true
-   end
+   app.graphics = {
+      set_vsync = function(enabled)
+         observed_enabled = enabled
+      end,
+   }
 
    app:set_vsync(false)
-   test.equal(observed_interval, 0)
+   test.equal(observed_enabled, false)
    test.falsey(app.vsync_enabled)
-
-   sdl3x.get_renderer = old_get_renderer
-   sdl3x.get_gl_context = old_get_gl_context
-   sdl3.SetRenderVSync = old_set_render_vsync
 end)
 
 test.case("sdl3x.App toggles fullscreen through SDL", function()
    local app = sdl3x.App()
-   local old_get_window = sdl3x.get_window
    local observed_enabled = nil
    local observed_sync = false
 
-   sdl3x.get_window = function()
-      return {
-         set_fullscreen = function(_, enabled)
-            observed_enabled = enabled
-         end,
-         sync = function()
-            observed_sync = true
-         end,
-      }
-   end
+   app.window = {
+      set_fullscreen = function(_, enabled)
+         observed_enabled = enabled
+      end,
+      sync = function()
+         observed_sync = true
+      end,
+   }
 
    app:set_fullscreen(true)
    test.truthy(observed_enabled)
    test.truthy(observed_sync)
    test.truthy(app.fullscreen_enabled)
-
-   sdl3x.get_window = old_get_window
 end)
 
 test.case("sdl3x.App owns loaded font faces and releases them on shutdown", function()

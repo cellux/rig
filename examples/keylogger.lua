@@ -7,7 +7,7 @@ function App:on_key(key_info)
 end
 
 function App:render()
-   sdl3x.clear(0, 0, 0, 1)
+   self.graphics:clear(0, 0, 0, 1)
 end
 
 local builder = rig.runtime()

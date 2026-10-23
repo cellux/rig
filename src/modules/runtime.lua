@@ -1620,6 +1620,9 @@ function M.Compiled:_run()
    local execution = self.plan.execution
    if execution.form == "class" then
       self.instance = execution.value(self.ctx)
+      if type(self.instance) == "table" then
+         self.instance.ctx = self.ctx
+      end
    end
 
    self:_emit_phase("core.after_setup")

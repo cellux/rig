@@ -110,8 +110,8 @@ end
 local ctx = nil
 
 function Cube:activate()
-   local device = sdl3x.get_gpu_device()
-   local window = sdl3x.get_window()
+   local device = ctx.graphics.device
+   local window = ctx.window
    if device == nil or window == nil then
       rig.raise("sdl3_gpu runtime mode did not produce a device and window")
    end
@@ -190,7 +190,7 @@ function Cube:ensure_depth_texture(width, height)
    end
 
    self.depth_texture = self.gpu_resources:replace("depth_texture",
-      sdl3x.create_depth_texture(sdl3x.get_gpu_device(), width, height, self.depth_format),
+      sdl3x.create_depth_texture(ctx.graphics.device, width, height, self.depth_format),
       function(scope_device, resource)
          sdl3.ReleaseGPUTexture(scope_device, resource)
       end)

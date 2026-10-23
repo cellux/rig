@@ -430,3 +430,15 @@ initial implementation is unambiguous and testable:
   `provider.build_vertex_input(mesh)` inside the wrapper).
 - `sdl3x.provider_component` gained an optional `bind` field so bundles expose facades
   without duplicating the module entry points.
+
+## D32 — D30 completed: context-bound providers, globals removed
+
+**Status:** Accepted (2026-10-23)
+
+- Service providers that need runtime state are created per run from the component
+  context (`make_sdl3_font_provider`, `make_sdl3_gl_font_provider`,
+  `make_shader_stage_service_sdl3_gpu`). Providers that need no runtime state stay static.
+- The transitional `sdl3x` module globals and their accessors are removed, along with
+  the dead old-driver helpers that maintained them.
+- `graphics.context` renderer values expose `clear(r, g, b, a)`; `sdl3x.clear` is gone.
+- Class executions can read `self.ctx`, set by the runtime after construction.

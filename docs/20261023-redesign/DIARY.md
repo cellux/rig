@@ -719,3 +719,47 @@ Suggested next cleanup (not required by any phase):
 - `make test`: 42 files passed, 0 failed.
 - Examples run under `./build/rig`, including `scroller`, both baselines,
   `spinning_cube_gl`, and `ants`.
+
+---
+
+## 2026-10-23 — Follow-up: D30 finished (context-bound providers, no module globals)
+
+**Done**
+
+- The `sdl3x` service providers are now context-bound factories:
+  - `make_sdl3_font_provider(context)` captures the renderer pointer.
+  - `make_sdl3_gl_font_provider(context)` captures the window (for pixel size).
+  - `make_shader_stage_service_sdl3_gpu(context)` captures the GPU device.
+  - `sdl3_gpu_mesh_service` and `gl_resolver_service_sdl3_gl` stay static (they need no
+    runtime state).
+- `sdl3x.provider_component` accepts `make` and an optional `release`;
+  `font_renderer_component`/`gl_font_renderer_component` release the GL font backend
+  state on teardown.
+- Removed the transitional module globals (`runtime_window`, `runtime_renderer`,
+  `runtime_gpu_device`, `runtime_gl_context`, `runtime_owned_init_flags`) and the
+  module-global accessors (`sdl3x.get_window`, `get_renderer`, `get_gpu_device`,
+  `get_gl_context`) and `sdl3x.clear`.
+- Removed the dead old-driver helpers that only existed to populate those globals:
+  windowed setup/teardown (`setup`, `setup_gpu`, `setup_gl`, `shutdown`,
+  `initialize_windowed_sdl`, `create_window_or_fail`), presentation helpers
+  (`present`, `present_gl`), the old poll-and-dispatch loop (`pump_events`,
+  `dispatch_*`), the old frame drivers (`render_frame`, `render_gpu_frame`,
+  `render_gl_frame`), resize tracking (`get_window_size*`, `dispatch_resize_if_changed`),
+  and `merge_props`.
+- Added `graphics:clear(r, g, b, a)` to the renderer graphics context.
+- `sdl3x.App:set_vsync`/`set_fullscreen` now use `self.graphics`/`self.window`.
+- The runtime sets `instance.ctx = ctx` for class executions, so any execution class can
+  read `self.ctx`.
+- Migrated `examples/`: `sdl3x.get_renderer()` → `ctx.graphics.renderer`,
+  `sdl3x.get_window()` → `ctx.window`, `sdl3x.get_gpu_device()` → `ctx.graphics.device`,
+  and `sdl3x.clear(...)` → `graphics:clear(...)`. `set_vsync`/`set_fullscreen` use the
+  graphics/window values.
+- Updated `sdl3x_test.lua` and `sdl3x.md`.
+
+**Verification**
+
+- `make test`: 42 files passed, 0 failed.
+- All examples run under `./build/rig` (keylogger, Fennel keylogger, ants, scroller, both
+  baselines, spinning_cube_gl); `spinning_cube` still needs `libshaderc`, absent here.
+- No references to the removed globals/accessors remain in `src/`, `tests/`, `examples/`,
+  or `scripts/`.

@@ -1239,37 +1239,7 @@ function ResourceScope:create_depth_texture(width, height, format)
    return texture, chosen_format
 end
 
---[ Runtime state ]--
-
-local runtime_window = nil
-local runtime_renderer = nil
-local runtime_gpu_device = nil
-local runtime_gl_context = nil
-local runtime_owned_init_flags = nil
-
 --[ Runtime configuration ]--
-
-local function merge_props(base_props, override_props)
-   local merged = {}
-
-   if type(base_props) == "table" then
-      for key, value in pairs(base_props) do
-         merged[key] = value
-      end
-   end
-
-   if override_props ~= nil then
-      if type(override_props) ~= "table" then
-         return nil, "override_props must be a table if set"
-      end
-
-      for key, value in pairs(override_props) do
-         merged[key] = value
-      end
-   end
-
-   return merged
-end
 
 local function default_create_renderer(window)
    local renderer_ptr = sdl3.CreateRenderer(window.ptr, nil)
@@ -1410,29 +1380,11 @@ local function normalize_init_flags(flags_number)
    return ffi.cast("Uint32", flags_integer)
 end
 
-local shutdown
 local destroy_gl_font_backend_state
 local gl_font_quad_vertices = ffi.new("float[24]")
 local gl_font_backend_state = nil
-local resize_state = nil
 
 --[ Runtime accessors ]--
-
-function M.get_window()
-   return runtime_window
-end
-
-function M.get_renderer()
-   return runtime_renderer
-end
-
-function M.get_gpu_device()
-   return runtime_gpu_device
-end
-
-function M.get_gl_context()
-   return runtime_gl_context
-end
 
 function M.get_gl_proc_address(name)
    if type(name) ~= "string" or name == "" then
@@ -1445,147 +1397,6 @@ function M.get_gl_proc_address(name)
    end
 
    return ptr
-end
-
---[ SDL runtime setup ]--
-
-local function get_window_size()
-   if runtime_window == nil then
-      rig.raise("an SDL window must exist before querying window size")
-   end
-
-   return runtime_window:get_size()
-end
-
-local function initialize_windowed_sdl(options)
-   if runtime_renderer ~= nil or runtime_window ~= nil or runtime_gpu_device ~= nil or runtime_gl_context ~= nil then
-      shutdown()
-   end
-
-   if options == nil then
-      options = {}
-   end
-
-   local required =
-      normalize_init_flags(options.init_flags or (sdl3.INIT_VIDEO + sdl3.INIT_EVENTS))
-   local initialized = sdl3.WasInit(required)
-   local owned_init_flags = nil
-
-   if not has_all_bits(initialized, required) then
-      if not sdl3.Init(required) then
-         error("failed to initialize SDL: " .. get_error_string())
-      end
-      owned_init_flags = required
-   end
-
-   return options, owned_init_flags
-end
-
-local function create_window_or_fail(options, owned_init_flags)
-   local ok, window_or_err = pcall(Window, options)
-   if not ok then
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      error(window_or_err, 0)
-   end
-
-   return window_or_err, owned_init_flags
-end
-
-local function setup(options)
-   local owned_init_flags = nil
-   options, owned_init_flags = initialize_windowed_sdl(options)
-   local window = create_window_or_fail(options, owned_init_flags)
-   local create_renderer = options.create_renderer or default_create_renderer
-   if type(create_renderer) ~= "function" then
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      rig.raise("sdl3 create_renderer must be a function")
-   end
-
-   local renderer_ptr, renderer_err = create_renderer(window)
-   if renderer_ptr == nil then
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      error(format_factory_error(
-         "sdl3 create_renderer",
-         renderer_err,
-         "expected SDL_Renderer* cdata"
-      ))
-   end
-   if type(renderer_ptr) ~= "cdata" then
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      rig.raise("sdl3 create_renderer must return SDL_Renderer* cdata")
-   end
-
-   runtime_window = window
-   runtime_renderer = renderer_ptr
-   runtime_owned_init_flags = owned_init_flags
-   resize_state = nil
-end
-
-local function setup_gpu(options)
-   if options ~= nil and type(options) ~= "table" then
-      error("sdl3x.setup_gpu expects a table if options are provided")
-   end
-
-   local owned_init_flags = nil
-   options, owned_init_flags = initialize_windowed_sdl(options)
-   local window = create_window_or_fail(options, owned_init_flags)
-
-   local format_flags = options and options.shader_formats
-   if format_flags == nil then
-      format_flags = sdl3.GPU_SHADERFORMAT_SPIRV
-   end
-   local debug_mode = options and options.debug_mode and true or false
-   local backend_name = options and options.backend_name or nil
-
-   if not sdl3.GPUSupportsShaderFormats(format_flags, backend_name) then
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      error(build_gpu_support_error(
-         format_flags,
-         backend_name,
-         get_error_string()
-      ))
-   end
-
-   local gpu_device = sdl3.CreateGPUDevice(format_flags, debug_mode, backend_name)
-   if gpu_device == nil then
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      error(build_gpu_support_error(
-         format_flags,
-         backend_name,
-         get_error_string()
-      ))
-   end
-
-   if not sdl3.ClaimWindowForGPUDevice(gpu_device, window.ptr) then
-      sdl3.DestroyGPUDevice(gpu_device)
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      error("failed to claim SDL window for GPU device: " .. get_error_string())
-   end
-
-   runtime_window = window
-   runtime_gpu_device = gpu_device
-   runtime_owned_init_flags = owned_init_flags
-   resize_state = nil
 end
 
 --[ OpenGL runtime setup ]--
@@ -1687,163 +1498,6 @@ local function apply_gl_attributes(attributes)
             ))
       end
    end
-end
-
-local function setup_gl(options)
-   if options ~= nil and type(options) ~= "table" then
-      rig.raise("sdl3_gl options must be a table if provided")
-   end
-
-   if options == nil or type(options) ~= "table" then
-      rig.raise("sdl3_gl options must be a table if provided")
-   end
-
-   local window_props, props_err = merge_props(options.window_props, {
-      [sdl3.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
-   })
-   if window_props == nil then
-      rig.raise(props_err)
-   end
-
-   local window_options = {}
-   for key, value in pairs(options) do
-      window_options[key] = value
-   end
-   window_options.window_props = window_props
-
-   local owned_init_flags = nil
-   window_options, owned_init_flags = initialize_windowed_sdl(window_options)
-   apply_gl_attributes(options.gl_attributes)
-   local window = create_window_or_fail(window_options, owned_init_flags)
-   local gl_context = sdl3.GL_CreateContext(window.ptr)
-   if gl_context == nil then
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      rig.raise("failed to create OpenGL context: " .. get_error_string())
-   end
-
-   if not sdl3.GL_MakeCurrent(window.ptr, gl_context) then
-      sdl3.GL_DestroyContext(gl_context)
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      rig.raise("failed to make OpenGL context current: " .. get_error_string())
-   end
-
-   local swap_interval = options.swap_interval
-   if swap_interval == nil then
-      swap_interval = 1
-   end
-   if not sdl3.GL_SetSwapInterval(gl_attribute_int(swap_interval)) then
-      sdl3.GL_DestroyContext(gl_context)
-      window:release()
-      if owned_init_flags ~= nil then
-         sdl3.QuitSubSystem(owned_init_flags)
-      end
-      rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
-   end
-
-   runtime_window = window
-   runtime_gl_context = gl_context
-   runtime_owned_init_flags = owned_init_flags
-   resize_state = nil
-end
-
---[ Runtime teardown and presentation ]--
-
-shutdown = function()
-   destroy_gl_font_backend_state()
-   if runtime_gl_context ~= nil then
-      sdl3.GL_DestroyContext(runtime_gl_context)
-      runtime_gl_context = nil
-   end
-   if runtime_gpu_device ~= nil then
-      sdl3.WaitForGPUIdle(runtime_gpu_device)
-      if runtime_window ~= nil then
-         sdl3.ReleaseWindowFromGPUDevice(runtime_gpu_device, runtime_window.ptr)
-      end
-      sdl3.DestroyGPUDevice(runtime_gpu_device)
-      runtime_gpu_device = nil
-   end
-   if runtime_renderer ~= nil then
-      sdl3.DestroyRenderer(runtime_renderer)
-      runtime_renderer = nil
-   end
-   if runtime_window ~= nil then
-      runtime_window:release()
-      runtime_window = nil
-   end
-   resize_state = nil
-   if runtime_owned_init_flags ~= nil then
-      sdl3.QuitSubSystem(runtime_owned_init_flags)
-      runtime_owned_init_flags = nil
-   end
-end
-
-local function present()
-   if runtime_renderer == nil then
-      rig.raise("SDL renderer is not initialized")
-   end
-   if not sdl3.RenderPresent(runtime_renderer) then
-      error("failed to present renderer: " .. get_error_string())
-   end
-end
-
-local function present_gl()
-   if runtime_window == nil or runtime_gl_context == nil then
-      rig.raise("an OpenGL window and context must be initialized before presenting")
-   end
-   if not sdl3.GL_SwapWindow(runtime_window.ptr) then
-      rig.raise("failed to swap OpenGL window: " .. M.get_error())
-   end
-end
-
---[ Window resize tracking ]--
-
-local function get_window_size_in_pixels()
-   if runtime_window == nil then
-      rig.raise("an SDL window must exist before querying pixel size")
-   end
-
-   return runtime_window:get_size_in_pixels()
-end
-
-local function dispatch_resize_if_changed(runtime, event_name, timestamp_ns)
-   local width, height = get_window_size()
-   local pixel_width, pixel_height = get_window_size_in_pixels()
-   local previous = resize_state
-
-   if previous ~= nil
-      and previous.width == width
-      and previous.height == height
-      and previous.pixel_width == pixel_width
-      and previous.pixel_height == pixel_height
-      and event_name ~= "initial" then
-      return
-   end
-
-   resize_state = {
-      width = width,
-      height = height,
-      pixel_width = pixel_width,
-      pixel_height = pixel_height,
-   }
-
-   local ns = timestamp_ns or 0
-   runtime:handle_event("resize", {
-      type = "resize",
-      event = event_name,
-      width = width,
-      height = height,
-      pixel_width = pixel_width,
-      pixel_height = pixel_height,
-      initial = event_name == "initial",
-      timestamp_ns = ns,
-      timestamp_ms = math.floor(ns / 1000000),
-   })
 end
 
 --[ OpenGL font backend ]--
@@ -2052,7 +1706,7 @@ end
 local font_src_rect = ffi.new("SDL_FRect[1]")
 local font_dst_rect = ffi.new("SDL_FRect[1]")
 
-local function upload_font_page_texture(page, texture)
+local function upload_font_page_texture(renderer, page, texture)
    local pixel_count = page.width * page.height
    local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
 
@@ -2068,7 +1722,7 @@ local function upload_font_page_texture(page, texture)
    local page_texture = texture
    if page_texture == nil or page_texture == ffi.NULL then
       page_texture = sdl3.CreateTexture(
-         runtime_renderer,
+         renderer,
          sdl3.PIXELFORMAT_RGBA32,
          sdl3.TEXTUREACCESS_STATIC,
          page.width,
@@ -2094,7 +1748,7 @@ local function upload_font_page_texture(page, texture)
    return page_texture
 end
 
-local function ensure_font_page_texture(text_renderer, page_index)
+local function ensure_font_page_texture(renderer, text_renderer, page_index)
    local atlas = text_renderer.atlas
    local state = text_renderer._state
    local page = atlas.pages[page_index]
@@ -2107,36 +1761,10 @@ local function ensure_font_page_texture(text_renderer, page_index)
       return state.textures[page_index]
    end
 
-   local texture = upload_font_page_texture(page, state.textures[page_index])
+   local texture = upload_font_page_texture(renderer, page, state.textures[page_index])
    state.textures[page_index] = texture
    state.revisions[page_index] = revision
    return texture
-end
-
-local sdl3_font_provider = {}
-local sdl3_gl_font_provider = {}
-
-function sdl3_font_provider.create_text_renderer(text_renderer)
-   return {
-      textures = {},
-      revisions = {},
-   }
-end
-
-function sdl3_font_provider.release_text_renderer(text_renderer)
-   local state = text_renderer._state
-   if state == nil then
-      return
-   end
-
-   for i = 1, #state.textures do
-      local texture = state.textures[i]
-      if texture ~= nil and texture ~= ffi.NULL then
-         sdl3.DestroyTexture(texture)
-      end
-      state.textures[i] = nil
-      state.revisions[i] = nil
-   end
 end
 
 local default_font_draw_color = color.WHITE
@@ -2152,129 +1780,174 @@ local function resolve_font_draw_color(value)
    rig.raise("font draw color must be a color.Color if provided")
 end
 
-function sdl3_font_provider.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
-   if packed.width <= 0 or packed.height <= 0 then
-      return
+local function make_sdl3_font_provider(context)
+   local renderer = context:capability("graphics.context").renderer
+
+   local function create_text_renderer(text_renderer)
+      return {
+         textures = {},
+         revisions = {},
+      }
    end
 
-   local glyph_color = resolve_font_draw_color(draw_color)
-   local texture = ensure_font_page_texture(text_renderer, packed.page_index)
-   if not sdl3.SetTextureColorMod(texture, glyph_color.r, glyph_color.g, glyph_color.b) then
-      rig.raise("failed to set texture color modulation: " .. get_error_string())
-   end
-   if not sdl3.SetTextureAlphaMod(texture, glyph_color.a) then
-      rig.raise("failed to set texture alpha modulation: " .. get_error_string())
-   end
-
-   font_src_rect[0].x = packed.x
-   font_src_rect[0].y = packed.y
-   font_src_rect[0].w = packed.width
-   font_src_rect[0].h = packed.height
-
-   font_dst_rect[0].x = x
-   font_dst_rect[0].y = y
-   font_dst_rect[0].w = packed.width * scale
-   font_dst_rect[0].h = packed.height * scale
-
-   if not sdl3.RenderTexture(runtime_renderer, texture, font_src_rect, font_dst_rect) then
-      rig.raise("failed to render SDL texture: " .. get_error_string())
-   end
-end
-
-function sdl3_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
-   for i = 1, #run.entries do
-      local entry = run.entries[i]
-      local draw_color = default_font_draw_color
-
-      if color_fn ~= nil then
-         draw_color = color_fn(i, entry, run)
+   local function release_text_renderer(text_renderer)
+      local state = text_renderer._state
+      if state == nil then
+         return
       end
 
-      sdl3_font_provider.draw_packed_glyph(
-         text_renderer,
-         entry.packed,
-         base_x + entry.layout_x,
-         baseline_y + entry.layout_y,
-         resolve_font_draw_color(draw_color),
-         1.0
-      )
+      for i = 1, #state.textures do
+         local texture = state.textures[i]
+         if texture ~= nil and texture ~= ffi.NULL then
+            sdl3.DestroyTexture(texture)
+         end
+         state.textures[i] = nil
+         state.revisions[i] = nil
+      end
    end
-end
 
-function sdl3_gl_font_provider.create_text_renderer(text_renderer)
+   local function draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
+      if packed.width <= 0 or packed.height <= 0 then
+         return
+      end
+
+      local glyph_color = resolve_font_draw_color(draw_color)
+      local texture = ensure_font_page_texture(renderer, text_renderer, packed.page_index)
+      if not sdl3.SetTextureColorMod(texture, glyph_color.r, glyph_color.g, glyph_color.b) then
+         rig.raise("failed to set texture color modulation: " .. get_error_string())
+      end
+      if not sdl3.SetTextureAlphaMod(texture, glyph_color.a) then
+         rig.raise("failed to set texture alpha modulation: " .. get_error_string())
+      end
+
+      font_src_rect[0].x = packed.x
+      font_src_rect[0].y = packed.y
+      font_src_rect[0].w = packed.width
+      font_src_rect[0].h = packed.height
+
+      font_dst_rect[0].x = x
+      font_dst_rect[0].y = y
+      font_dst_rect[0].w = packed.width * scale
+      font_dst_rect[0].h = packed.height * scale
+
+      if not sdl3.RenderTexture(renderer, texture, font_src_rect, font_dst_rect) then
+         rig.raise("failed to render SDL texture: " .. get_error_string())
+      end
+   end
+
+   local function draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+      for i = 1, #run.entries do
+         local entry = run.entries[i]
+         local draw_color = default_font_draw_color
+
+         if color_fn ~= nil then
+            draw_color = color_fn(i, entry, run)
+         end
+
+         draw_packed_glyph(
+            text_renderer,
+            entry.packed,
+            base_x + entry.layout_x,
+            baseline_y + entry.layout_y,
+            resolve_font_draw_color(draw_color),
+            1.0
+         )
+      end
+   end
+
    return {
-      textures = {},
-      revisions = {},
+      create_text_renderer = create_text_renderer,
+      release_text_renderer = release_text_renderer,
+      draw_packed_glyph = draw_packed_glyph,
+      draw_text_run = draw_text_run,
    }
 end
 
-function sdl3_gl_font_provider.release_text_renderer(text_renderer)
-   local state = text_renderer._state
-   if state == nil then
-      return
+local function make_sdl3_gl_font_provider(context)
+   local window = context:capability("graphics.context").window
+
+   local function create_text_renderer(text_renderer)
+      return {
+         textures = {},
+         revisions = {},
+      }
    end
 
-   for i = 1, #state.textures do
-      local texture = state.textures[i]
-      if texture ~= nil then
-         texture:release()
-      end
-      state.textures[i] = nil
-      state.revisions[i] = nil
-   end
-end
-
-function sdl3_gl_font_provider.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
-   if packed.width <= 0 or packed.height <= 0 then
-      return
-   end
-
-   local glyph_color = resolve_font_draw_color(draw_color)
-   local backend_state = ensure_gl_font_backend_state()
-   local gl = backend_state.gl
-   local texture = ensure_gl_font_page_texture(text_renderer, packed.page_index)
-   local window_width, window_height = get_window_size_in_pixels()
-   if window_width <= 0 or window_height <= 0 then
-      return
-   end
-
-   write_gl_font_quad_vertices(packed, x, y, scale)
-
-   gl.Enable(gl.BLEND)
-   gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-   backend_state.program:use()
-   backend_state.program:set_uniform2f("u_view_size", window_width, window_height)
-   backend_state.program:set_uniform4f(
-      "u_color",
-      glyph_color.r / 255.0,
-      glyph_color.g / 255.0,
-      glyph_color.b / 255.0,
-      glyph_color.a / 255.0
-   )
-   texture:bind(0)
-   backend_state.vao:bind()
-   backend_state.vbo:set_data(gl_font_quad_vertices, gl.DYNAMIC_DRAW)
-   gl.DrawArrays(gl.TRIANGLES, 0, 6)
-end
-
-function sdl3_gl_font_provider.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
-   for i = 1, #run.entries do
-      local entry = run.entries[i]
-      local draw_color = default_font_draw_color
-
-      if color_fn ~= nil then
-         draw_color = color_fn(i, entry, run)
+   local function release_text_renderer(text_renderer)
+      local state = text_renderer._state
+      if state == nil then
+         return
       end
 
-      sdl3_gl_font_provider.draw_packed_glyph(
-         text_renderer,
-         entry.packed,
-         base_x + entry.layout_x,
-         baseline_y + entry.layout_y,
-         resolve_font_draw_color(draw_color),
-         1.0
+      for i = 1, #state.textures do
+         local texture = state.textures[i]
+         if texture ~= nil then
+            texture:release()
+         end
+         state.textures[i] = nil
+         state.revisions[i] = nil
+      end
+   end
+
+   local function draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
+      if packed.width <= 0 or packed.height <= 0 then
+         return
+      end
+
+      local glyph_color = resolve_font_draw_color(draw_color)
+      local backend_state = ensure_gl_font_backend_state()
+      local gl = backend_state.gl
+      local texture = ensure_gl_font_page_texture(text_renderer, packed.page_index)
+      local window_width, window_height = window:get_size_in_pixels()
+      if window_width <= 0 or window_height <= 0 then
+         return
+      end
+
+      write_gl_font_quad_vertices(packed, x, y, scale)
+
+      gl.Enable(gl.BLEND)
+      gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+      backend_state.program:use()
+      backend_state.program:set_uniform2f("u_view_size", window_width, window_height)
+      backend_state.program:set_uniform4f(
+         "u_color",
+         glyph_color.r / 255.0,
+         glyph_color.g / 255.0,
+         glyph_color.b / 255.0,
+         glyph_color.a / 255.0
       )
+      texture:bind(0)
+      backend_state.vao:bind()
+      backend_state.vbo:set_data(gl_font_quad_vertices, gl.DYNAMIC_DRAW)
+      gl.DrawArrays(gl.TRIANGLES, 0, 6)
    end
+
+   local function draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
+      for i = 1, #run.entries do
+         local entry = run.entries[i]
+         local draw_color = default_font_draw_color
+
+         if color_fn ~= nil then
+            draw_color = color_fn(i, entry, run)
+         end
+
+         draw_packed_glyph(
+            text_renderer,
+            entry.packed,
+            base_x + entry.layout_x,
+            baseline_y + entry.layout_y,
+            resolve_font_draw_color(draw_color),
+            1.0
+         )
+      end
+   end
+
+   return {
+      create_text_renderer = create_text_renderer,
+      release_text_renderer = release_text_renderer,
+      draw_packed_glyph = draw_packed_glyph,
+      draw_text_run = draw_text_run,
+   }
 end
 
 --[ GPU and rendering utilities ]--
@@ -2402,196 +2075,6 @@ local function color_component(value, default_value)
    return math.floor(v * 255 + 0.5)
 end
 
-function M.clear(r, g, b, a)
-   local renderer_ptr = runtime_renderer
-
-   if renderer_ptr == nil then
-      rig.raise("sdl3x.clear requires an active SDL renderer")
-   end
-
-   local renderer = ffi.cast("SDL_Renderer *", renderer_ptr)
-   local rr = color_component(r)
-   local gg = color_component(g, 0)
-   local bb = color_component(b, 0)
-   local aa = color_component(a, 1)
-
-   if not sdl3.SetRenderDrawColor(renderer, rr, gg, bb, aa) then
-      rig.raise("failed to set draw color: " .. get_error_string())
-   end
-   if not sdl3.RenderClear(renderer) then
-      error("failed to clear render target: " .. get_error_string())
-   end
-end
-
---[ Event dispatch and frame drivers ]--
-
-local function dispatch_keyboard_event(event, runtime)
-   local key_name = sdl3.GetKeyName(event.key)
-   local key = "Unknown"
-   local mods = tonumber(event.mod) or 0
-   local timestamp_ns = tonumber(event.timestamp) or 0
-
-   if key_name ~= nil and key_name[0] ~= 0 then
-      key = ffi.string(key_name)
-   end
-
-   runtime:handle_event("key", {
-      type = "key",
-      action = event.down and "down" or "up",
-      key = key,
-      code = tonumber(event.key),
-      scancode = tonumber(event.scancode),
-      ["repeat"] = event["repeat"] and true or false,
-      timestamp_ns = timestamp_ns,
-      timestamp_ms = math.floor(timestamp_ns / 1000000),
-      mods = {
-         shift = has_any_bits(mods, sdl3.KMOD_SHIFT),
-         ctrl = has_any_bits(mods, sdl3.KMOD_CTRL),
-         alt = has_any_bits(mods, sdl3.KMOD_ALT),
-         super = has_any_bits(mods, sdl3.KMOD_GUI),
-      },
-   })
-end
-
-local function dispatch_mouse_motion_event(event, runtime)
-   local timestamp_ns = tonumber(event.timestamp) or 0
-
-   runtime:handle_event("mouse", {
-      type = "mouse",
-      action = "move",
-      x = tonumber(event.x) or 0,
-      y = tonumber(event.y) or 0,
-      xrel = tonumber(event.xrel) or 0,
-      yrel = tonumber(event.yrel) or 0,
-      buttons = tonumber(event.state) or 0,
-      timestamp_ns = timestamp_ns,
-      timestamp_ms = math.floor(timestamp_ns / 1000000),
-   })
-end
-
-local function dispatch_mouse_button_event(event, runtime)
-   local timestamp_ns = tonumber(event.timestamp) or 0
-
-   runtime:handle_event("mouse", {
-      type = "mouse",
-      action = event.down and "down" or "up",
-      button = tonumber(event.button) or 0,
-      clicks = tonumber(event.clicks) or 0,
-      x = tonumber(event.x) or 0,
-      y = tonumber(event.y) or 0,
-      timestamp_ns = timestamp_ns,
-      timestamp_ms = math.floor(timestamp_ns / 1000000),
-   })
-end
-
-local function pump_events(runtime)
-   if runtime_window == nil then
-      error("an SDL window must be initialized before sdl3.pump_events")
-   end
-
-   local event = ffi.new("SDL_Event[1]")
-   while sdl3.PollEvent(event) do
-      local current = event[0]
-      local event_type = tonumber(current.type) or 0
-
-      if event_type == sdl3.EVENT_QUIT then
-         return false
-      end
-
-      if event_type == sdl3.EVENT_KEY_DOWN or event_type == sdl3.EVENT_KEY_UP then
-         dispatch_keyboard_event(current.key, runtime)
-      elseif event_type == sdl3.EVENT_WINDOW_RESIZED then
-         dispatch_resize_if_changed(
-            runtime,
-            "resized",
-            tonumber(current.window.timestamp) or 0
-         )
-      elseif event_type == sdl3.EVENT_WINDOW_PIXEL_SIZE_CHANGED then
-         dispatch_resize_if_changed(
-            runtime,
-            "pixel_size_changed",
-            tonumber(current.window.timestamp) or 0
-         )
-      elseif event_type == sdl3.EVENT_MOUSE_MOTION then
-         dispatch_mouse_motion_event(current.motion, runtime)
-      elseif event_type == sdl3.EVENT_MOUSE_BUTTON_DOWN or event_type == sdl3.EVENT_MOUSE_BUTTON_UP then
-         dispatch_mouse_button_event(current.button, runtime)
-      end
-   end
-
-   return true
-end
-
-local function render_frame(render_fn)
-   if type(render_fn) ~= "function" then
-      rig.raise("sdl3x.render_frame requires a render function")
-   end
-   if runtime_renderer == nil then
-      rig.raise("an SDL renderer must be initialized before sdl3x.render_frame")
-   end
-
-   render_fn()
-   present()
-end
-
-local function render_gpu_frame(render_fn)
-   if type(render_fn) ~= "function" then
-      rig.raise("sdl3x.render_gpu_frame requires a render function")
-   end
-   if runtime_gpu_device == nil then
-      rig.raise("an SDL GPU device must be initialized before sdl3x.render_gpu_frame")
-   end
-   if runtime_window == nil then
-      rig.raise("an SDL window must be initialized before sdl3x.render_gpu_frame")
-   end
-
-   local command_buffer = sdl3.AcquireGPUCommandBuffer(runtime_gpu_device)
-   if command_buffer == nil then
-      rig.raise("failed to acquire GPU command buffer: " .. get_error_string())
-   end
-
-   local swapchain_texture_out = ffi.new("SDL_GPUTexture *[1]")
-   local width_out = ffi.new("Uint32[1]")
-   local height_out = ffi.new("Uint32[1]")
-   if not sdl3.WaitAndAcquireGPUSwapchainTexture(
-      command_buffer,
-      runtime_window.ptr,
-      swapchain_texture_out,
-      width_out,
-      height_out
-   ) then
-      rig.raise("failed to acquire swapchain texture: " .. get_error_string())
-   end
-
-   local swapchain_texture = swapchain_texture_out[0]
-   if swapchain_texture ~= nil then
-      render_fn(
-         command_buffer,
-         swapchain_texture,
-         tonumber(width_out[0]) or 0,
-         tonumber(height_out[0]) or 0
-      )
-   end
-
-   if not sdl3.SubmitGPUCommandBuffer(command_buffer) then
-      rig.raise("failed to submit GPU command buffer: " .. get_error_string())
-   end
-
-   return swapchain_texture ~= nil
-end
-
-local function render_gl_frame(render_fn)
-   if type(render_fn) ~= "function" then
-      rig.raise("sdl3_gl render requires a render function")
-   end
-   if runtime_window == nil or runtime_gl_context == nil then
-      rig.raise("an SDL OpenGL context must be initialized before rendering")
-   end
-
-   render_fn()
-   present_gl()
-end
-
 local function current_monotonic_seconds()
    local counter = tonumber(sdl3.GetPerformanceCounter())
    local frequency = tonumber(sdl3.GetPerformanceFrequency())
@@ -2645,39 +2128,34 @@ local sdl3_gpu_mesh_service = {
    end,
 }
 
-local shader_stage_service_sdl3_gpu = {
-   create_stage = function(spec)
-      local artifact = spec
-      if artifact.artifact_kind == "source" then
-         artifact = shader.compile(artifact)
-      end
-      if artifact.artifact_kind ~= "spirv" then
-         error(
-            ("shader.stage provider 'sdl3_gpu' requires a SPIR-V artifact, got '%s'"):format(
-               tostring(artifact.artifact_kind)
-            ))
-      end
+local function make_shader_stage_service_sdl3_gpu(context)
+   local device = context:capability("graphics.context").device
 
-      local device = M.get_gpu_device()
-      if device == nil then
-         rig.raise("shader.create_stage requires an active SDL GPU device")
-      end
+   return {
+      create_stage = function(spec)
+         local artifact = spec
+         if artifact.artifact_kind == "source" then
+            artifact = shader.compile(artifact)
+         end
+         if artifact.artifact_kind ~= "spirv" then
+            error(
+               ("shader.stage provider 'sdl3_gpu' requires a SPIR-V artifact, got '%s'"):format(
+                  tostring(artifact.artifact_kind)
+               ))
+         end
 
-      return M.create_gpu_shader(device, artifact, spec.props)
-   end,
-   destroy_stage = function(stage)
-      if GPUShader:is_instance(stage) then
-         stage:release()
-         return
-      end
+         return M.create_gpu_shader(device, artifact, spec.props)
+      end,
+      destroy_stage = function(stage)
+         if GPUShader:is_instance(stage) then
+            stage:release()
+            return
+         end
 
-      local device = M.get_gpu_device()
-      if device == nil then
-         rig.raise("shader.destroy_stage requires an active SDL GPU device")
-      end
-      sdl3.ReleaseGPUShader(device, stage)
-   end,
-}
+         sdl3.ReleaseGPUShader(device, stage)
+      end,
+   }
+end
 
 local shader_stage_service_sdl3_gl = {
    create_stage = function(spec)
@@ -2824,26 +2302,21 @@ local function set_vsync_common(self, enabled)
       rig.raise("sdl3x.App:set_vsync expects enabled to be a boolean")
    end
 
-   local renderer = M.get_renderer()
-   if renderer ~= nil then
-      local interval = enabled and 1 or 0
-      if not sdl3.SetRenderVSync(renderer, interval) then
-         rig.raise("failed to set renderer vsync: " .. M.get_error())
-      end
-      self.vsync_enabled = enabled
-      return enabled
+   local graphics = self.graphics
+   if graphics == nil then
+      rig.raise("sdl3x.App:set_vsync requires a graphics context")
    end
 
-   if M.get_gl_context() ~= nil then
-      local interval = enabled and 1 or 0
-      if not sdl3.GL_SetSwapInterval(interval) then
-         rig.raise("failed to set OpenGL swap interval: " .. M.get_error())
-      end
-      self.vsync_enabled = enabled
-      return enabled
+   if type(graphics.set_vsync) == "function" then
+      graphics.set_vsync(enabled)
+   elseif type(graphics.set_swap_interval) == "function" then
+      graphics.set_swap_interval(enabled and 1 or 0)
+   else
+      rig.raise("sdl3x.App:set_vsync is not supported by the active SDL runtime")
    end
 
-   rig.raise("sdl3x.App:set_vsync is not supported by the active SDL runtime")
+   self.vsync_enabled = enabled
+   return enabled
 end
 
 local function toggle_vsync_common(self)
@@ -2855,7 +2328,7 @@ local function set_fullscreen_common(self, enabled)
       rig.raise("sdl3x.App:set_fullscreen expects enabled to be a boolean")
    end
 
-   local window = M.get_window()
+   local window = self.window
    if window == nil then
       rig.raise("sdl3 runtime did not provide a window")
    end
@@ -3111,17 +2584,12 @@ function M.window_component(plugin, options)
          { capability = "sdl3.subsystem" },
       },
       create = function()
-         local window = M.Window {
+         return M.Window {
             window_props = options.window_props,
          }
-         runtime_window = window
-         return window
       end,
       release = function(window)
          window:release()
-         if runtime_window == window then
-            runtime_window = nil
-         end
       end,
    })
 end
@@ -3323,12 +2791,23 @@ local function create_renderer_context(options, context)
       rig.raise("sdl3x create_renderer must return SDL_Renderer* cdata")
    end
 
-   runtime_renderer = renderer
-
    return {
       backend = "renderer",
       window = window,
       renderer = renderer,
+      clear = function(self, r, g, b, a)
+         local rr = color_component(r)
+         local gg = color_component(g, 0)
+         local bb = color_component(b, 0)
+         local aa = color_component(a, 1)
+
+         if not sdl3.SetRenderDrawColor(renderer, rr, gg, bb, aa) then
+            rig.raise("failed to set draw color: " .. get_error_string())
+         end
+         if not sdl3.RenderClear(renderer) then
+            rig.raise("failed to clear render target: " .. get_error_string())
+         end
+      end,
       present = function()
          if not sdl3.RenderPresent(renderer) then
             rig.raise("failed to present renderer: " .. get_error_string())
@@ -3349,9 +2828,6 @@ local function create_renderer_context(options, context)
       end,
       release = function()
          sdl3.DestroyRenderer(renderer)
-         if runtime_renderer == renderer then
-            runtime_renderer = nil
-         end
       end,
    }
 end
@@ -3380,8 +2856,6 @@ local function create_gl_context(options, context)
       rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
    end
 
-   runtime_gl_context = gl_context
-
    return {
       backend = "gl",
       window = window,
@@ -3405,9 +2879,6 @@ local function create_gl_context(options, context)
       end,
       release = function()
          sdl3.GL_DestroyContext(gl_context)
-         if runtime_gl_context == gl_context then
-            runtime_gl_context = nil
-         end
       end,
    }
 end
@@ -3434,8 +2905,6 @@ local function create_gpu_context(options, context)
       sdl3.DestroyGPUDevice(device)
       rig.raise("failed to claim SDL window for GPU device: " .. get_error_string())
    end
-
-   runtime_gpu_device = device
 
    return {
       backend = "gpu",
@@ -3480,9 +2949,6 @@ local function create_gpu_context(options, context)
          sdl3.WaitForGPUIdle(device)
          sdl3.ReleaseWindowFromGPUDevice(device, window.ptr)
          sdl3.DestroyGPUDevice(device)
-         if runtime_gpu_device == device then
-            runtime_gpu_device = nil
-         end
       end,
    }
 end
@@ -3617,8 +3083,11 @@ local function provider_component(plugin, options, config)
    local bind = config.bind or function(provider)
       return provider
    end
+   local make = config.make or function()
+      return config.provider
+   end
 
-   return runtime.descriptor(plugin, {
+   local descriptor = {
       name = options.name,
       provides = {
          { capability = config.capability },
@@ -3629,10 +3098,18 @@ local function provider_component(plugin, options, config)
             properties = { backend = config.backend },
          },
       },
-      create = function()
-         return bind(config.provider)
+      create = function(context)
+         return bind(make(context))
       end,
-   })
+   }
+
+   if config.release ~= nil then
+      descriptor.release = function()
+         config.release()
+      end
+   end
+
+   return runtime.descriptor(plugin, descriptor)
 end
 
 function M.mesh_vertex_input_component(plugin, options)
@@ -3650,7 +3127,7 @@ function M.gpu_shader_stage_component(plugin, options)
    return provider_component(plugin, options, {
       capability = "shader.stage",
       backend = "gpu",
-      provider = shader_stage_service_sdl3_gpu,
+      make = make_shader_stage_service_sdl3_gpu,
       bind = shader.bind,
    })
 end
@@ -3670,7 +3147,7 @@ function M.font_renderer_component(plugin, options)
    return provider_component(plugin, options, {
       capability = "font.renderer",
       backend = "renderer",
-      provider = sdl3_font_provider,
+      make = make_sdl3_font_provider,
       bind = font.bind,
    })
 end
@@ -3680,8 +3157,11 @@ function M.gl_font_renderer_component(plugin, options)
    return provider_component(plugin, options, {
       capability = "font.renderer",
       backend = "gl",
-      provider = sdl3_gl_font_provider,
+      make = make_sdl3_gl_font_provider,
       bind = font.bind,
+      release = function()
+         destroy_gl_font_backend_state()
+      end,
    })
 end
 

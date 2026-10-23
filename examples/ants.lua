@@ -789,7 +789,7 @@ function Scene:init()
 end
 
 function Scene:draw(context)
-   sdl3x.clear(self.background_color:to_rgbaf())
+   context.graphics:clear(self.background_color:to_rgbaf())
 end
 
 function Scene:activate()
@@ -827,7 +827,7 @@ function App:init(context)
 end
 
 function App:after_setup()
-   local window = sdl3x.get_window()
+   local window = self.ctx.window
    if window == nil then
       rig.raise("sdl3 runtime did not provide a window")
    end
@@ -864,7 +864,7 @@ function App:on_resize(info)
 end
 
 function App:render()
-   local renderer = sdl3x.get_renderer()
+   local renderer = self.ctx.graphics.renderer
    if renderer == nil then
       rig.raise("sdl3 runtime did not provide a renderer")
    end
@@ -873,6 +873,7 @@ function App:render()
    if self.root ~= nil then
       self.root:draw_tree({
          renderer = renderer,
+         graphics = self.ctx.graphics,
          frame_profiler = self.frame_profiler,
       })
    end

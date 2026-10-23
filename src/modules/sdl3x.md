@@ -47,12 +47,7 @@ Requiring `sdl3x` makes its components and bundles available.
 - `sdl3x.Window`
 - `sdl3x.GPUShader`
 - `sdl3x.ResourceScope`
-- `sdl3x.get_window()`
-- `sdl3x.get_renderer()`
-- `sdl3x.get_gpu_device()`
-- `sdl3x.get_gl_context()`
 - `sdl3x.get_gl_proc_address(name)`
-- `sdl3x.clear(r, g, b, a)`
 - `sdl3x.get_gpu_driver_names()`
 - `sdl3x.upload_to_gpu_buffer(device, buffer, data_string)`
 - `sdl3x.choose_depth_format(device)`
@@ -305,7 +300,8 @@ local App = rig.Class(sdl3x.SceneApp)
 function App:render()
    if self.root ~= nil then
       self.root:draw_tree({
-         renderer = sdl3x.get_renderer(),
+         renderer = self.ctx.graphics.renderer,
+         graphics = self.ctx.graphics,
       })
    end
 end
@@ -364,18 +360,19 @@ naming a component.
 - `sdl3x.renderer_context_component(plugin, options)`
   - Provides `backend = "renderer"`; wraps `SDL_Renderer*`.
   - `options.create_renderer` optionally overrides the default creation.
-  - Object exposes `renderer`, `present()`, `set_vsync(enabled)`, and `release()`.
+  - Object exposes `renderer`, `clear(r, g, b, a)`, `present()`, `set_vsync(enabled)`,
+    `render_frame(render_fn)`, `window`, and `release()`.
 - `sdl3x.gl_context_component(plugin, options)`
   - Provides `backend = "gl"`; the window must be created with the OpenGL window
     property.
   - `options.gl_attributes` and `options.swap_interval` are applied.
   - Object exposes `context`, `present()`, `set_swap_interval(interval)`,
-    `get_proc_address(name)`, and `release()`.
+    `get_proc_address(name)`, `render_frame(render_fn)`, `window`, and `release()`.
 - `sdl3x.gpu_context_component(plugin, options)`
   - Provides `backend = "gpu"`; wraps `SDL_GPUDevice*` and claims the window.
   - `options.shader_formats`, `options.debug_mode`, and `options.backend_name` are
     honored.
-  - Object exposes `device` and `release()`.
+  - Object exposes `device`, `render_frame(render_fn)`, `window`, and `release()`.
 
 All graphics components release their own resources during rollback if creation fails,
 so a partially initialized context never leaks.
