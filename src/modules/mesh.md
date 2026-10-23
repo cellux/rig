@@ -40,8 +40,9 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
 
 `mesh.plugin([spec])` declares the `mesh.vertex_input` capability for the compositional runtime.
 
-`mesh.component(plugin, options)` requires `mesh.vertex_input` and exposes the resolved provider as
-`ctx.<name>`. The dispatch function takes the provider explicitly:
+`mesh.component(plugin, options)` requires `mesh.vertex_input` and exposes a bound facade
+as `ctx.<name>`. `mesh.bind(provider)` builds that facade, whose `:build_vertex_input(mesh)`
+delegates to the validated `mesh.build_vertex_input(...)` entry point:
 
 ```lua
 local mp = mesh.plugin()
@@ -50,7 +51,7 @@ local compiled = rig.runtime()
    :add(provider)
    :add(mesh.component(mp, { name = "mesh" }))
    :execute(function(ctx)
-      local vertex_input = mesh.build_vertex_input(cube, ctx.mesh)
+      local vertex_input = ctx.mesh:build_vertex_input(cube)
    end)
    :compile()
 ```

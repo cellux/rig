@@ -141,6 +141,18 @@ function M.build_vertex_input(mesh, provider)
    return provider.build_vertex_input(mesh)
 end
 
+function M.bind(provider)
+   if type(provider) ~= "table" then
+      rig.raise("mesh.bind expects a mesh.vertex_input provider")
+   end
+
+   return {
+      build_vertex_input = function(_, mesh)
+         return M.build_vertex_input(mesh, provider)
+      end,
+   }
+end
+
 function M.plugin(spec)
    spec = spec or {}
    return runtime.plugin {
@@ -159,7 +171,7 @@ function M.component(plugin, options)
          { capability = "mesh.vertex_input" },
       },
       create = function(context)
-         return context:capability("mesh.vertex_input")
+         return M.bind(context:capability("mesh.vertex_input"))
       end,
    })
 end

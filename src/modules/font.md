@@ -216,8 +216,9 @@ local run = atlas:build_text_run("Hello")
 
 `font.plugin([spec])` declares the `font.renderer` capability for the compositional runtime.
 
-`font.component(plugin, options)` requires `font.renderer` and exposes the resolved provider as
-`ctx.<name>`. The dispatch functions take the provider explicitly:
+`font.component(plugin, options)` requires `font.renderer` and exposes a bound facade as
+`ctx.<name>`. `font.bind(provider)` builds it, with `:create_text_renderer(atlas)` and
+`:create_style(face, options)` delegating to the validated module entry points:
 
 ```lua
 local fp = font.plugin()
@@ -226,7 +227,8 @@ local compiled = rig.runtime()
    :add(provider)
    :add(font.component(fp, { name = "font" }))
    :execute(function(ctx)
-      local renderer = font.create_text_renderer(atlas, ctx.font)
+      local renderer = ctx.font:create_text_renderer(atlas)
+      local style = ctx.font:create_style(face, { pixel_size = 16 })
    end)
    :compile()
 ```

@@ -912,6 +912,21 @@ function M.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
    )
 end
 
+function M.bind(provider)
+   if type(provider) ~= "table" then
+      rig.raise("font.bind expects a font.renderer provider")
+   end
+
+   return {
+      create_text_renderer = function(_, atlas)
+         return M.create_text_renderer(atlas, provider)
+      end,
+      create_style = function(_, face, options)
+         return M.create_style(face, options, provider)
+      end,
+   }
+end
+
 function M.plugin(spec)
    spec = spec or {}
    return runtime.plugin {
@@ -930,7 +945,7 @@ function M.component(plugin, options)
          { capability = "font.renderer" },
       },
       create = function(context)
-         return context:capability("font.renderer")
+         return M.bind(context:capability("font.renderer"))
       end,
    })
 end

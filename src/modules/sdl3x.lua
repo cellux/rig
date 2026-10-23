@@ -11,7 +11,7 @@ local sched = require("sched")
 local schema = require("schema")
 local sdl3 = require("sdl3")
 require("gl")
-require("mesh")
+local mesh = require("mesh")
 local shader = require("shader")
 require("time")
 
@@ -3614,6 +3614,10 @@ end
 --[ rendering service provider components ]--
 
 local function provider_component(plugin, options, config)
+   local bind = config.bind or function(provider)
+      return provider
+   end
+
    return runtime.descriptor(plugin, {
       name = options.name,
       provides = {
@@ -3626,7 +3630,7 @@ local function provider_component(plugin, options, config)
          },
       },
       create = function()
-         return config.provider
+         return bind(config.provider)
       end,
    })
 end
@@ -3637,6 +3641,7 @@ function M.mesh_vertex_input_component(plugin, options)
       capability = "mesh.vertex_input",
       backend = "gpu",
       provider = sdl3_gpu_mesh_service,
+      bind = mesh.bind,
    })
 end
 
@@ -3646,6 +3651,7 @@ function M.gpu_shader_stage_component(plugin, options)
       capability = "shader.stage",
       backend = "gpu",
       provider = shader_stage_service_sdl3_gpu,
+      bind = shader.bind,
    })
 end
 
@@ -3655,6 +3661,7 @@ function M.gl_shader_stage_component(plugin, options)
       capability = "shader.stage",
       backend = "gl",
       provider = shader_stage_service_sdl3_gl,
+      bind = shader.bind,
    })
 end
 
@@ -3664,6 +3671,7 @@ function M.font_renderer_component(plugin, options)
       capability = "font.renderer",
       backend = "renderer",
       provider = sdl3_font_provider,
+      bind = font.bind,
    })
 end
 
@@ -3673,6 +3681,7 @@ function M.gl_font_renderer_component(plugin, options)
       capability = "font.renderer",
       backend = "gl",
       provider = sdl3_gl_font_provider,
+      bind = font.bind,
    })
 end
 

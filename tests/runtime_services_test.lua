@@ -29,7 +29,7 @@ test.case("mesh component consumes the mesh.vertex_input capability", function()
       :add(provider)
       :add(mesh.component(mp, { name = "mesh" }))
       :execute(function(ctx)
-         got = ctx.mesh.build_vertex_input({ id = 1 })
+         got = ctx.mesh:build_vertex_input({ id = 1 })
       end)
       :compile()
 
@@ -62,11 +62,11 @@ test.case("shader component consumes the shader.stage capability", function()
       :add(provider)
       :add(shader.component(sp, { name = "shader" }))
       :execute(function(ctx)
-         stage = shader.create_stage({
+         stage = ctx.shader:create_stage({
             language = "glsl",
             stage = "vertex",
             source = "void main() {}",
-         }, ctx.shader)
+         })
       end)
       :compile()
 
@@ -99,7 +99,8 @@ test.case("font component exposes the font.renderer capability", function()
 
    compiled:start()
 
-   test.equal(facade.marker, "font")
+   test.equal(type(facade.create_style), "function")
+   test.equal(type(facade.create_text_renderer), "function")
 end)
 
 test.case("gl component installs and clears the resolver capability", function()
@@ -166,7 +167,7 @@ test.case("gpu mesh provider builds vertex input through capabilities", function
       :add(sdl3x.mesh_vertex_input_component(sp, { name = "mesh_provider" }))
       :add(mesh.component(mp, { name = "mesh" }))
       :execute(function(ctx)
-         built = ctx.mesh.build_vertex_input(mesh.make_cube())
+         built = ctx.mesh:build_vertex_input(mesh.make_cube())
       end)
       :compile()
 

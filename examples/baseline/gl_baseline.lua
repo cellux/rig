@@ -271,23 +271,23 @@ function Scene:release()
    self.profiler_overlay = nil
 end
 
-local app_context = nil
+local ctx = nil
 
 function App:init(context)
    self:super().init(self, context)
-   app_context = context
+   ctx = context
 
    font_path = find_font_path()
    face = font.load_face(font_path)
    frame_profiler = profiler.FrameProfiler {
       fps = 60,
    }
-   profiler_style = font.create_style(face, {
+   profiler_style = ctx.font:create_style(face, {
       pixel_size = 14,
       page_width = 256,
       page_height = 128,
       padding = 1,
-   }, app_context and app_context.font or nil)
+   })
    profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )

@@ -14,7 +14,7 @@ local font_path
 local face
 local profiler_style
 local frame_profiler
-local app_context
+local ctx
 local profiler_enabled = true
 local vsync_enabled = true
 local fullscreen_enabled = false
@@ -320,12 +320,12 @@ function Title:init(face, text)
    self.enabled = false
    self.shadow_offset = 4
    self.phase = 0.0
-   self.style = self:replace_owned("style", font.create_style(face, {
+   self.style = self:replace_owned("style", ctx.font:create_style(face, {
       pixel_size = 74,
       page_width = 512,
       page_height = 256,
       padding = 2,
-   }, app_context and app_context.font or nil), function(_, style)
+   }), function(_, style)
       style:release()
    end)
    self.run = self.style:build_run(text)
@@ -380,12 +380,12 @@ function Scroller:init(face, text)
    self.loop_gap = 240.0
    self.offset = 0.0
    self.wave_phase = 0.0
-   self.style = self:replace_owned("style", font.create_style(face, {
+   self.style = self:replace_owned("style", ctx.font:create_style(face, {
       pixel_size = 38,
       page_width = 1024,
       page_height = 512,
       padding = 2,
-   }, app_context and app_context.font or nil), function(_, style)
+   }), function(_, style)
       style:release()
    end)
    self.run = self.style:build_run(text)
@@ -453,12 +453,12 @@ function SpriteSnake:init(face, text)
    self.outline_enabled = true
    self.text = text
    self.phase = 0.0
-   self.style = self:replace_owned("style", font.create_style(face, {
+   self.style = self:replace_owned("style", ctx.font:create_style(face, {
       pixel_size = 82,
       page_width = 256,
       page_height = 256,
       padding = 2,
-   }, app_context and app_context.font or nil), function(_, style)
+   }), function(_, style)
       style:release()
    end)
    self.glyphs = self:create_glyphs(text)
@@ -863,7 +863,7 @@ end
 
 function App:init(context)
    self:super().init(self, context)
-   app_context = context
+   ctx = context
 
    local renderer = sdl3x.get_renderer()
    if renderer == nil then
@@ -875,12 +875,12 @@ function App:init(context)
    frame_profiler = profiler.FrameProfiler {
       fps = 60,
    }
-   profiler_style = font.create_style(face, {
+   profiler_style = ctx.font:create_style(face, {
       pixel_size = 14,
       page_width = 256,
       page_height = 128,
       padding = 1,
-   }, app_context and app_context.font or nil)
+   })
 
    profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"

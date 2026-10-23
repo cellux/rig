@@ -36,8 +36,9 @@ High-level shader helper layered on top of `dxc`, `shaderc`, and `spirvcross`.
 
 `shader.plugin([spec])` declares the `shader.stage` capability for the compositional runtime.
 
-`shader.component(plugin, options)` requires `shader.stage` and exposes the resolved provider as
-`ctx.<name>`. The dispatch functions take the provider explicitly:
+`shader.component(plugin, options)` requires `shader.stage` and exposes a bound facade as
+`ctx.<name>`. `shader.bind(provider)` builds it, with `:create_stage(spec)` and
+`:destroy_stage(stage)` delegating to the validated module entry points:
 
 ```lua
 local sp = shader.plugin()
@@ -46,7 +47,7 @@ local compiled = rig.runtime()
    :add(provider)
    :add(shader.component(sp, { name = "shader" }))
    :execute(function(ctx)
-      local stage = shader.create_stage(spec, ctx.shader)
+      local stage = ctx.shader:create_stage(spec)
    end)
    :compile()
 ```

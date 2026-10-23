@@ -186,6 +186,21 @@ function M.destroy_stage(stage, provider)
    return provider.destroy_stage(stage)
 end
 
+function M.bind(provider)
+   if type(provider) ~= "table" then
+      rig.raise("shader.bind expects a shader.stage provider")
+   end
+
+   return {
+      create_stage = function(_, spec)
+         return M.create_stage(spec, provider)
+      end,
+      destroy_stage = function(_, stage)
+         return M.destroy_stage(stage, provider)
+      end,
+   }
+end
+
 function M.plugin(spec)
    spec = spec or {}
    return runtime.plugin {
@@ -204,7 +219,7 @@ function M.component(plugin, options)
          { capability = "shader.stage" },
       },
       create = function(context)
-         return context:capability("shader.stage")
+         return M.bind(context:capability("shader.stage"))
       end,
    })
 end

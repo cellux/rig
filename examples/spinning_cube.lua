@@ -107,7 +107,7 @@ function Cube:build_mvp(out, aspect)
    return mathx.mat4_multiply(out, self.model, self.projection)
 end
 
-local app_context = nil
+local ctx = nil
 
 function Cube:activate()
    local device = sdl3x.get_gpu_device()
@@ -122,18 +122,18 @@ function Cube:activate()
          owned_scope:release()
       end)
    self.gpu_resources = scope
-   self.vertex_input = mesh.build_vertex_input(cube_mesh, app_context.mesh)
+   self.vertex_input = ctx.mesh:build_vertex_input(cube_mesh)
 
    local vertex_shader = scope:adopt(
-      shader.create_stage(vertex_compiled, app_context.shader),
+      ctx.shader:create_stage(vertex_compiled),
       function(_, resource)
-         shader.destroy_stage(resource, app_context.shader)
+         ctx.shader:destroy_stage(resource)
       end
    )
    local fragment_shader = scope:adopt(
-      shader.create_stage(fragment_compiled, app_context.shader),
+      ctx.shader:create_stage(fragment_compiled),
       function(_, resource)
-         shader.destroy_stage(resource, app_context.shader)
+         ctx.shader:destroy_stage(resource)
       end
    )
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
@@ -282,7 +282,7 @@ end
 
 function App:init(context)
    self:super().init(self, context)
-   app_context = context
+   ctx = context
    self.root = Scene()
 end
 

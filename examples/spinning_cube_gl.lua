@@ -5,7 +5,6 @@ local glx = require("glx")
 local mathx = require("mathx")
 local mesh = require("mesh")
 local scenegraph = require("scenegraph")
-local shader = require("shader")
 local sdl3 = require("sdl3")
 local sdl3x = require("sdl3x")
 
@@ -85,21 +84,21 @@ function Cube:build_mvp(out, aspect)
    return mathx.mat4_multiply(out, self.model, self.projection)
 end
 
-local app_context = nil
+local ctx = nil
 
 function Cube:activate()
-   local vertex_shader = shader.create_stage({
+   local vertex_shader = ctx.shader:create_stage({
       language = "glsl",
       stage = "vertex",
       source_name = "spinning_cube_gl.vert.glsl",
       source = vertex_shader_source,
-   }, app_context.shader)
-   local fragment_shader = shader.create_stage({
+   })
+   local fragment_shader = ctx.shader:create_stage({
       language = "glsl",
       stage = "fragment",
       source_name = "spinning_cube_gl.frag.glsl",
       source = fragment_shader_source,
-   }, app_context.shader)
+   })
 
    self.program = self:replace_owned("program", glx.Program {
       shaders = {
@@ -183,7 +182,7 @@ end
 
 function App:init(context)
    self:super().init(self, context)
-   app_context = context
+   ctx = context
    self.root = Scene()
    self.viewport_width = 1
    self.viewport_height = 1

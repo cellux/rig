@@ -415,3 +415,18 @@ initial implementation is unambiguous and testable:
 - The transitional `sdl3x` module globals (`runtime_window`, `runtime_renderer`,
   `runtime_gl_context`, `runtime_gpu_device`) and their accessors remain as follow-up
   work, because the font/shader/mesh providers still read them.
+
+## D31 — Capability values are bound facades
+
+**Status:** Accepted (2026-10-23)
+
+- A consumer component (`mesh.component`, `shader.component`, `font.component`) and the
+  matching `sdl3x` provider components expose a bound facade as `ctx.<name>`.
+- `X.bind(provider)` builds the facade; its `:` methods delegate to the validated module
+  entry points (`mesh.build_vertex_input`, `shader.create_stage`, ...). This keeps
+  normalization/validation centralized and does not require providers to become
+  self-methods.
+- Provider tables remain value-first strategy values internally (for example
+  `provider.build_vertex_input(mesh)` inside the wrapper).
+- `sdl3x.provider_component` gained an optional `bind` field so bundles expose facades
+  without duplicating the module entry points.

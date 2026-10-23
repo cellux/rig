@@ -683,3 +683,39 @@ Suggested next cleanup (not required by any phase):
 - Rebuild before any `./build/rig ...` smoke test when C, build inputs, or embedded
   module sources change.
 - Use `make test` for final verification; smoke tests are supplemental only.
+
+---
+
+## 2026-10-23 — Follow-up: bound capability facades
+
+**Done**
+
+- Added `bind(provider)` to `mesh`, `shader`, and `font`. Each returns a small facade whose
+  `:` methods delegate to the validated module entry points:
+  - `mesh.bind(p):build_vertex_input(mesh)`
+  - `shader.bind(p):create_stage(spec)` / `:destroy_stage(stage)`
+  - `font.bind(p):create_text_renderer(atlas)` / `:create_style(face, options)`
+- `mesh.component`, `shader.component`, and `font.component` now return the bound facade
+  as `ctx.<name>`.
+- `sdl3x.provider_component` accepts an optional `bind` and wraps its provider with it, so
+  the SDL bundles expose facades too (`sdl3x.mesh_vertex_input_component`,
+  `gpu_shader_stage_component`, `gl_shader_stage_component`, `font_renderer_component`,
+  `gl_font_renderer_component`).
+- Updated `examples/` to call `ctx.mesh:build_vertex_input(cube)`,
+  `ctx.shader:create_stage(spec)`, and `ctx.font:create_style(face, options)`, and renamed
+  the module-level `app_context` variable to `ctx`.
+- Updated `runtime_services_test.lua` and the `mesh`/`shader`/`font` docs to the facade
+  call style.
+
+**Rationale**
+
+- The colon form reads like the rest of the capability values (`ctx.graphics:render_frame`,
+  `ctx.window:release`) without forcing providers to become stateful self-methods.
+- Providers stay value-first strategy tables; normalization/validation stays in the module
+  entry points, so a facade cannot skip it.
+
+**Verification**
+
+- `make test`: 42 files passed, 0 failed.
+- Examples run under `./build/rig`, including `scroller`, both baselines,
+  `spinning_cube_gl`, and `ants`.
