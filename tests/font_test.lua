@@ -197,7 +197,7 @@ test.case("font atlas packs glyphs into grayscale pages", function()
    face:release()
 end)
 
-test.case("font text renderer requires an active runtime service", function()
+test.case("font text renderer requires a provider", function()
    local font_path = find_font_path()
    if font_path == nil then
       return
@@ -228,7 +228,7 @@ test.case("font draw_packed_glyph accepts a color.Color", function()
 
    local observed = nil
 
-   rig.register_service_provider("font.renderer", "font_test_draw_color_provider", {
+   local provider = {
       create_text_renderer = function()
          return {}
       end,
@@ -247,33 +247,22 @@ test.case("font draw_packed_glyph accepts a color.Color", function()
          }
       end,
       draw_text_run = function() end,
-   })
-
-   rig.register_runtime_driver("font_test_draw_color_driver", {
-      loop = function()
-         local face = font.load_face(font_path)
-         local sized = face:create_sized_face(18)
-         local atlas = sized:create_atlas()
-         local shaped = font.shape(sized, "A")
-         local packed = atlas:get_glyph(shaped.glyphs[1].glyph_id)
-         local renderer = font.create_text_renderer(atlas)
-         local draw_color = color.rgba(12, 34, 56, 78)
-
-         renderer:draw_packed_glyph(packed, 10, 20, draw_color, 1.5)
-
-         renderer:release()
-         atlas:release()
-         sized:release()
-         face:release()
-      end,
-   })
-
-   rig.run {
-      driver = "font_test_draw_color_driver",
-      providers = {
-         ["font.renderer"] = "font_test_draw_color_provider",
-      },
    }
+
+   local face = font.load_face(font_path)
+   local sized = face:create_sized_face(18)
+   local atlas = sized:create_atlas()
+   local shaped = font.shape(sized, "A")
+   local packed = atlas:get_glyph(shaped.glyphs[1].glyph_id)
+   local renderer = font.create_text_renderer(atlas, provider)
+   local draw_color = color.rgba(12, 34, 56, 78)
+
+   renderer:draw_packed_glyph(packed, 10, 20, draw_color, 1.5)
+
+   renderer:release()
+   atlas:release()
+   sized:release()
+   face:release()
 
    test.truthy(observed ~= nil)
    test.equal(observed.x, 10)

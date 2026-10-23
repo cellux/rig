@@ -33,20 +33,13 @@ Core runtime helpers that are always loaded at interpreter startup.
   - `options.label` is required and is used in the cached error message.
   - `options.candidates` is a required array of library names to try in order.
   - Returns a function that loads the first matching candidate on first call and returns the cached library handle on later calls.
-- `rig.get_module_config(options, module_id, config_schema[, context_label])`
-  - Reads `options.module_config[module_id]`, validates it with `schema.assert(...)`, and returns the normalized table.
-  - Missing `options`, missing `options.module_config`, and missing `options.module_config[module_id]` are treated as `{}` and still validated through the schema.
-  - Raises if `options.module_config` is present but not a table.
-  - `context_label` defaults to `"<module_id> module configuration"`.
+- `rig.runtime()`
+  - Returns a new `runtime.Builder` for the compositional runtime model.
+  - Lazily requires the `runtime` module (`require("runtime").Builder()`).
+  - See `runtime.md` for the builder/compiler/start API.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.
-- `rig.App`
-  - Minimal base class for runtime-owned application objects used with `rig.run(...)`.
-  - Subclasses may implement runtime-phase methods such as `after_setup`, `before_drain`, `before_frame`, and `before_shutdown`.
-- `rig.Runtime`
-  - Runtime instance class used by `rig.run(...)` to track one active run.
-  - `core_phase_names` lists the runtime-owned core phases.
 - `rig.tostring(value)`
   - Returns `tostring(value)` for values with a `__tostring` metamethod.
   - Returns `rig.repr(value)` for other tables.
@@ -69,57 +62,6 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Same as `rig.fprint(stream, ...)`, but appends `\n`.
 - `rig.println(...)`
   - Same as `rig.print(...)`, but appends `\n`.
-- `rig.register_runtime_driver(name, driver)`
-  - Registers a named runtime driver for `rig.run(...)`.
-  - `driver.driver_phases` may declare driver-owned hook phases beyond `rig.Runtime`'s core phases.
-  - `driver.events` may declare named event-handler slots such as `key`, `mouse`, or `resize`.
-- `rig.register_runtime_preset(name, preset)`
-  - Registers a named preset that selects one driver plus default service providers.
-  - `preset.driver` is required and selects the runtime driver.
-  - `preset.providers[service_id] = provider_id` sets default service providers for that preset.
-- `rig.register_runtime_hook(phase, hook)`
-  - Registers a hook function for a named runtime phase.
-  - `rig.Runtime` owns the core phases emitted by `rig.run(...)`:
-    - `before_setup`
-    - `after_setup`
-    - `before_shutdown`
-    - `after_shutdown`
-  - Drivers may extend that phase set through `driver.driver_phases`.
-  - The built-in `sdl3` drivers declare:
-    - `before_poll`
-    - `after_poll`
-    - `before_drain`
-    - `after_drain`
-    - `before_frame`
-    - `after_frame`
-- `rig.run(options?)`
-  - Starts the selected runtime mode or driver.
-  - `options.mode` selects a named runtime mode.
-  - `options.driver` may be used directly without a mode.
-  - `options.providers[service_id] = provider_id` overrides service-provider selection for one run.
-  - Provider mappings are validated before driver setup begins.
-  - `options.driver_config[driver_id]` stores driver-owned configuration such as render callbacks, window creation options, and presentation settings.
-  - `options.module_config[module_id]` stores module-owned runtime configuration such as `uv.main` or `animator.start`.
-  - All built-in runtime modes create and own a scheduler.
-  - The current first version ships with `sdl3`-owned modes such as `"sdl3"`, `"sdl3_gl"`, and `"sdl3_gpu"` when the `sdl3` module has been loaded.
-  - `options.app` must be a `rig.App` subclass.
-  - `rig.run(...)` instantiates that app class after driver setup and before `after_setup` hooks run.
-  - The app's implemented phase methods are used automatically when the selected driver declares those phases.
-  - The app's implemented `on_<event>(...)` methods are used automatically when the selected driver declares those events.
-  - Global hooks registered through `rig.register_runtime_hook(...)` run first, then the app hook for the same phase if one exists.
-- `rig.register_service(service_id, method_names)`
-  - Registers a named runtime service definition.
-  - `service_id` is a string.
-  - `method_names` is an array of required method names.
-  - Raises if a service with this name has been already registered.
-- `rig.register_service_provider(service_id, provider_id, provider)`
-  - Registers one provider table for a service id.
-  - Completeness is checked at registration time.
-  - Raises if the service is unknown or if that provider id is already registered.
-- `rig.require_service(service_id)`
-  - Returns the provider selected for the currently active runtime.
-  - Service selection uses the current mode/provider configuration.
-  - Raises if no runtime is active or if the active runtime has no provider.
 - `rig.argv`
   - Table mirroring the raw C `argv` array for the current Rig process.
   - `rig.argv[0]` is the interpreter path from `argv[0]`.
@@ -138,5 +80,4 @@ Core runtime helpers that are always loaded at interpreter startup.
 ## Notes
 
 - Custom script languages can be added by appending loader functions to `rig.script_loaders`.
-- Services are resolved by the active runtime configuration, not by loaded-module presence.
-- One module should own each service definition. Provider modules should require that owner before calling `rig.register_service_provider(...)`.
+- The current runtime model is the builder/compiler/start API in `runtime.md`; the legacy `rig.run`/driver/preset/service-registry API has been removed.

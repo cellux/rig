@@ -3,6 +3,7 @@ fennel
 prelude
 repr
 rig
+runtime
 color
 schema
 stat

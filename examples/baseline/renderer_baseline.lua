@@ -193,8 +193,11 @@ function Scene:release()
    self.profiler_overlay = nil
 end
 
-function App:init()
-   self:super().init(self)
+local app_context = nil
+
+function App:init(context)
+   self:super().init(self, context)
+   app_context = context
 
    font_path = find_font_path()
    face = font.load_face(font_path)
@@ -206,7 +209,7 @@ function App:init()
       page_width = 256,
       page_height = 128,
       padding = 1,
-   })
+   }, app_context and app_context.font or nil)
    profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC ANIM PROFILER ON OFF [] 0123456789./-"
    )
@@ -217,6 +220,7 @@ function App:init()
 end
 
 function App:before_frame()
+   self:super().before_frame(self)
    self.frame_profiler:begin_frame()
 end
 
@@ -260,15 +264,11 @@ function App:release()
    font_path = nil
 end
 
-rig.run {
-   mode = "sdl3",
-   driver_config = {
-      sdl3 = {
-         window_props = {
-            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Renderer Baseline",
-            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-         },
-      },
+local builder = rig.runtime()
+sdl3x.bundle_sdl3(builder, {
+   window_props = {
+      [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Renderer Baseline",
+      [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
    },
-   app = App,
-}
+})
+builder:execute(App):compile():start()

@@ -14,9 +14,9 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
     - `vertex_count`
     - `attribute_offsets`
     - `vertex_blob`
-- `mesh.build_vertex_input(mesh)`
-  - Resolves the active `mesh.vertex_input` service provider and translates a provider-neutral mesh layout into a provider-specific vertex-input descriptor.
-  - Requires an active runtime.
+- `mesh.build_vertex_input(mesh, provider)`
+  - Dispatches through a `mesh.vertex_input` provider and translates a provider-neutral mesh layout into a provider-specific vertex-input descriptor.
+  - The provider argument is required.
 
 ## `make_cube` Options
 
@@ -33,5 +33,24 @@ This first version is intentionally narrow: it generates CPU-side mesh data in e
 - This module is meant to complement `mathx`:
   - `mathx` handles transforms
 - `mesh` handles geometry generation
-- `mesh` owns the `mesh.vertex_input` service namespace.
-  - The `sdl3_gpu` runtime mode installs one provider that returns SDL GPU vertex-input state objects.
+- `mesh` declares the `mesh.vertex_input` capability.
+  - `sdl3x.mesh_vertex_input_component` provides an SDL GPU provider that returns vertex-input state objects.
+
+## Runtime Components
+
+`mesh.plugin([spec])` declares the `mesh.vertex_input` capability for the compositional runtime.
+
+`mesh.component(plugin, options)` requires `mesh.vertex_input` and exposes the resolved provider as
+`ctx.<name>`. The dispatch function takes the provider explicitly:
+
+```lua
+local mp = mesh.plugin()
+local compiled = rig.runtime()
+   :use(mp)
+   :add(provider)
+   :add(mesh.component(mp, { name = "mesh" }))
+   :execute(function(ctx)
+      local vertex_input = mesh.build_vertex_input(cube, ctx.mesh)
+   end)
+   :compile()
+```

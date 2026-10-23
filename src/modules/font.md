@@ -8,7 +8,7 @@ The `font` module owns:
 - atlas packing
 - text-run construction
 
-Backend-specific atlas upload and drawing are provided through the `"font.renderer"` runtime service.
+Backend-specific atlas upload and drawing are provided through the `font.renderer` capability.
 
 ## API
 
@@ -97,8 +97,8 @@ Backend-specific atlas upload and drawing are provided through the `"font.render
     - `cluster`
 - `font.warm_text(atlas, text[, options])`
   - Shapes text and ensures all referenced glyphs are packed into the atlas.
-- `font.create_text_renderer(atlas)`
-  - Requires an active runtime that implements the `"font.renderer"` service.
+- `font.create_text_renderer(atlas, provider)`
+  - Requires a `font.renderer` provider.
   - Returns a text-renderer object tied to that atlas.
 - `font.draw_packed_glyph(text_renderer, packed, x, y[, color[, scale]])`
   - Draws one packed glyph through the active provider.
@@ -192,11 +192,10 @@ Atlas objects also expose:
   - This avoids size mutation conflicts between independently sized faces.
 - `font.create_atlas(...)` currently produces a single-channel grayscale atlas.
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
-- `font.create_text_renderer(...)` resolves through `rig.require_service("font.renderer")`.
-- `font.create_style(...)` currently creates a text renderer immediately, so it also requires an active runtime that provides `"font.renderer"`.
-- `mode = "sdl3"` currently provides the `"font.renderer"` service through SDL renderer textures.
-- `mode = "sdl3_gl"` currently provides the `"font.renderer"` service through OpenGL textures and textured quads.
-- `mode = "sdl3_gpu"` does not provide it yet.
+- `font.create_text_renderer(...)` requires a `font.renderer` provider argument.
+- `font.create_style(face, options, provider)` forwards the provider to `font.create_text_renderer`.
+- `sdl3x.bundle_sdl3` provides a renderer-backed `font.renderer` provider;
+  `sdl3x.bundle_sdl3_gl` provides an OpenGL-backed one; the GPU bundle does not provide one yet.
 
 ## Example
 
@@ -211,4 +210,23 @@ local first = shaped.glyphs[1]
 local atlas = sized:create_atlas()
 local packed = atlas:get_glyph(first.glyph_id)
 local run = atlas:build_text_run("Hello")
+```
+
+## Runtime Components
+
+`font.plugin([spec])` declares the `font.renderer` capability for the compositional runtime.
+
+`font.component(plugin, options)` requires `font.renderer` and exposes the resolved provider as
+`ctx.<name>`. The dispatch functions take the provider explicitly:
+
+```lua
+local fp = font.plugin()
+local compiled = rig.runtime()
+   :use(fp)
+   :add(provider)
+   :add(font.component(fp, { name = "font" }))
+   :execute(function(ctx)
+      local renderer = font.create_text_renderer(atlas, ctx.font)
+   end)
+   :compile()
 ```

@@ -16,18 +16,37 @@ High-level shader helper layered on top of `dxc`, `shaderc`, and `spirvcross`.
     - `reflection`
     - `format = "spirv"`
   - Raises on compilation or reflection failure.
-- `shader.create_stage(spec_or_artifact)`
-  - Resolves the active `shader.stage` service and creates a runtime-specific shader stage object.
+- `shader.create_stage(spec_or_artifact, provider)`
+  - Dispatches through a `shader.stage` provider and creates a runtime-specific shader stage object.
   - Accepts either:
     - a source specification with `language`, `stage`, and `source` or `path`
     - or a normalized artifact such as the result of `shader.compile(...)`
-- `shader.destroy_stage(stage)`
-  - Resolves the active `shader.stage` service and destroys a runtime-specific shader stage object.
+- `shader.destroy_stage(stage, provider)`
+  - Dispatches through a `shader.stage` provider and destroys a runtime-specific shader stage object.
 
 ## Notes
 
-- `shader` owns the `shader.stage` service namespace.
-- Runtime-specific stage creation stays in service providers, not in the `gl` or `sdl3` module namespaces.
-- Under the `sdl3_gl` runtime mode, `shader.create_stage(...)` returns `glx.Shader` objects that can be linked through `glx.Program { shaders = { ... } }`.
-- Under the `sdl3_gpu` runtime mode, `shader.create_stage(...)` returns `sdl3x.GPUShader` objects.
-- SDL GPU descriptor-set validation happens when the SDL GPU runtime creates shader objects, not during generic SPIR-V compilation.
+- `shader` declares the `shader.stage` capability.
+- Runtime-specific stage creation stays in providers, not in the `gl` or `sdl3` module namespaces.
+- `sdl3x.bundle_sdl3_gl` provides a GLSL source provider returning `glx.Shader` objects.
+- `sdl3x.bundle_sdl3_gpu` provides a SPIR-V provider returning `sdl3x.GPUShader` objects.
+- SDL GPU descriptor-set validation happens when the SDL GPU provider creates shader objects, not during generic SPIR-V compilation.
+
+## Runtime Components
+
+`shader.plugin([spec])` declares the `shader.stage` capability for the compositional runtime.
+
+`shader.component(plugin, options)` requires `shader.stage` and exposes the resolved provider as
+`ctx.<name>`. The dispatch functions take the provider explicitly:
+
+```lua
+local sp = shader.plugin()
+local compiled = rig.runtime()
+   :use(sp)
+   :add(provider)
+   :add(shader.component(sp, { name = "shader" }))
+   :execute(function(ctx)
+      local stage = shader.create_stage(spec, ctx.shader)
+   end)
+   :compile()
+```

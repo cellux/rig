@@ -107,6 +107,8 @@ function Cube:build_mvp(out, aspect)
    return mathx.mat4_multiply(out, self.model, self.projection)
 end
 
+local app_context = nil
+
 function Cube:activate()
    local device = sdl3x.get_gpu_device()
    local window = sdl3x.get_window()
@@ -120,18 +122,18 @@ function Cube:activate()
          owned_scope:release()
       end)
    self.gpu_resources = scope
-   self.vertex_input = mesh.build_vertex_input(cube_mesh)
+   self.vertex_input = mesh.build_vertex_input(cube_mesh, app_context.mesh)
 
    local vertex_shader = scope:adopt(
-      shader.create_stage(vertex_compiled),
+      shader.create_stage(vertex_compiled, app_context.shader),
       function(_, resource)
-         shader.destroy_stage(resource)
+         shader.destroy_stage(resource, app_context.shader)
       end
    )
    local fragment_shader = scope:adopt(
-      shader.create_stage(fragment_compiled),
+      shader.create_stage(fragment_compiled, app_context.shader),
       function(_, resource)
-         shader.destroy_stage(resource)
+         shader.destroy_stage(resource, app_context.shader)
       end
    )
    local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
@@ -278,8 +280,9 @@ function Scene:release()
    self.cube = nil
 end
 
-function App:init()
-   self:super().init(self)
+function App:init(context)
+   self:super().init(self, context)
+   app_context = context
    self.root = Scene()
 end
 
@@ -297,16 +300,12 @@ function App:render(command_buffer, swapchain_texture, width, height)
    })
 end
 
-rig.run {
-   mode = "sdl3_gpu",
-   driver_config = {
-      sdl3_gpu = {
-         window_props = {
-            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
-            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-         },
-         shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
-      },
+local builder = rig.runtime()
+sdl3x.bundle_sdl3_gpu(builder, {
+   window_props = {
+      [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL GPU Spinning Cube",
+      [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
    },
-   app = App,
-}
+   shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
+})
+builder:execute(App):compile():start()

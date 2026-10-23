@@ -8,4 +8,8 @@
 (fn App.render [self]
   (sdl3x.clear 0 0 0 1))
 
-(rig.run {:mode "sdl3" :app App})
+(local builder (rig.runtime))
+(sdl3x.bundle_sdl3 builder)
+(builder:execute App)
+(local compiled (builder:compile))
+(compiled:start)

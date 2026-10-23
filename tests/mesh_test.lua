@@ -2,7 +2,6 @@ local test = require("test")
 local color = require("color")
 local ffi = require("ffi")
 local mesh = require("mesh")
-require("sdl3x")
 
 test.case("mesh.make_cube returns a provider-neutral mesh layout", function()
    local cube = mesh.make_cube()
@@ -16,29 +15,34 @@ test.case("mesh.make_cube returns a provider-neutral mesh layout", function()
    test.truthy(#cube.vertex_blob > 0)
 end)
 
-test.case("mesh.build_vertex_input resolves through the active provider", function()
+test.case("mesh.build_vertex_input dispatches through a provider", function()
    local cube = mesh.make_cube()
+   local seen = nil
 
-   rig.register_runtime_driver("mesh_test_driver", {
-      loop = function()
-         _G.mesh_test_vertex_input = mesh.build_vertex_input(cube)
+   local vertex_input = mesh.build_vertex_input(cube, {
+      build_vertex_input = function(value)
+         seen = value
+         return {
+            cdata = { [0] = { num_vertex_buffers = 1, num_vertex_attributes = 2 } },
+            vertex_buffer_descriptions = {},
+            vertex_attributes = {},
+         }
       end,
    })
 
-   rig.run {
-      driver = "mesh_test_driver",
-      providers = {
-         ["mesh.vertex_input"] = "sdl3_gpu",
-      },
-   }
-
-   local vertex_input = mesh_test_vertex_input
+   test.equal(seen, cube)
    test.truthy(type(vertex_input) == "table")
-   test.truthy(vertex_input.cdata ~= nil)
-   test.truthy(vertex_input.vertex_buffer_descriptions ~= nil)
-   test.truthy(vertex_input.vertex_attributes ~= nil)
    test.equal(tonumber(vertex_input.cdata[0].num_vertex_buffers), 1)
    test.equal(tonumber(vertex_input.cdata[0].num_vertex_attributes), 2)
+end)
+
+test.case("mesh.build_vertex_input requires a provider", function()
+   local ok, err = pcall(function()
+      mesh.build_vertex_input(mesh.make_cube())
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "requires a mesh%.vertex_input provider")
 end)
 
 test.case("mesh.make_cube accepts Color face colors", function()

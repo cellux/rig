@@ -85,19 +85,21 @@ function Cube:build_mvp(out, aspect)
    return mathx.mat4_multiply(out, self.model, self.projection)
 end
 
+local app_context = nil
+
 function Cube:activate()
-   local vertex_shader = shader.create_stage {
+   local vertex_shader = shader.create_stage({
       language = "glsl",
       stage = "vertex",
       source_name = "spinning_cube_gl.vert.glsl",
       source = vertex_shader_source,
-   }
-   local fragment_shader = shader.create_stage {
+   }, app_context.shader)
+   local fragment_shader = shader.create_stage({
       language = "glsl",
       stage = "fragment",
       source_name = "spinning_cube_gl.frag.glsl",
       source = fragment_shader_source,
-   }
+   }, app_context.shader)
 
    self.program = self:replace_owned("program", glx.Program {
       shaders = {
@@ -179,8 +181,9 @@ function Scene:release()
    self.cube = nil
 end
 
-function App:init()
-   self:super().init(self)
+function App:init(context)
+   self:super().init(self, context)
+   app_context = context
    self.root = Scene()
    self.viewport_width = 1
    self.viewport_height = 1
@@ -201,23 +204,19 @@ function App:render()
    end
 end
 
-rig.run {
-   mode = "sdl3_gl",
-   driver_config = {
-      sdl3_gl = {
-         window_props = {
-            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Spinning Cube",
-            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-         },
-         gl_attributes = {
-            context_major_version = 4,
-            context_minor_version = 5,
-            context_profile = "core",
-            doublebuffer = true,
-            depth_size = 24,
-         },
-         swap_interval = 1,
-      },
+local builder = rig.runtime()
+sdl3x.bundle_sdl3_gl(builder, {
+   window_props = {
+      [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig OpenGL Spinning Cube",
+      [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
    },
-   app = App,
-}
+   gl_attributes = {
+      context_major_version = 4,
+      context_minor_version = 5,
+      context_profile = "core",
+      doublebuffer = true,
+      depth_size = 24,
+   },
+   swap_interval = 1,
+})
+builder:execute(App):compile():start()

@@ -6,6 +6,7 @@ local font = require("font")
 local ffi = require("ffi")
 local profiler = require("profiler")
 local rig = require("rig")
+local runtime = require("runtime")
 local sched = require("sched")
 local schema = require("schema")
 local sdl3 = require("sdl3")
@@ -1245,13 +1246,6 @@ local runtime_renderer = nil
 local runtime_gpu_device = nil
 local runtime_gl_context = nil
 local runtime_owned_init_flags = nil
-local runtime_scheduler = nil
-
-local DriverConfigEntry = schema.table()
-local DriverConfig = schema.map(
-   schema.non_empty_string(),
-   DriverConfigEntry
-)
 
 --[ Runtime configuration ]--
 
@@ -1416,33 +1410,6 @@ local function normalize_init_flags(flags_number)
    return ffi.cast("Uint32", flags_integer)
 end
 
-local function normalize_driver_config(options)
-   if options == nil then
-      return {}
-   end
-   return DriverConfigEntry(
-      options,
-      "sdl3 driver configuration"
-   )
-end
-
-local function get_driver_config(options, driver_id)
-   local driver_config = options.driver_config
-   if driver_config == nil then
-      return {}
-   end
-   driver_config = DriverConfig(
-      driver_config,
-      "rig.run options.driver_config"
-   )
-
-   local config = driver_config[driver_id]
-   if config == nil then
-      return {}
-   end
-   return normalize_driver_config(config)
-end
-
 local shutdown
 local destroy_gl_font_backend_state
 local gl_font_quad_vertices = ffi.new("float[24]")
@@ -1495,7 +1462,9 @@ local function initialize_windowed_sdl(options)
       shutdown()
    end
 
-   options = normalize_driver_config(options)
+   if options == nil then
+      options = {}
+   end
 
    local required =
       normalize_init_flags(options.init_flags or (sdl3.INIT_VIDEO + sdl3.INIT_EVENTS))
@@ -1725,7 +1694,10 @@ local function setup_gl(options)
       rig.raise("sdl3_gl options must be a table if provided")
    end
 
-   options = normalize_driver_config(options)
+   if options == nil or type(options) ~= "table" then
+      rig.raise("sdl3_gl options must be a table if provided")
+   end
+
    local window_props, props_err = merge_props(options.window_props, {
       [sdl3.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
    })
@@ -2639,15 +2611,6 @@ end
 
 --[ Runtime services ]--
 
-local sdl3_time_service = {
-   now = function()
-      return current_time_seconds()
-   end,
-   monotonic = function()
-      return current_monotonic_seconds()
-   end,
-}
-
 local sdl3_gpu_mesh_service = {
    build_vertex_input = function(mesh)
       if type(mesh) ~= "table" then
@@ -2748,237 +2711,31 @@ local gl_resolver_service_sdl3_gl = {
    end,
 }
 
-rig.register_service_provider("time", "sdl3", sdl3_time_service)
-rig.register_service_provider("font.renderer", "sdl3", sdl3_font_provider)
-rig.register_service_provider("font.renderer", "sdl3_gl", sdl3_gl_font_provider)
-rig.register_service_provider("gl.resolver", "sdl3_gl", gl_resolver_service_sdl3_gl)
-rig.register_service_provider("mesh.vertex_input", "sdl3_gpu", sdl3_gpu_mesh_service)
-rig.register_service_provider("shader.stage", "sdl3_gpu", shader_stage_service_sdl3_gpu)
-rig.register_service_provider("shader.stage", "sdl3_gl", shader_stage_service_sdl3_gl)
-
---[ Scheduler ]--
-
-local function setup_scheduler(label)
-   runtime_scheduler = sched.Scheduler(label)
-   runtime_scheduler:set_handler("sched.sleep", function(scheduler, task, seconds)
-      scheduler:sleep_until(task, current_monotonic_seconds() + seconds)
-   end)
-   runtime_scheduler:activate()
-end
-
-local function drain_scheduler()
-   runtime_scheduler:wake_due_sleepers(current_monotonic_seconds())
-   runtime_scheduler:drain()
-end
-
-local function shutdown_scheduler()
-   runtime_scheduler:deactivate()
-   runtime_scheduler = nil
-end
-
-local function require_render_callback(mode_options, mode_key, runtime)
-   local callback = mode_options.render
-   if callback == nil and runtime.app ~= nil then
-      if type(runtime.app.invoke_render) == "function" then
-         callback = function(...)
-            return runtime.app:invoke_render(...)
-         end
-      elseif type(runtime.app.render) == "function" then
-         callback = function(...)
-            return runtime.app:render(...)
-         end
-      end
-   end
-
-   if type(callback) ~= "function" then
-      rig.raise(
-         "rig.run requires " .. mode_key .. ".render to be a function")
-   end
-   return callback
-end
-
---[ Runtime drivers ]--
-
-rig.register_runtime_driver("sdl3", {
-   events = {
-      "key",
-      "mouse",
-      "resize",
-   },
-   driver_phases = {
-      "before_poll",
-      "after_poll",
-      "before_drain",
-      "after_drain",
-      "before_frame",
-      "after_frame",
-   },
-   setup = function(options)
-      local sdl3_options = get_driver_config(options, "sdl3")
-      setup(sdl3_options)
-      setup_scheduler("sdl3 scheduler")
-   end,
-   loop = function(options, runtime)
-      local sdl3_options = get_driver_config(options, "sdl3")
-      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3", runtime)
-      dispatch_resize_if_changed(runtime, "initial", 0)
-      while true do
-         runtime:run_hooks("before_poll", options)
-         if pump_events(runtime) == false then
-            break
-         end
-         runtime:run_hooks("after_poll", options)
-         runtime:run_hooks("before_drain", options)
-         drain_scheduler()
-         runtime:run_hooks("after_drain", options)
-         runtime:run_hooks("before_frame", options)
-         render_frame(on_render)
-         runtime:run_hooks("after_frame", options)
-      end
-   end,
-   shutdown = function()
-      shutdown_scheduler()
-      shutdown()
-   end,
-})
-
-rig.register_runtime_preset("sdl3", {
-   driver = "sdl3",
-   providers = {
-      time = "sdl3",
-      ["font.renderer"] = "sdl3",
-   },
-})
-
-rig.register_runtime_driver("sdl3_gpu", {
-   events = {
-      "key",
-      "mouse",
-      "resize",
-   },
-   driver_phases = {
-      "before_poll",
-      "after_poll",
-      "before_drain",
-      "after_drain",
-      "before_frame",
-      "after_frame",
-   },
-   setup = function(options)
-      local sdl3_options = get_driver_config(options, "sdl3_gpu")
-      setup_gpu {
-         init_flags = sdl3_options.init_flags,
-         window_props = sdl3_options.window_props,
-         shader_formats = sdl3_options.shader_formats,
-         debug_mode = sdl3_options.debug_mode,
-         backend_name = sdl3_options.backend_name,
-      }
-      setup_scheduler("sdl3_gpu scheduler")
-   end,
-   loop = function(options, runtime)
-      local sdl3_options = get_driver_config(options, "sdl3_gpu")
-      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gpu", runtime)
-      dispatch_resize_if_changed(runtime, "initial", 0)
-      while true do
-         runtime:run_hooks("before_poll", options)
-         if pump_events(runtime) == false then
-            break
-         end
-         runtime:run_hooks("after_poll", options)
-         runtime:run_hooks("before_drain", options)
-         drain_scheduler()
-         runtime:run_hooks("after_drain", options)
-         runtime:run_hooks("before_frame", options)
-         render_gpu_frame(on_render)
-         runtime:run_hooks("after_frame", options)
-      end
-   end,
-   shutdown = function()
-      shutdown_scheduler()
-      shutdown()
-   end,
-})
-
-rig.register_runtime_preset("sdl3_gpu", {
-   driver = "sdl3_gpu",
-   providers = {
-      time = "sdl3",
-      ["mesh.vertex_input"] = "sdl3_gpu",
-      ["shader.stage"] = "sdl3_gpu",
-   },
-})
-
-rig.register_runtime_driver("sdl3_gl", {
-   events = {
-      "key",
-      "mouse",
-      "resize",
-   },
-   driver_phases = {
-      "before_poll",
-      "after_poll",
-      "before_drain",
-      "after_drain",
-      "before_frame",
-      "after_frame",
-   },
-   setup = function(options)
-      local sdl3_options = get_driver_config(options, "sdl3_gl")
-      setup_gl(sdl3_options)
-      setup_scheduler("sdl3_gl scheduler")
-   end,
-   loop = function(options, runtime)
-      local sdl3_options = get_driver_config(options, "sdl3_gl")
-      local on_render = require_render_callback(sdl3_options, "options.driver_config.sdl3_gl", runtime)
-      dispatch_resize_if_changed(runtime, "initial", 0)
-      while true do
-         runtime:run_hooks("before_poll", options)
-         if pump_events(runtime) == false then
-            break
-         end
-         runtime:run_hooks("after_poll", options)
-         runtime:run_hooks("before_drain", options)
-         drain_scheduler()
-         runtime:run_hooks("after_drain", options)
-         runtime:run_hooks("before_frame", options)
-         render_gl_frame(on_render)
-         runtime:run_hooks("after_frame", options)
-      end
-   end,
-   shutdown = function()
-      shutdown_scheduler()
-      shutdown()
-   end,
-})
-
-rig.register_runtime_preset("sdl3_gl", {
-   driver = "sdl3_gl",
-   providers = {
-      time = "sdl3",
-      ["font.renderer"] = "sdl3_gl",
-      ["gl.resolver"] = "sdl3_gl",
-      ["shader.stage"] = "sdl3_gl",
-   },
-})
-
 --[ App support ]--
 
-local ModuleConfig = schema.record({
+local app_config_schema = schema.record({
    frame_profiler = schema.one_of({
       schema.boolean(),
       schema.table(),
    }, "a boolean or table"):optional(),
    fullscreen = schema.boolean():optional(),
    vsync = schema.boolean():optional(),
+}, {
+   allow_extra = true,
 })
 
-local function get_module_config(runtime_options)
-   return rig.get_module_config(
-      runtime_options,
-      "sdl3x",
-      ModuleConfig,
-      "sdl3x module configuration"
-   )
+local function get_app_config(context)
+   local options = {}
+   if type(context) == "table" and type(context.options) == "table" then
+      options = context.options
+   end
+
+   local config = options.sdl3x
+   if config == nil then
+      config = options
+   end
+
+   return schema.assert(app_config_schema, config, "sdl3x configuration")
 end
 
 local function create_frame_profiler(spec)
@@ -2991,9 +2748,12 @@ local function create_frame_profiler(spec)
    return profiler.FrameProfiler(spec)
 end
 
-local function init_common_state(self, runtime_options, scope_label)
-   local config = get_module_config(runtime_options or {})
+local function init_common_state(self, context, scope_label)
+   local config = get_app_config(context or {})
 
+   self.context = context
+   self.window = context and context.window or nil
+   self.graphics = context and context.graphics or nil
    self.window_width = 0
    self.window_height = 0
    self.pixel_width = 0
@@ -3003,8 +2763,8 @@ local function init_common_state(self, runtime_options, scope_label)
    self.frame_profiler = create_frame_profiler(config.frame_profiler)
    self.frame_profiler_enabled = self.frame_profiler ~= nil
    self.font_faces = {}
-   self.owned_resources = rig.ResourceScope(self, scope_label)
-   self._sdl3x_module_config = config
+   self.owned_resources = ResourceScope(self, scope_label)
+   self._sdl3x_config = config
 end
 
 local function release_common_state(self)
@@ -3019,7 +2779,7 @@ local function release_common_state(self)
 end
 
 local function apply_runtime_toggles(self)
-   local config = self._sdl3x_module_config or {}
+   local config = self._sdl3x_config or {}
 
    if config.vsync ~= nil then
       self:set_vsync(config.vsync)
@@ -3187,14 +2947,14 @@ end
 
 --[ App classes ]--
 
-local App = rig.Class(rig.App)
+local App = rig.Class()
 local SceneApp = rig.Class(animator.App)
 
 M.App = App
 M.SceneApp = SceneApp
 
-function App:init(options)
-   init_common_state(self, options or {}, "sdl3x app resources")
+function App:init(context)
+   init_common_state(self, context or {}, "sdl3x app resources")
 end
 
 function App:after_setup()
@@ -3205,9 +2965,9 @@ function App:before_shutdown()
    release_common_state(self)
 end
 
-function SceneApp:init(options)
-   animator.App.init(self, options)
-   init_common_state(self, options or {}, "sdl3x scene app resources")
+function SceneApp:init(context)
+   animator.App.init(self, context)
+   init_common_state(self, context or {}, "sdl3x scene app resources")
 end
 
 function SceneApp:after_setup()
@@ -3223,6 +2983,11 @@ function SceneApp:before_shutdown()
    if not ok then
       rig.raise(err)
    end
+end
+
+local function scene_before_frame_common(self)
+   animator.App.before_frame(self)
+   before_frame_common(self)
 end
 
 --[ App method wiring ]--
@@ -3244,7 +3009,7 @@ App.load_font_face = load_font_face_common
 App.get_font_face = get_font_face_common
 App.on_resize = on_resize_common
 
-SceneApp.before_frame = before_frame_common
+SceneApp.before_frame = scene_before_frame_common
 SceneApp.after_frame = after_frame_common
 SceneApp.invoke_render = invoke_render_common
 SceneApp.set_vsync = set_vsync_common
@@ -3260,5 +3025,806 @@ SceneApp.release_owned_resources = release_owned_resources_common
 SceneApp.load_font_face = load_font_face_common
 SceneApp.get_font_face = get_font_face_common
 SceneApp.on_resize = on_resize_common
+
+--[ compositional runtime components ]--
+
+local SdlSubsystem = rig.Class()
+M.SdlSubsystem = SdlSubsystem
+
+function M.plugin(spec)
+   spec = spec or {}
+   return runtime.plugin {
+      id = spec.id or "sdl3x",
+      capabilities = {
+         ["sdl3.subsystem"] = {},
+         ["sdl3.window"] = {},
+         ["sdl3.input"] = {},
+         ["graphics.context"] = {},
+         ["font.renderer"] = {},
+         ["shader.stage"] = {},
+         ["mesh.vertex_input"] = {},
+         ["gl.resolver"] = {},
+      },
+      extension_points = {
+         ["sdl3.key"] = { method = "on_key" },
+         ["sdl3.mouse"] = { method = "on_mouse" },
+         ["sdl3.resize"] = { method = "on_resize" },
+         ["sdl3.close"] = { method = "on_close" },
+         ["sdl3.focus"] = { method = "on_focus" },
+      },
+   }
+end
+
+function SdlSubsystem:init(flags_number)
+   local required = normalize_init_flags(flags_number)
+   local initialized = sdl3.WasInit(required)
+   local owned = nil
+
+   if not has_all_bits(initialized, required) then
+      if not sdl3.Init(required) then
+         rig.raise("failed to initialize SDL: " .. get_error_string())
+      end
+      owned = required
+   end
+
+   self.required = required
+   self.owned_init_flags = owned
+   self.released = false
+end
+
+function SdlSubsystem:release()
+   if self.released then
+      return
+   end
+
+   self.released = true
+   if self.owned_init_flags ~= nil then
+      sdl3.QuitSubSystem(self.owned_init_flags)
+      self.owned_init_flags = nil
+   end
+end
+
+function M.subsystem_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "sdl3.subsystem" },
+      },
+      create = function()
+         return SdlSubsystem(options.init_flags or (sdl3.INIT_VIDEO + sdl3.INIT_EVENTS))
+      end,
+      release = function(subsystem)
+         subsystem:release()
+      end,
+   })
+end
+
+function M.window_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "sdl3.window" },
+      },
+      requires = {
+         { capability = "sdl3.subsystem" },
+      },
+      create = function()
+         local window = M.Window {
+            window_props = options.window_props,
+         }
+         runtime_window = window
+         return window
+      end,
+      release = function(window)
+         window:release()
+         if runtime_window == window then
+            runtime_window = nil
+         end
+      end,
+   })
+end
+
+local SdlInput = rig.Class()
+M.SdlInput = SdlInput
+
+function SdlInput:init(spec)
+   self.window = spec.window
+   self.initial = spec.initial ~= false
+   self.resize_state = nil
+end
+
+function SdlInput:_emit_resize(emit, event_name, timestamp_ns)
+   local width, height = self.window:get_size()
+   local pixel_width, pixel_height = self.window:get_size_in_pixels()
+   local previous = self.resize_state
+
+   if previous ~= nil
+      and previous.width == width
+      and previous.height == height
+      and previous.pixel_width == pixel_width
+      and previous.pixel_height == pixel_height
+      and event_name ~= "initial" then
+      return
+   end
+
+   self.resize_state = {
+      width = width,
+      height = height,
+      pixel_width = pixel_width,
+      pixel_height = pixel_height,
+   }
+
+   local ns = timestamp_ns or 0
+   emit("sdl3.resize", {
+      type = "resize",
+      event = event_name,
+      width = width,
+      height = height,
+      pixel_width = pixel_width,
+      pixel_height = pixel_height,
+      initial = event_name == "initial",
+      timestamp_ns = ns,
+      timestamp_ms = math.floor(ns / 1000000),
+   })
+end
+
+function SdlInput:_emit_key(emit, key_data)
+   local key_name = sdl3.GetKeyName(key_data.key)
+   local key = "Unknown"
+   local mods = tonumber(key_data.mod) or 0
+   local timestamp_ns = tonumber(key_data.timestamp) or 0
+
+   if key_name ~= nil and key_name[0] ~= 0 then
+      key = ffi.string(key_name)
+   end
+
+   emit("sdl3.key", {
+      type = "key",
+      action = key_data.down and "down" or "up",
+      key = key,
+      code = tonumber(key_data.key),
+      scancode = tonumber(key_data.scancode),
+      ["repeat"] = key_data["repeat"] and true or false,
+      timestamp_ns = timestamp_ns,
+      timestamp_ms = math.floor(timestamp_ns / 1000000),
+      mods = {
+         shift = has_any_bits(mods, sdl3.KMOD_SHIFT),
+         ctrl = has_any_bits(mods, sdl3.KMOD_CTRL),
+         alt = has_any_bits(mods, sdl3.KMOD_ALT),
+         super = has_any_bits(mods, sdl3.KMOD_GUI),
+      },
+   })
+end
+
+function SdlInput:_emit_mouse_motion(emit, motion)
+   local timestamp_ns = tonumber(motion.timestamp) or 0
+
+   emit("sdl3.mouse", {
+      type = "mouse",
+      action = "move",
+      x = tonumber(motion.x) or 0,
+      y = tonumber(motion.y) or 0,
+      xrel = tonumber(motion.xrel) or 0,
+      yrel = tonumber(motion.yrel) or 0,
+      buttons = tonumber(motion.state) or 0,
+      timestamp_ns = timestamp_ns,
+      timestamp_ms = math.floor(timestamp_ns / 1000000),
+   })
+end
+
+function SdlInput:_emit_mouse_button(emit, button)
+   local timestamp_ns = tonumber(button.timestamp) or 0
+
+   emit("sdl3.mouse", {
+      type = "mouse",
+      action = button.down and "down" or "up",
+      button = tonumber(button.button) or 0,
+      clicks = tonumber(button.clicks) or 0,
+      x = tonumber(button.x) or 0,
+      y = tonumber(button.y) or 0,
+      timestamp_ns = timestamp_ns,
+      timestamp_ms = math.floor(timestamp_ns / 1000000),
+   })
+end
+
+function SdlInput:poll(emit)
+   if self.initial then
+      self.initial = false
+      self:_emit_resize(emit, "initial", 0)
+   end
+
+   local event = ffi.new("SDL_Event[1]")
+   while sdl3.PollEvent(event) do
+      local current = event[0]
+      local event_type = tonumber(current.type) or 0
+
+      if event_type == sdl3.EVENT_QUIT
+         or event_type == sdl3.EVENT_WINDOW_CLOSE_REQUESTED then
+         self.closed = true
+         emit("sdl3.close", { type = "close" })
+      elseif event_type == sdl3.EVENT_KEY_DOWN or event_type == sdl3.EVENT_KEY_UP then
+         self:_emit_key(emit, current.key)
+      elseif event_type == sdl3.EVENT_WINDOW_RESIZED then
+         self:_emit_resize(emit, "resized", tonumber(current.window.timestamp) or 0)
+      elseif event_type == sdl3.EVENT_WINDOW_PIXEL_SIZE_CHANGED then
+         self:_emit_resize(
+            emit,
+            "pixel_size_changed",
+            tonumber(current.window.timestamp) or 0
+         )
+      elseif event_type == sdl3.EVENT_MOUSE_MOTION then
+         self:_emit_mouse_motion(emit, current.motion)
+      elseif event_type == sdl3.EVENT_MOUSE_BUTTON_DOWN
+         or event_type == sdl3.EVENT_MOUSE_BUTTON_UP then
+         self:_emit_mouse_button(emit, current.button)
+      elseif event_type == sdl3.EVENT_WINDOW_FOCUS_GAINED then
+         emit("sdl3.focus", { type = "focus", focused = true })
+      elseif event_type == sdl3.EVENT_WINDOW_FOCUS_LOST then
+         emit("sdl3.focus", { type = "focus", focused = false })
+      end
+   end
+end
+
+function M.input_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "sdl3.input" },
+      },
+      requires = {
+         { capability = "sdl3.subsystem" },
+         { capability = "sdl3.window" },
+      },
+      create = function(context)
+         return SdlInput {
+            window = context.runtime.capability_values["sdl3.window"],
+            initial = options.initial_resize,
+         }
+      end,
+      progress = {
+         poll = function(context)
+            local input = context.runtime.capability_values["sdl3.input"]
+            if input ~= nil then
+               input:poll(context.emit)
+            end
+         end,
+         should_stop = function(context)
+            local input = context.runtime.capability_values["sdl3.input"]
+            return input ~= nil and input.closed == true
+         end,
+      },
+   })
+end
+
+--[ graphics context components ]--
+
+local function create_renderer_context(options, context)
+   local window = context.runtime.capability_values["sdl3.window"]
+   local create_renderer = options.create_renderer or default_create_renderer
+
+   if type(create_renderer) ~= "function" then
+      rig.raise("sdl3x create_renderer must be a function")
+   end
+
+   local renderer, err = create_renderer(window)
+   if renderer == nil then
+      rig.raise(
+         format_factory_error(
+            "sdl3x create_renderer",
+            err,
+            "expected SDL_Renderer* cdata"
+         )
+      )
+   end
+   if type(renderer) ~= "cdata" then
+      rig.raise("sdl3x create_renderer must return SDL_Renderer* cdata")
+   end
+
+   runtime_renderer = renderer
+
+   return {
+      backend = "renderer",
+      window = window,
+      renderer = renderer,
+      present = function()
+         if not sdl3.RenderPresent(renderer) then
+            rig.raise("failed to present renderer: " .. get_error_string())
+         end
+      end,
+      render_frame = function(self, render_fn)
+         if render_fn ~= nil then
+            render_fn()
+         end
+         if not sdl3.RenderPresent(renderer) then
+            rig.raise("failed to present renderer: " .. get_error_string())
+         end
+      end,
+      set_vsync = function(enabled)
+         if not sdl3.SetRenderVSync(renderer, enabled and 1 or 0) then
+            rig.raise("failed to set renderer vsync: " .. get_error_string())
+         end
+      end,
+      release = function()
+         sdl3.DestroyRenderer(renderer)
+         if runtime_renderer == renderer then
+            runtime_renderer = nil
+         end
+      end,
+   }
+end
+
+local function create_gl_context(options, context)
+   local window = context.runtime.capability_values["sdl3.window"]
+
+   apply_gl_attributes(options.gl_attributes)
+
+   local gl_context = sdl3.GL_CreateContext(window.ptr)
+   if gl_context == nil then
+      rig.raise("failed to create OpenGL context: " .. get_error_string())
+   end
+
+   if not sdl3.GL_MakeCurrent(window.ptr, gl_context) then
+      sdl3.GL_DestroyContext(gl_context)
+      rig.raise("failed to make OpenGL context current: " .. get_error_string())
+   end
+
+   local swap_interval = options.swap_interval
+   if swap_interval == nil then
+      swap_interval = 1
+   end
+   if not sdl3.GL_SetSwapInterval(gl_attribute_int(swap_interval)) then
+      sdl3.GL_DestroyContext(gl_context)
+      rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
+   end
+
+   runtime_gl_context = gl_context
+
+   return {
+      backend = "gl",
+      window = window,
+      context = gl_context,
+      present = function()
+         sdl3.GL_SwapWindow(window.ptr)
+      end,
+      render_frame = function(self, render_fn)
+         if render_fn ~= nil then
+            render_fn()
+         end
+         sdl3.GL_SwapWindow(window.ptr)
+      end,
+      set_swap_interval = function(interval)
+         if not sdl3.GL_SetSwapInterval(gl_attribute_int(interval)) then
+            rig.raise("failed to set OpenGL swap interval: " .. get_error_string())
+         end
+      end,
+      get_proc_address = function(name)
+         return M.get_gl_proc_address(name)
+      end,
+      release = function()
+         sdl3.GL_DestroyContext(gl_context)
+         if runtime_gl_context == gl_context then
+            runtime_gl_context = nil
+         end
+      end,
+   }
+end
+
+local function create_gpu_context(options, context)
+   local window = context.runtime.capability_values["sdl3.window"]
+   local format_flags = options.shader_formats
+   if format_flags == nil then
+      format_flags = sdl3.GPU_SHADERFORMAT_SPIRV
+   end
+   local debug_mode = options.debug_mode and true or false
+   local backend_name = options.backend_name
+
+   if not sdl3.GPUSupportsShaderFormats(format_flags, backend_name) then
+      rig.raise(build_gpu_support_error(format_flags, backend_name, get_error_string()))
+   end
+
+   local device = sdl3.CreateGPUDevice(format_flags, debug_mode, backend_name)
+   if device == nil then
+      rig.raise(build_gpu_support_error(format_flags, backend_name, get_error_string()))
+   end
+
+   if not sdl3.ClaimWindowForGPUDevice(device, window.ptr) then
+      sdl3.DestroyGPUDevice(device)
+      rig.raise("failed to claim SDL window for GPU device: " .. get_error_string())
+   end
+
+   runtime_gpu_device = device
+
+   return {
+      backend = "gpu",
+      window = window,
+      device = device,
+      render_frame = function(self, render_fn)
+         local command_buffer = sdl3.AcquireGPUCommandBuffer(device)
+         if command_buffer == nil then
+            rig.raise("failed to acquire GPU command buffer: " .. get_error_string())
+         end
+
+         local swapchain_texture_out = ffi.new("SDL_GPUTexture *[1]")
+         local width_out = ffi.new("Uint32[1]")
+         local height_out = ffi.new("Uint32[1]")
+         if not sdl3.WaitAndAcquireGPUSwapchainTexture(
+            command_buffer,
+            window.ptr,
+            swapchain_texture_out,
+            width_out,
+            height_out
+         ) then
+            rig.raise("failed to acquire swapchain texture: " .. get_error_string())
+         end
+
+         local swapchain_texture = swapchain_texture_out[0]
+         if swapchain_texture ~= nil and render_fn ~= nil then
+            render_fn(
+               command_buffer,
+               swapchain_texture,
+               tonumber(width_out[0]) or 0,
+               tonumber(height_out[0]) or 0
+            )
+         end
+
+         if not sdl3.SubmitGPUCommandBuffer(command_buffer) then
+            rig.raise("failed to submit GPU command buffer: " .. get_error_string())
+         end
+
+         return swapchain_texture ~= nil
+      end,
+      release = function()
+         sdl3.WaitForGPUIdle(device)
+         sdl3.ReleaseWindowFromGPUDevice(device, window.ptr)
+         sdl3.DestroyGPUDevice(device)
+         if runtime_gpu_device == device then
+            runtime_gpu_device = nil
+         end
+      end,
+   }
+end
+
+function M.renderer_context_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "graphics.context", properties = { backend = "renderer" } },
+      },
+      requires = {
+         { capability = "sdl3.window" },
+      },
+      create = function(context)
+         return create_renderer_context(options, context)
+      end,
+      release = function(graphics)
+         graphics.release()
+      end,
+   })
+end
+
+function M.gl_context_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "graphics.context", properties = { backend = "gl" } },
+      },
+      requires = {
+         { capability = "sdl3.window" },
+      },
+      create = function(context)
+         return create_gl_context(options, context)
+      end,
+      release = function(graphics)
+         graphics.release()
+      end,
+   })
+end
+
+function M.gpu_context_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "graphics.context", properties = { backend = "gpu" } },
+      },
+      requires = {
+         { capability = "sdl3.window" },
+      },
+      create = function(context)
+         return create_gpu_context(options, context)
+      end,
+      release = function(graphics)
+         graphics.release()
+      end,
+   })
+end
+
+function M.frame_component(plugin, options)
+   options = options or {}
+
+   local frame_profiler = nil
+   if options.frame_profiler == true then
+      frame_profiler = profiler.FrameProfiler()
+   elseif type(options.frame_profiler) == "table" then
+      frame_profiler = profiler.FrameProfiler(options.frame_profiler)
+   end
+
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      requires = {
+         { capability = "graphics.context" },
+      },
+      create = function()
+         return {
+            profiler = frame_profiler,
+         }
+      end,
+      progress = {
+         frame = function(context)
+            local rt = context.runtime
+            local graphics = rt.capability_values["graphics.context"]
+            if graphics == nil then
+               return
+            end
+
+            if frame_profiler ~= nil then
+               frame_profiler:begin_frame()
+            end
+
+            local payload = {
+               runtime = rt,
+               ctx = rt.ctx,
+               graphics = graphics,
+               step = context.step,
+            }
+            rt:emit("core.before_frame", payload)
+
+            local render = options.render
+            if render == nil
+               and rt.instance ~= nil
+               and type(rt.instance.render) == "function" then
+               render = function(...)
+                  return rt.instance:render(...)
+               end
+            end
+
+            if frame_profiler ~= nil then
+               frame_profiler:begin_cpu()
+            end
+            graphics:render_frame(render)
+            if frame_profiler ~= nil then
+               frame_profiler:end_cpu()
+            end
+
+            rt:emit("core.after_frame", payload)
+
+            if frame_profiler ~= nil then
+               frame_profiler:end_frame()
+            end
+         end,
+      },
+   })
+end
+
+--[ rendering service provider components ]--
+
+local function provider_component(plugin, options, config)
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = config.capability },
+      },
+      requires = {
+         {
+            capability = "graphics.context",
+            properties = { backend = config.backend },
+         },
+      },
+      create = function()
+         return config.provider
+      end,
+   })
+end
+
+function M.mesh_vertex_input_component(plugin, options)
+   options = options or {}
+   return provider_component(plugin, options, {
+      capability = "mesh.vertex_input",
+      backend = "gpu",
+      provider = sdl3_gpu_mesh_service,
+   })
+end
+
+function M.gpu_shader_stage_component(plugin, options)
+   options = options or {}
+   return provider_component(plugin, options, {
+      capability = "shader.stage",
+      backend = "gpu",
+      provider = shader_stage_service_sdl3_gpu,
+   })
+end
+
+function M.gl_shader_stage_component(plugin, options)
+   options = options or {}
+   return provider_component(plugin, options, {
+      capability = "shader.stage",
+      backend = "gl",
+      provider = shader_stage_service_sdl3_gl,
+   })
+end
+
+function M.font_renderer_component(plugin, options)
+   options = options or {}
+   return provider_component(plugin, options, {
+      capability = "font.renderer",
+      backend = "renderer",
+      provider = sdl3_font_provider,
+   })
+end
+
+function M.gl_font_renderer_component(plugin, options)
+   options = options or {}
+   return provider_component(plugin, options, {
+      capability = "font.renderer",
+      backend = "gl",
+      provider = sdl3_gl_font_provider,
+   })
+end
+
+function M.gl_resolver_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      provides = {
+         { capability = "gl.resolver" },
+      },
+      requires = {
+         {
+            capability = "graphics.context",
+            properties = { backend = "gl" },
+         },
+      },
+      create = function()
+         local gl = require("gl")
+         gl.set_resolver(gl_resolver_service_sdl3_gl)
+         return gl_resolver_service_sdl3_gl
+      end,
+      release = function()
+         require("gl").clear_resolver()
+      end,
+   })
+end
+
+--[ convenience bundles ]--
+
+local function merge_window_props(base, override)
+   local merged = {}
+   if type(base) == "table" then
+      for key, value in pairs(base) do
+         merged[key] = value
+      end
+   end
+   if type(override) == "table" then
+      for key, value in pairs(override) do
+         merged[key] = value
+      end
+   end
+   return merged
+end
+
+local function add_core_components(builder, plugin, options)
+   local core = runtime.scheduler_plugin()
+   local clock = runtime.Clock {
+      now = function()
+         return current_time_seconds()
+      end,
+      monotonic = function()
+         return current_monotonic_seconds()
+      end,
+   }
+
+   builder:use(core)
+   builder:add(runtime.clock_component(core, { name = "clock", clock = clock }))
+   builder:add(runtime.timer_component(core, { name = "timer", timer = options.timer }))
+   builder:add(runtime.scheduler_component(core, { name = "scheduler" }))
+end
+
+function M.bundle_sdl3(builder, options)
+   options = options or {}
+   local plugin = M.plugin()
+
+   builder:use(plugin)
+   add_core_components(builder, plugin, options)
+   builder:add(M.subsystem_component(plugin, {
+      name = "sdl",
+      init_flags = options.init_flags,
+   }))
+   builder:add(M.window_component(plugin, {
+      name = "window",
+      window_props = options.window_props,
+   }))
+   builder:add(M.input_component(plugin, { name = "input" }))
+   builder:add(M.renderer_context_component(plugin, {
+      name = "graphics",
+      create_renderer = options.create_renderer,
+   }))
+   builder:add(M.font_renderer_component(plugin, { name = "font" }))
+   builder:add(M.frame_component(plugin, {
+      name = "frame",
+      render = options.render,
+      frame_profiler = options.frame_profiler,
+   }))
+   return builder
+end
+
+function M.bundle_sdl3_gl(builder, options)
+   options = options or {}
+   local plugin = M.plugin()
+   local window_props = merge_window_props(options.window_props, {
+      [sdl3.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
+   })
+
+   builder:use(plugin)
+   add_core_components(builder, plugin, options)
+   builder:add(M.subsystem_component(plugin, {
+      name = "sdl",
+      init_flags = options.init_flags,
+   }))
+   builder:add(M.window_component(plugin, {
+      name = "window",
+      window_props = window_props,
+   }))
+   builder:add(M.input_component(plugin, { name = "input" }))
+   builder:add(M.gl_context_component(plugin, {
+      name = "graphics",
+      gl_attributes = options.gl_attributes,
+      swap_interval = options.swap_interval,
+   }))
+   builder:add(M.gl_font_renderer_component(plugin, { name = "font" }))
+   builder:add(M.gl_resolver_component(plugin, { name = "gl_resolver" }))
+   builder:add(M.gl_shader_stage_component(plugin, { name = "shader" }))
+   builder:add(M.frame_component(plugin, {
+      name = "frame",
+      render = options.render,
+      frame_profiler = options.frame_profiler,
+   }))
+   return builder
+end
+
+function M.bundle_sdl3_gpu(builder, options)
+   options = options or {}
+   local plugin = M.plugin()
+
+   builder:use(plugin)
+   add_core_components(builder, plugin, options)
+   builder:add(M.subsystem_component(plugin, {
+      name = "sdl",
+      init_flags = options.init_flags,
+   }))
+   builder:add(M.window_component(plugin, {
+      name = "window",
+      window_props = options.window_props,
+   }))
+   builder:add(M.input_component(plugin, { name = "input" }))
+   builder:add(M.gpu_context_component(plugin, {
+      name = "graphics",
+      shader_formats = options.shader_formats,
+      debug_mode = options.debug_mode,
+      backend_name = options.backend_name,
+   }))
+   builder:add(M.mesh_vertex_input_component(plugin, { name = "mesh" }))
+   builder:add(M.gpu_shader_stage_component(plugin, { name = "shader" }))
+   builder:add(M.frame_component(plugin, {
+      name = "frame",
+      render = options.render,
+      frame_profiler = options.frame_profiler,
+   }))
+   return builder
+end
 
 return M

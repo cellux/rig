@@ -9,37 +9,39 @@ M.DEFAULT_MAX_DT = 0.05
 M.DEFAULT_MAX_STEPS_PER_FRAME = 6
 
 local Animator = rig.Class()
-local App = rig.Class(rig.App)
+local App = rig.Class()
 
 M.Animator = Animator
 M.App = App
 
-local module_config_schema = schema.record({
+local app_config_schema = schema.record({
    fixed_dt = schema.number():optional(),
    max_dt = schema.number():optional(),
    max_steps_per_frame = schema.number():optional(),
    start = schema.boolean():optional(),
+}, {
+   allow_extra = true,
 })
 
-local function validate_app_options(options, context_label)
-   if type(options) ~= "table" then
-      rig.raise("%s expects an options table", context_label)
+local function get_runtime_options(context)
+   if type(context) ~= "table" then
+      return {}
    end
+   return context.options or {}
 end
 
-local function get_module_config(runtime_options)
-   return rig.get_module_config(
-      runtime_options,
-      "animator",
-      module_config_schema,
-      "animator module configuration"
-   )
+local function get_app_config(context)
+   local options = get_runtime_options(context)
+   local config = options.animator
+   if config == nil then
+      config = options
+   end
+   return schema.assert(app_config_schema, config, "animator configuration")
 end
 
-function App:init(options)
-   options = options or {}
-   validate_app_options(options, "animator.App")
-   local config = get_module_config(options)
+function App:init(context)
+   context = context or {}
+   local config = get_app_config(context)
 
    self.animator = nil
    self.animator_options = {
@@ -94,7 +96,7 @@ function App:after_setup()
    end
 end
 
-function App:before_drain()
+function App:before_frame()
    if self.animator ~= nil then
       self.animator:tick()
    end

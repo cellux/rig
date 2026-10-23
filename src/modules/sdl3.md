@@ -14,7 +14,7 @@ The SDL shared library is loaded only when the module is required.
 
 Higher-level Rig integration lives in `sdl3x`, including:
 
-- SDL runtime modes for `rig.run(...)`
+- SDL runtime components and convenience bundles for `rig.runtime()`
 - window creation defaults
 - SDL event translation
 - font renderer providers
@@ -52,6 +52,6 @@ This module also exposes the raw SDL property setters and lifecycle functions:
 
 ## Notes
 
-- If you want SDL runtimes, require `sdl3x`.
+- If you want SDL runtime components, require `sdl3x`.
 - If you want owning `SDL_PropertiesID` wrappers, use `sdl3x.Properties`.
 - If you want GPU descriptor builders or runtime-owned GPU resource scopes, use `sdl3x`.

@@ -1,4 +1,6 @@
 local test = require("test")
+local rig = require("rig")
+local uv = require("uv")
 
 local function format_duration(duration)
    return string.format("%.3f ms", duration * 1000.0)
@@ -40,42 +42,37 @@ local function print_failure(index, summary, result)
    end
 end
 
-rig.run {
-   mode = "uv",
-   module_config = {
-      uv = {
-         main = function()
-        local summary = test.run {
-            roots = { "tests" },
-            jobs = 4,
-        }
+local builder = rig.runtime()
+uv.bundle_uv(builder)
+builder:execute(function()
+   local summary = test.run {
+      roots = { "tests" },
+      jobs = 4,
+   }
 
-         rig.println("TAP version 13")
-         rig.println("1.." .. tostring(#summary.files))
+   rig.println("TAP version 13")
+   rig.println("1.." .. tostring(#summary.files))
 
-         for i = 1, #summary.files do
-            local result = summary.files[i]
-            if result.success then
-               rig.println(format_file_status(true, i, summary, result))
-            else
-               print_failure(i, summary, result)
-            end
-         end
+   for i = 1, #summary.files do
+      local result = summary.files[i]
+      if result.success then
+         rig.println(format_file_status(true, i, summary, result))
+      else
+         print_failure(i, summary, result)
+      end
+   end
 
-         rig.println(
-            ("# Summary: %d passed, %d failed, %d total (%s)"):
-               format(
-                  summary.passed,
-                  summary.failed,
-                  summary.total,
-                  format_duration(summary.duration)
-               )
+   rig.println(
+      ("# Summary: %d passed, %d failed, %d total (%s)"):
+         format(
+            summary.passed,
+            summary.failed,
+            summary.total,
+            format_duration(summary.duration)
          )
+   )
 
-         if not summary.success then
-            rig.raise("test run failed")
-         end
-         end,
-      },
-   },
-}
+   if not summary.success then
+      rig.raise("test run failed")
+   end
+end):compile():start()

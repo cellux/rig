@@ -3,6 +3,7 @@ local color = require("color")
 local freetype = require("freetype")
 local harfbuzz = require("harfbuzz")
 local rig = require("rig")
+local runtime = require("runtime")
 local ffi = require("ffi")
 local bit = bit
 
@@ -373,7 +374,7 @@ function M.create_sized_face(face, pixel_size)
    }, sized_face_mt)
 end
 
-function M.create_style(face, options)
+function M.create_style(face, options, provider)
    ensure_face(face)
    if type(options) ~= "table" then
       rig.raise("font.create_style expects options to be a table")
@@ -389,7 +390,7 @@ function M.create_style(face, options)
          page_height = options.page_height,
          padding = options.padding,
       })
-      text_renderer = M.create_text_renderer(atlas)
+      text_renderer = M.create_text_renderer(atlas, provider)
    end)
 
    if not ok then
@@ -807,17 +808,12 @@ function M.atlas_get_glyph(atlas, glyph_id)
    return packed
 end
 
-rig.register_service("font.renderer", {
-   "create_text_renderer",
-   "release_text_renderer",
-   "draw_packed_glyph",
-   "draw_text_run",
-})
-
-function M.create_text_renderer(atlas)
+function M.create_text_renderer(atlas, provider)
    ensure_atlas(atlas)
 
-   local provider = rig.require_service("font.renderer")
+   provider = provider or rig.raise(
+      "font.create_text_renderer requires a font.renderer provider"
+   )
    local text_renderer = setmetatable({
       atlas = atlas,
       _provider = provider,
@@ -914,6 +910,29 @@ function M.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
       baseline_y,
       color_fn
    )
+end
+
+function M.plugin(spec)
+   spec = spec or {}
+   return runtime.plugin {
+      id = spec.id or "font",
+      capabilities = {
+         ["font.renderer"] = {},
+      },
+   }
+end
+
+function M.component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      requires = {
+         { capability = "font.renderer" },
+      },
+      create = function(context)
+         return context:capability("font.renderer")
+      end,
+   })
 end
 
 return M

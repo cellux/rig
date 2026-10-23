@@ -13,8 +13,4 @@ Runtime-service clock wrapper.
 
 - Use `time.monotonic()` for animation and frame timing.
 - `time.now()` is wall-clock time and may jump if the system clock changes.
-- `time` resolves the `"time"` service through `rig.require_service("time")`.
-- The selected service provider depends on the currently active runtime provider configuration.
-- The built-in `uv` mode selects provider `"uv"` for `"time"`.
-- The built-in `sdl3`, `sdl3_gl`, and `sdl3_gpu` modes all select provider `"sdl3"` for `"time"`.
-- Calling `time.now()` or `time.monotonic()` without an active runtime raises an error.
+- `time` is a thin wrapper over `uv.now()` / `uv.monotonic()` and does not require an active runtime.

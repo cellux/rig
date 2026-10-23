@@ -14,6 +14,7 @@ local font_path
 local face
 local profiler_style
 local frame_profiler
+local app_context
 local profiler_enabled = true
 local vsync_enabled = true
 local fullscreen_enabled = false
@@ -324,7 +325,7 @@ function Title:init(face, text)
       page_width = 512,
       page_height = 256,
       padding = 2,
-   }), function(_, style)
+   }, app_context and app_context.font or nil), function(_, style)
       style:release()
    end)
    self.run = self.style:build_run(text)
@@ -384,7 +385,7 @@ function Scroller:init(face, text)
       page_width = 1024,
       page_height = 512,
       padding = 2,
-   }), function(_, style)
+   }, app_context and app_context.font or nil), function(_, style)
       style:release()
    end)
    self.run = self.style:build_run(text)
@@ -457,7 +458,7 @@ function SpriteSnake:init(face, text)
       page_width = 256,
       page_height = 256,
       padding = 2,
-   }), function(_, style)
+   }, app_context and app_context.font or nil), function(_, style)
       style:release()
    end)
    self.glyphs = self:create_glyphs(text)
@@ -860,8 +861,9 @@ toggle_fullscreen = function()
    set_fullscreen_enabled(not fullscreen_enabled)
 end
 
-function App:init()
-   self:super().init(self)
+function App:init(context)
+   self:super().init(self, context)
+   app_context = context
 
    local renderer = sdl3x.get_renderer()
    if renderer == nil then
@@ -878,7 +880,7 @@ function App:init()
       page_width = 256,
       page_height = 128,
       padding = 1,
-   })
+   }, app_context and app_context.font or nil)
 
    profiler_style:warm_text(
       "CPU PRS TOT INT GAP OVR CUR MAX VSYNC RASTER SPRITES OUTLINE SCROLLER ANIM FULLSCREEN PROFILER ON OFF [] 0123456789./-"
@@ -890,6 +892,7 @@ function App:init()
 end
 
 function App:before_frame()
+   self:super().before_frame(self)
    self.frame_profiler:begin_frame()
 end
 
@@ -939,15 +942,11 @@ function App:release()
    font_path = nil
 end
 
-rig.run {
-   mode = "sdl3",
-   driver_config = {
-      sdl3 = {
-         window_props = {
-            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
-            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-         },
-      },
+local builder = rig.runtime()
+sdl3x.bundle_sdl3(builder, {
+   window_props = {
+      [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Neon Phantoms - Midnight Mirror Cracktro",
+      [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
    },
-   app = App,
-}
+})
+builder:execute(App):compile():start()

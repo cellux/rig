@@ -1,6 +1,7 @@
 local M = ... or {}
 local ffi = require("ffi")
 local rig = require("rig")
+local runtime = require("runtime")
 
 ffi.cdef[[
 typedef unsigned int GLenum;
@@ -63,12 +64,14 @@ typedef void (*rig_gl__UniformMatrix4fv)(GLint location, GLsizei count, GLboolea
 typedef void (*rig_gl__DrawArrays)(GLenum mode, GLint first, GLsizei count);
 ]]
 
-rig.register_service("gl.resolver", {
-   "get_gl_proc_address",
-})
-
 local function bind_function(name)
-   local ptr, err = rig.require_service("gl.resolver").get_gl_proc_address("gl" .. name)
+   local resolver = rawget(M, "_resolver")
+   if resolver == nil then
+      rig.raise(
+         "gl functions require a gl.resolver; add the gl component to the runtime"
+      )
+   end
+   local ptr, err = resolver.get_gl_proc_address("gl" .. name)
    if ptr == nil then
       rig.raise(
          "failed to resolve OpenGL function gl%s: %s",
@@ -101,5 +104,40 @@ setmetatable(M, {
       return fn
    end,
 })
+
+function M.set_resolver(provider)
+   rawset(M, "_resolver", provider)
+end
+
+function M.clear_resolver()
+   rawset(M, "_resolver", nil)
+end
+
+function M.plugin(spec)
+   spec = spec or {}
+   return runtime.plugin {
+      id = spec.id or "gl",
+      capabilities = {
+         ["gl.resolver"] = {},
+      },
+   }
+end
+
+function M.component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      requires = {
+         { capability = "gl.resolver" },
+      },
+      create = function(context)
+         M.set_resolver(context:capability("gl.resolver"))
+         return {}
+      end,
+      release = function()
+         M.clear_resolver()
+      end,
+   })
+end
 
 return M

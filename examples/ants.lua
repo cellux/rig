@@ -818,8 +818,8 @@ function Scene:release()
    self.ants = {}
 end
 
-function App:init()
-   self:super().init(self)
+function App:init(context)
+   self:super().init(self, context)
    self.frame_profiler = profiler.FrameProfiler {
       fps = 60,
    }
@@ -841,6 +841,7 @@ function App:after_setup()
 end
 
 function App:before_frame()
+   self:super().before_frame(self)
    self.frame_profiler:begin_frame()
 end
 
@@ -882,15 +883,11 @@ function App:release()
    self.frame_profiler = nil
 end
 
-rig.run {
-   mode = "sdl3",
-   driver_config = {
-      sdl3 = {
-         window_props = {
-            [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
-            [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-         },
-      },
+local builder = rig.runtime()
+sdl3x.bundle_sdl3(builder, {
+   window_props = {
+      [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
+      [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
    },
-   app = App,
-}
+})
+builder:execute(App):compile():start()

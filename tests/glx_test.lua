@@ -310,7 +310,7 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
    next_vertex_array_id = 401
    next_texture_id = 501
 
-   rig.register_service_provider("gl.resolver", "glx_test_provider", {
+   gl.set_resolver({
       get_gl_proc_address = function(name)
          resolved_names[#resolved_names + 1] = name
          local callback = callbacks[name]
@@ -321,8 +321,7 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
       end,
    })
 
-   rig.register_runtime_driver("glx_test_driver", {
-      loop = function()
+   local function run()
          local sourced_program = glx.Program {
             vertex_source = "void main() { }",
             fragment_source = "void main() { }",
@@ -399,15 +398,11 @@ test.case("glx provides high-level OpenGL shader, program, buffer, vertex-array,
          texture:image(0, gl.RGBA, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
          texture:release()
          observed.texture_id_after_release = texture.id
-      end,
-   })
+      end
 
-   rig.run {
-      driver = "glx_test_driver",
-      providers = {
-         ["gl.resolver"] = "glx_test_provider",
-      },
-   }
+   run()
+
+   gl.clear_resolver()
 
    test.equal(observed.sourced_program_shader_count, 2)
    test.equal(observed.cached_location_1, 17)

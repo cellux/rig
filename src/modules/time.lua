@@ -1,16 +1,12 @@
 local M = ... or {}
-
-rig.register_service("time", {
-   "now",
-   "monotonic",
-})
+local uv = require("uv")
 
 function M.now()
-   return rig.require_service("time").now()
+   return uv.now()
 end
 
 function M.monotonic()
-   return rig.require_service("time").monotonic()
+   return uv.monotonic()
 end
 
 return M

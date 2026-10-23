@@ -4,6 +4,7 @@ local time = require("time")
 local uv = require("uv")
 local sched = require("sched")
 local schema = require("schema")
+local runtime = require("runtime")
 
 M._registered_cases = M._registered_cases or {}
 
@@ -463,30 +464,25 @@ function M.run_registered_cases(options)
       sched.join(tasks)
    end
 
-   rig.run {
-      mode = "uv",
-      module_config = {
-         uv = {
-            main = function()
-            local concurrent_batch = {}
-            for i = 1, #cases do
-               local case = cases[i]
-               if case.serial then
-                  run_concurrent_batch(concurrent_batch)
-                  concurrent_batch = {}
-                  run_case(case, i)
-               else
-                  table.insert(concurrent_batch, {
-                     case = case,
-                     index = i,
-                  })
-               end
-            end
+   local builder = rig.runtime()
+   uv.bundle_uv(builder)
+   builder:execute(function()
+      local concurrent_batch = {}
+      for i = 1, #cases do
+         local case = cases[i]
+         if case.serial then
             run_concurrent_batch(concurrent_batch)
-            end,
-         },
-      },
-   }
+            concurrent_batch = {}
+            run_case(case, i)
+         else
+            table.insert(concurrent_batch, {
+               case = case,
+               index = i,
+            })
+         end
+      end
+      run_concurrent_batch(concurrent_batch)
+   end):compile():start()
 
    local summary = {
       cases = results,

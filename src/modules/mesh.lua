@@ -2,6 +2,7 @@ local M = ... or {}
 local ffi = require("ffi")
 local color = require("color")
 local rig = require("rig")
+local runtime = require("runtime")
 
 local DEFAULT_FACE_COLORS = {
    color.rgbf(1, 0, 0),
@@ -82,10 +83,6 @@ local function append_vertex(values, corner, scale, face_color)
    values[#values + 1] = b
 end
 
-rig.register_service("mesh.vertex_input", {
-   "build_vertex_input",
-})
-
 function M.make_cube(options)
    options = options or {}
    if type(options) ~= "table" then
@@ -133,12 +130,38 @@ function M.make_cube(options)
    }
 end
 
-function M.build_vertex_input(mesh)
+function M.build_vertex_input(mesh, provider)
    if type(mesh) ~= "table" then
       error("mesh.build_vertex_input expects a mesh table")
    end
 
-   return rig.require_service("mesh.vertex_input").build_vertex_input(mesh)
+   provider = provider or rig.raise(
+      "mesh.build_vertex_input requires a mesh.vertex_input provider"
+   )
+   return provider.build_vertex_input(mesh)
+end
+
+function M.plugin(spec)
+   spec = spec or {}
+   return runtime.plugin {
+      id = spec.id or "mesh",
+      capabilities = {
+         ["mesh.vertex_input"] = {},
+      },
+   }
+end
+
+function M.component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      requires = {
+         { capability = "mesh.vertex_input" },
+      },
+      create = function(context)
+         return context:capability("mesh.vertex_input")
+      end,
+   })
 end
 
 return M

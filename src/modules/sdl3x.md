@@ -6,12 +6,12 @@ Unlike `sdl3`, this module owns Rig-specific runtime integration and Lua-side co
 
 ## Scope
 
-`sdl3x` currently owns:
+`sdl3x` owns:
 
-- `rig.run(...)` SDL runtime drivers and presets
-  - `mode = "sdl3"`
-  - `mode = "sdl3_gl"`
-  - `mode = "sdl3_gpu"`
+- SDL runtime components and convenience bundles for `rig.runtime()`
+  - `sdl3x.bundle_sdl3`
+  - `sdl3x.bundle_sdl3_gl`
+  - `sdl3x.bundle_sdl3_gpu`
 - default SDL window creation
 - `sdl3x.Properties`
 - SDL error/string helpers
@@ -20,7 +20,7 @@ Unlike `sdl3`, this module owns Rig-specific runtime integration and Lua-side co
 - SDL/OpenGL font renderer providers
 - SDL GPU and OpenGL runtime support helpers
 
-Requiring `sdl3x` installs the default SDL runtime window factory used by those modes.
+Requiring `sdl3x` makes its components and bundles available.
 
 ## Exports
 
@@ -69,15 +69,21 @@ Requiring `sdl3x` installs the default SDL runtime window factory used by those 
 
 ## Runtime Integration
 
-This module registers the SDL runtime drivers and presets used by `rig.run(...)`.
+This module provides the SDL runtime components, provider components, and
+convenience bundles used by `rig.runtime()`.
 
-Use SDL-specific runtime configuration under:
+The bundles accept a shared options table:
 
-- `options.driver_config.sdl3` for `mode = "sdl3"`
-- `options.driver_config.sdl3_gl` for `mode = "sdl3_gl"`
-- `options.driver_config.sdl3_gpu` for `mode = "sdl3_gpu"`
+```lua
+local builder = rig.runtime()
+sdl3x.bundle_sdl3(builder, {
+   window_props = { ... },
+   render = function() end,
+})
+builder:execute(App):compile():start()
+```
 
-Shared fields accepted by the SDL runtime modes as applicable:
+Shared fields accepted by the SDL bundles as applicable:
 
 - `init_flags`
   - Defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
@@ -85,12 +91,14 @@ Shared fields accepted by the SDL runtime modes as applicable:
   - Passed through to `sdl3x.Window(...)`.
   - The builtin `sdl3x.Window(...)` path accepts a plain table or `sdl3x.Properties`.
 - `create_renderer(window) -> renderer_ptr | nil, err`
-  - Overrides renderer creation for `mode = "sdl3"`.
+  - Overrides renderer creation for `bundle_sdl3`.
   - `window` is an `sdl3x.Window`.
 - `render`
-  - Required unless `options.app` provides `render(...)` or `invoke_render(...)`.
+  - Optional; when omitted the execution class's `render(...)` method is used.
+- `frame_profiler`
+  - `true` or an options table to attach a frame profiler.
 
-Additional `sdl3_gl` fields:
+Additional `bundle_sdl3_gl` fields:
 
 - `gl_attributes`
 - `swap_interval`
@@ -252,7 +260,9 @@ Construction uses temporary `sdl3x.Properties`, merges builtin default window pr
 
 ## `sdl3x.App`
 
-`sdl3x.App` extends `rig.App` with SDL window/event/render conveniences:
+`sdl3x.App` extends `rig.Class()` with SDL window/event/render conveniences. It is
+instantiated as a runtime execution class, so `init(context)` receives the runtime
+context and `context.window` / `context.graphics`:
 
 - `window_width`
 - `window_height`
@@ -299,4 +309,117 @@ function App:render()
       })
    end
 end
+```
+
+## Runtime Components
+
+`sdl3x` also exposes composable components for the new runtime model (see
+`runtime.md`):
+
+- `sdl3x.plugin([spec])`
+  - Declares the `sdl3.subsystem`, `sdl3.window`, and `sdl3.input` capabilities and
+    the `sdl3.key`, `sdl3.mouse`, `sdl3.resize`, `sdl3.close`, and `sdl3.focus`
+    extension points, mapping each to a class method (`on_key`, `on_mouse`,
+    `on_resize`, `on_close`, `on_focus`).
+- `sdl3x.subsystem_component(plugin, options)`
+  - Provides `sdl3.subsystem`; owns SDL init flags and quits only the subsystems it
+    initialized.
+  - `options.init_flags` defaults to `sdl3.INIT_VIDEO + sdl3.INIT_EVENTS`.
+- `sdl3x.window_component(plugin, options)`
+  - Provides `sdl3.window` and requires `sdl3.subsystem`.
+  - `options.window_props` is passed to `sdl3x.Window(...)`.
+- `sdl3x.input_component(plugin, options)`
+  - Provides `sdl3.input` and requires `sdl3.subsystem` and `sdl3.window`.
+  - Polls SDL events each step and emits normalized `sdl3.*` events. It emits an
+    initial `sdl3.resize` on the first poll unless `options.initial_resize` is false.
+
+Example:
+
+```lua
+local rig = require("rig")
+local runtime = require("runtime")
+local sdl3x = require("sdl3x")
+
+local sdl_plugin = sdl3x.plugin()
+
+local compiled = rig.runtime()
+   :use(sdl_plugin)
+   :add(sdl3x.subsystem_component(sdl_plugin, { name = "sdl" }))
+   :add(sdl3x.window_component(sdl_plugin, { name = "window" }))
+   :add(sdl3x.input_component(sdl_plugin, { name = "input" }))
+   :execute(function(ctx)
+      -- ctx.window and ctx.input are available.
+   end)
+   :compile()
+```
+
+## Graphics Context Components
+
+Graphics contexts provide the `graphics.context` capability (declared by
+`sdl3x.plugin`) and require `sdl3.window`. Each provider records its backend in the
+capability `properties`, so consumers can require a specific backend
+(`{ capability = "graphics.context", properties = { backend = "gl" } }`) without
+naming a component.
+
+- `sdl3x.renderer_context_component(plugin, options)`
+  - Provides `backend = "renderer"`; wraps `SDL_Renderer*`.
+  - `options.create_renderer` optionally overrides the default creation.
+  - Object exposes `renderer`, `present()`, `set_vsync(enabled)`, and `release()`.
+- `sdl3x.gl_context_component(plugin, options)`
+  - Provides `backend = "gl"`; the window must be created with the OpenGL window
+    property.
+  - `options.gl_attributes` and `options.swap_interval` are applied.
+  - Object exposes `context`, `present()`, `set_swap_interval(interval)`,
+    `get_proc_address(name)`, and `release()`.
+- `sdl3x.gpu_context_component(plugin, options)`
+  - Provides `backend = "gpu"`; wraps `SDL_GPUDevice*` and claims the window.
+  - `options.shader_formats`, `options.debug_mode`, and `options.backend_name` are
+    honored.
+  - Object exposes `device` and `release()`.
+
+All graphics components release their own resources during rollback if creation fails,
+so a partially initialized context never leaks.
+
+## Frame Component
+
+`sdl3x.frame_component(plugin, options)` provides the per-frame loop:
+
+- It requires `graphics.context` and contributes a `frame` progress operation that:
+  1. emits `core.before_frame`;
+  2. calls the render callback;
+  3. presents through the graphics context (`graphics:render_frame(render)`);
+  4. emits `core.after_frame`.
+- `options.render` is an optional render callback. When omitted, class execution uses
+  `instance:render(...)`.
+- `options.frame_profiler` may be `true` or a `profiler.FrameProfiler` options table;
+  the frame profiler wraps the whole frame and the render call.
+
+`core.before_frame` maps to the class method `before_frame`, and `core.after_frame` to
+`after_frame`.
+
+Each graphics context implements `render_frame(render_fn)`:
+
+- renderer/OpenGL call `render_fn()` then present/swap;
+- GPU acquires a command buffer and swapchain texture, calls
+  `render_fn(command_buffer, swapchain_texture, width, height)`, then submits.
+
+## Convenience Bundles
+
+Bundles attach their own plugin and add components explicitly; `:use` alone never
+changes behavior.
+
+- `sdl3x.bundle_sdl3(builder, options)` — subsystem, window, input, renderer graphics
+  context, renderer font provider, frame loop.
+- `sdl3x.bundle_sdl3_gl(builder, options)` — subsystem, OpenGL window, input, GL
+  context, GL font provider, GL resolver, GL shader stage, frame loop.
+- `sdl3x.bundle_sdl3_gpu(builder, options)` — subsystem, window, input, GPU context,
+  GPU mesh provider, GPU shader stage, frame loop.
+
+Common options: `init_flags`, `window_props`, `render`, `frame_profiler`; GL adds
+`gl_attributes`/`swap_interval`; GPU adds `shader_formats`/`debug_mode`/`backend_name`.
+
+```lua
+local builder = rig.runtime()
+sdl3x.bundle_sdl3(builder, { render = function() end })
+builder:execute(AppClass):compile():start()
 ```

@@ -114,22 +114,6 @@ test.case("sdl3x.App stores resize events in app fields", function()
    test.equal(app.pixel_height, 400)
 end)
 
-test.case("sdl3x runtime options validate driver config shapes", function()
-   local bad_config_ok, bad_config_err = pcall(function()
-      rig.run {
-         driver = "sdl3",
-         driver_config = {
-            sdl3 = "bad",
-         },
-      }
-   end)
-   test.falsey(bad_config_ok)
-   test.match(
-      tostring(bad_config_err),
-      "rig%.run options%.driver_config%.sdl3 expects a table"
-   )
-end)
-
 test.case("sdl3x.get_error returns SDL error text or fallback", function()
    local old_get_error = sdl3.GetError
    local ok, err = pcall(function()
@@ -1004,7 +988,7 @@ test.case("sdl3x.SceneApp combines animator and owned-resource lifecycles", func
 
    function TestApp:init()
       self:super().init(self, {
-         module_config = {
+         options = {
             animator = {
                start = false,
             },

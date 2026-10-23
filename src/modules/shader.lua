@@ -1,6 +1,7 @@
 local M = ... or {}
 
 local rig = require("rig")
+local runtime = require("runtime")
 local schema = require("schema")
 local dxc = require("dxc")
 local shaderc = require("shaderc")
@@ -171,19 +172,41 @@ function M.compile(options)
    }
 end
 
-rig.register_service("shader.stage", {
-   "create_stage",
-   "destroy_stage",
-})
-
-function M.create_stage(spec)
-   return rig.require_service("shader.stage").create_stage(
-      normalize_stage_artifact(spec)
+function M.create_stage(spec, provider)
+   provider = provider or rig.raise(
+      "shader.create_stage requires a shader.stage provider"
    )
+   return provider.create_stage(normalize_stage_artifact(spec))
 end
 
-function M.destroy_stage(stage)
-   return rig.require_service("shader.stage").destroy_stage(stage)
+function M.destroy_stage(stage, provider)
+   provider = provider or rig.raise(
+      "shader.destroy_stage requires a shader.stage provider"
+   )
+   return provider.destroy_stage(stage)
+end
+
+function M.plugin(spec)
+   spec = spec or {}
+   return runtime.plugin {
+      id = spec.id or "shader",
+      capabilities = {
+         ["shader.stage"] = {},
+      },
+   }
+end
+
+function M.component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      name = options.name,
+      requires = {
+         { capability = "shader.stage" },
+      },
+      create = function(context)
+         return context:capability("shader.stage")
+      end,
+   })
 end
 
 return M

@@ -4,11 +4,6 @@ Minimal libuv integration for Rig.
 
 ## API
 
-- `uv.get_loop()`
-  - Returns the current active libuv loop handle for `mode = "uv"`, or `nil` if no uv runtime is active.
-- `uv.stop()`
-  - Requests the current uv loop to stop.
-  - Requires an active `mode = "uv"` runtime.
 - `uv.spawn(spec)`
   - Suspends the current scheduler-managed coroutine, spawns a child process on the current uv loop, and resumes the coroutine later with the captured result.
   - `spec.file` is required.
@@ -44,37 +39,92 @@ Minimal libuv integration for Rig.
 - `uv.DIRENT_CHAR`
 - `uv.DIRENT_BLOCK`
 
-## Runtime Preset
+## Runtime Bundle
 
-`uv` registers the built-in runtime mode `"uv"` through the runtime preset `"uv"` and the runtime driver `"uv"`.
-
-Use it through:
+`uv` exposes the `uv.bundle_uv(builder, options)` convenience bundle, which attaches
+the runtime scheduler plugin and the uv plugin and adds the uv clock, timer,
+scheduler, and loop components:
 
 ```lua
 local uv = require("uv")
 
-rig.run {
-   mode = "uv",
-   module_config = {
-      uv = {
-         main = function()
-         local result = uv.spawn {
-            file = "./build/rig",
-            args = { "./build/rig", "script.lua" },
-         }
-         rig.println(result.stdout)
-         end,
-      },
-   },
-}
+local builder = rig.runtime()
+uv.bundle_uv(builder)
+builder:execute(function(ctx)
+   local result = uv.spawn {
+      file = "./build/rig",
+      args = { "./build/rig", "script.lua" },
+   }
+   rig.println(result.stdout)
+end):compile():start()
 ```
 
-`module_config.uv.main` is optional. If provided, it runs as a scheduler-managed coroutine after setup and before the libuv loop starts blocking.
+The uv loop component always creates and owns a scheduler.
 
-`mode = "uv"` always creates and owns a scheduler.
+## Runtime Components
+
+`uv` also exposes composable components for the runtime model (see
+`runtime.md`). They reuse the same FFI bindings but keep all state in component
+instances instead of module globals.
+
+- `uv.plugin([spec])`
+  - Returns a plugin declaring the `sched.clock` and `uv.loop` capabilities.
+- `uv.clock_component(plugin, options)`
+  - Provides `sched.clock` (`protocol = "sched"`) backed by libuv time.
+- `uv.loop_component(plugin, options)`
+  - Requires `sched.scheduler`; creates a `uv.UvLoop`, installs `uv.spawn` and
+    `uv.scandir` handlers on that scheduler, and contributes a `wait` operation that
+    runs the loop while async work is pending.
+  - The created loop is owned by the runtime and released on shutdown.
+- `uv.UvLoop`
+  - Component object exposing `spawn(spec)`, `scandir(path)`, `sleep(seconds)`,
+    `stop()`, `now()`, `monotonic()`, and `release()`.
+
+Example:
+
+```lua
+local rig = require("rig")
+local runtime = require("runtime")
+local uv = require("uv")
+
+local core = runtime.scheduler_plugin()
+local uv_plugin = uv.plugin()
+
+local compiled = rig.runtime()
+   :use(core)
+   :use(uv_plugin)
+   :add(uv.clock_component(uv_plugin, { name = "clock" }))
+   :add(runtime.timer_component(core, { name = "timer" }))
+   :add(runtime.scheduler_component(core, { name = "scheduler" }))
+   :add(uv.loop_component(uv_plugin, { name = "uv" }))
+   :execute(function(ctx)
+      local result = ctx.uv:spawn {
+         file = "sh",
+         args = { "sh", "-c", "printf hello" },
+      }
+      rig.println(result.stdout)
+   end)
+   :compile()
+
+compiled:start()
+```
 
 ## Notes
 
 - The current first version is intentionally narrow.
 - It is designed to support subprocess orchestration first, which is the main building block needed for a future async test runner.
 - The callback boundary remains internal to the module; user code should use the straight-line coroutine API.
+
+## Convenience Bundle
+
+`uv.bundle_uv(builder, options)` attaches the scheduler and uv plugins and adds the uv
+clock, timer, scheduler, and loop components. `options.timer` may supply a timer
+instance.
+
+```lua
+local builder = rig.runtime()
+uv.bundle_uv(builder)
+builder:execute(function(ctx)
+   ctx.uv:spawn { file = "sh", args = { "sh", "-c", "printf hi" } }
+end):compile():start()
+```

@@ -28,35 +28,39 @@ Call `scene_animator:start()` once the object tree is ready, `scene_animator:tic
 
 ## `App`
 
-`animator.App` extends `rig.App` with the common scene-root and animator lifecycle:
+`animator.App` extends `rig.Class()` with the common scene-root and animator lifecycle. It is
+instantiated as a runtime execution class, so `init(context)` receives the runtime
+context:
 
 ```lua
 local animator = require("animator")
+local sdl3x = require("sdl3x")
 
 local App = rig.Class(animator.App)
 
-function App:init()
-   self:super().init(self)
+function App:init(context)
+   self:super().init(self, context)
    self.root = Scene()
 end
 
-rig.run {
-   mode = "sdl3_gpu",
-   app = App,
-}
+local builder = rig.runtime()
+sdl3x.bundle_sdl3_gpu(builder)
+builder:execute(App):compile():start()
 ```
 
-Animator app behavior may be configured through `rig.run { module_config = { animator = { ... } } }`:
+Animator app behavior may be configured through the bundle options at
+`context.options.animator` (or `context.options` directly):
 
 - `fixed_dt`, `max_dt`, and `max_steps_per_frame` forward to `animator.Animator(root, options)`
 - `start = false` disables the default automatic `scene_animator:start()`
 
 Subclasses may override:
 
-- `init(options)`
+- `init(context)`
 - `create_root()`
 - `create_scene_animator(root)`
 - `after_setup()`
+- `before_frame()`
 - `release(root, scene_animator)`
 
-The base class expects either `self.root` to be set or `create_root()` to return a root before `self:super().after_setup(self)` runs. `rig.run { app = SomeAppClass }` instantiates the app class after driver setup, so `init(...)` may use runtime facilities if needed. The inherited animator behavior wires `self.root` to an animator in `after_setup`, runs `root:activate_tree()` before the animator starts, ticks it in `before_drain`, and releases the root tree in `before_shutdown`.
+The base class expects either `self.root` to be set or `create_root()` to return a root before `self:super().after_setup(self)` runs. The runtime instantiates the app class after component setup, so `init(context)` may use runtime facilities if needed. The inherited animator behavior wires `self.root` to an animator in `after_setup`, runs `root:activate_tree()` before the animator starts, ticks it in `before_frame`, and releases the root tree in `before_shutdown`.
