@@ -22,11 +22,19 @@ local GL_ATTRIBUTES = {
    depth_size = 24,
 }
 
+-- Examples lay out from `frame.surface`, so a resizable window is the useful
+-- default. `rig.run` merges the window title into this table without mutating it.
+local WINDOW_PROPS = {
+   [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
+}
+
 local BACKENDS = {
    renderer = {
       label = "SDL Renderer",
       bundle = sdl3x.bundle_sdl3,
-      bundle_options = {},
+      bundle_options = {
+         window_props = WINDOW_PROPS,
+      },
    },
    gl = {
       label = "OpenGL",
@@ -34,6 +42,7 @@ local BACKENDS = {
       bundle_options = {
          gl_attributes = GL_ATTRIBUTES,
          swap_interval = 1,
+         window_props = WINDOW_PROPS,
       },
    },
    gpu = {
@@ -41,6 +50,7 @@ local BACKENDS = {
       bundle = sdl3x.bundle_sdl3_gpu,
       bundle_options = {
          shader_formats = sdl3.GPU_SHADERFORMAT_SPIRV,
+         window_props = WINDOW_PROPS,
       },
    },
 }
