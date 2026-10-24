@@ -174,6 +174,9 @@ local load_library = rig.create_ffi_library_loader({
       "shaderc_shared",
       "libshaderc_shared.so.1",
       "libshaderc_shared.so",
+      -- Debian/Ubuntu sonames (libshaderc1 / libshaderc-dev).
+      "libshaderc.so.1",
+      "libshaderc.so",
       "shaderc_shared.dll",
       "libshaderc_shared.dylib",
    },

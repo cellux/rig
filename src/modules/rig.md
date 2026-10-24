@@ -37,6 +37,14 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Returns a new `runtime.Builder` for the compositional runtime model.
   - Lazily requires the `runtime` module (`require("runtime").Builder()`).
   - See `runtime.md` for the builder/compiler/start API.
+- `rig.run(options?, build?)`
+  - Code-first sketch entrypoint. Assembles a default composition (bundle, scene
+    with camera, entities, frame callbacks) on top of the builder/compiler/
+    component runtime, so a demo can be a single Lua file.
+  - `rig.run(build)` is shorthand for `rig.run { build = build }`.
+  - Blocks until the sketch exits; returns the `sketch.App`.
+  - Lazily requires `sketch`, so core `rig` stays independent of the graphics
+    backends at load time. See `sketch.md`.
 - `rig.ResourceScope(context, label?)`
   - Callable class constructor for generic ownership scopes.
   - Instances provide `:adopt(...)`, `:replace(...)`, and `:release()`.
@@ -94,6 +102,20 @@ Core runtime helpers that are always loaded at interpreter startup.
   - Returns `nil, message` when the path does not exist or cannot be resolved.
   - Backed by `realpath` on POSIX and `_fullpath` on Windows; no async backend is
     required.
+- `rig.source_of(info)`
+  - Parses the file path out of a `debug.getinfo(...)` result (`info.source`),
+    returning `nil` for chunks loaded from strings. Used to resolve paths relative
+    to a calling script.
+- `rig.dirname(path)`
+  - Returns `path`'s directory including the trailing separator, or `""`.
+- `rig.join_path(directory, path)`
+  - Joins `directory` and `path`; absolute paths and Windows drive paths pass
+    through unchanged.
+- `rig.file_exists(path)`
+  - Returns whether `path` can be opened for reading.
+- `rig.read_file(path)`
+  - Returns the file contents as a binary string, or `nil, message`.
+  - Used by `rig.require`, `shader`, and `asset`.
 
 ## Notes
 

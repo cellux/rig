@@ -12,23 +12,34 @@ a lightweight per-frame transform tree that backend modules specialize.
 ## Exports
 
 - `scene.Node`
-  - Base transform-tree node. Instances expose `parent`, `children`,
+  - Base transform-tree node. Instances expose `parent`, `children`, `motions`,
     `local_matrix`, `local_transform`, and `world_matrix`.
   - `node:add_child(child)` / `node:remove_child(child)`
   - `node:set_local_matrix(matrix)` — copies `matrix` into the node's local
     transform.
-  - `node:build_local(out)` — produces the local transform; subclasses (e.g.
-    `render.Entity`) add animation on top.
-  - `node:step(surface)` — per-frame hook, called before the transform is computed.
-  - `node:draw_node(surface, world, ...)` — draws the node's own content in world
+  - `node:add_motion(motion)` / `node:remove_motion(motion)` / `node:clear_motions()`
+    — manage transform contributors (see `motion`). Motions are pre-multiplied in
+    list order, so `local = m1 * m2 * ... * base` and a spin rotates a node about
+    its own origin.
+  - `node:build_local(out, frame)` — produces the local transform: the stored base
+    matrix with each motion applied. `frame` is `{ time, dt, scene, surface }`.
+  - `node:step(surface, frame)` — per-frame hook, called before the transform is
+    computed; behavior that accumulates state lives here.
+  - `node:draw_node(surface, world, frame)` — draws the node's own content in world
     space; base is a no-op.
-  - `node:render_tree(surface, parent_world, ...)` — computes
+  - `node:render_tree(surface, parent_world, frame)` — computes
     `world = parent_world * local`, draws the node, then renders children.
-  - `node:render_children(surface, ...)` — renders direct children using this node's
-    `world_matrix` as their parent.
+  - `node:render_children(surface, frame)` — renders direct children using this
+    node's `world_matrix` as their parent.
 - `scene.RenderScene`
   - A `scene.Node` and the root of the transform tree. Instances expose `graphics`,
-    `background_color`, `camera`, `width`, `height`, and `name`.
+    `background_color`, `camera`, `width`, `height`, `name`, `clock`, `time`, `dt`,
+    `on_update`, and `on_draw`.
+  - The scene is the single source of frame time: `clock` is an optional object with
+    `:monotonic()`, and `advance_time()` accumulates `time`/`dt` from it. Without a
+    clock the scene stays frozen at time 0 (useful for stills and tests).
+  - `surface:frame()` — builds the frame context `{ scene, surface, time, dt }`
+    handed to motions, behaviors, and callbacks.
   - `surface:set_camera(camera)` — installs `{ eye, target, up, fov_degrees, near,
     far }` (defaults to a left-handed camera at `(0, 0, -4.5)` looking at the
     origin).
@@ -36,21 +47,57 @@ a lightweight per-frame transform tree that backend modules specialize.
     the current viewport; called once per frame.
   - `surface:view_projection()` — the view*projection matrix drawables combine with
     their world matrix.
-  - `surface:render(...)` — calls `begin_frame(...)`, `update_view_projection()`,
-    renders its children, then `end_frame(...)`.
+  - `surface:push_transform(matrix?)` / `surface:pop_transform()` /
+    `surface:current_transform()` — a world-transform stack for immediate drawing.
+    Pushing multiplies the current transform by `matrix` (a child transform).
+  - `surface:draw_mesh(mesh, transform?, material?)` — immediately draws `mesh` with
+    `world = current_transform * transform` and the scene's view/projection. Pass a
+    `render.material` to override the built-in unlit material. Must run while the
+    backend frame is open, for example from an `on_draw` hook. Backend drawables are
+    created lazily from the resolved `render.mesh` factory and cached per
+    `(mesh, material)` (`surface:mesh_drawable(mesh, material?)`).
+  - `surface:draw_fullscreen(material)` — draws `material` over the whole viewport
+    with an identity transform (ignoring the camera), using a lazily-created
+    clip-space quad (`mesh.make_fullscreen_quad`). This is the final screen-space
+    pass that consumes a render target's texture.
+  - `surface:draw_screen(mesh, x, y, width, height, material?)` — immediately draws
+    `mesh` (typically a unit-sized `mesh.make_quad`) into a screen-space pixel
+    rectangle with a top-left origin, for overlays and HUDs. It lands at clip z = 0,
+    so drawing it last passes the depth test.
+  - `surface:render_to(target, draw)` — renders `draw(frame)` into a `render.target`
+    value as an offscreen pass, sizing the view/projection to the target, then
+    restores the window target and camera. Returns the target handle whose
+    `.texture` can be sampled afterwards. Backend scenes override
+    `enter_target(handle)` / `leave_target(handle)` to switch surfaces; the base
+    scene has no offscreen surface.
+  - `surface:render(...)` — advances time, calls `on_update(frame)`, calls
+    `begin_frame(...)`, updates the view/projection, calls `on_draw(frame)`, renders
+    its children, calls `on_overlay(frame)`, then `end_frame(...)`. Backend frame
+    arguments are forwarded to `begin_frame`/`end_frame`.
   - `surface:begin_frame(...)` / `surface:end_frame(...)` — no-op hooks that backend
     implementations override (for example to set the viewport and clear the
     framebuffer for OpenGL, or to open/close a GPU render pass).
+  - `options.clock` supplies the animation clock; `options.on_update` and
+    `options.on_draw` are `function(frame)` hooks; `options.on_overlay` runs after
+    the children for overlays.
 - `scene.plugin(spec?)`
   - Returns a runtime plugin declaring the `render.scene` and `render.scene.impl`
     capabilities.
   - `spec.id` overrides the default `"scene"` plugin id.
+  - Also declares `render.mesh`, `render.target`, and `sched.clock` so optional
+    requirements resolve when the composition does not provide them.
 - `scene.container_component(plugin, options)`
-  - Returns a descriptor that provides `render.scene` and requires
-    `graphics.context`.
+  - Returns a descriptor that provides `render.scene`, requires `graphics.context`,
+    and optionally requires `sched.clock`.
   - `options.name` binds the scene into `ctx`.
   - `options.background_color` is stored on the instance for implementations to use.
   - `options.camera` is the scene camera (viewed by every entity).
+  - `options.clock` (or the resolved `sched.clock` capability) drives `time`/`dt`.
+  - The composition's `render.mesh` factory is resolved into `mesh_factory` so the
+    scene can draw meshes immediately; it is optional.
+  - The composition's `render.target` factory is resolved into `target_factory` so
+    `render_to` can create offscreen surfaces; it is optional.
+  - `options.on_update` / `options.on_draw` are `function(frame)` hooks.
   - Without `options.scene_class` the compiler resolves a `render.scene.impl`
     provider from the composition and instantiates it. This is how the runtime wires
     the active graphics backend's scene shape without user code naming it.

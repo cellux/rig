@@ -16,6 +16,15 @@ function M.runtime()
    return require("runtime").Builder()
 end
 
+-- Code-first sketch entrypoint. Assembles a default composition (bundle,
+-- scene, entities, frame callbacks) on top of the builder/compiler/component
+-- machinery so a demo can be a single Lua file. The implementation lives in
+-- `sketch`, required lazily so core `rig` stays independent of the graphics
+-- backends at load time.
+function M.run(options, build)
+   return require("sketch").run(options, build)
+end
+
 function M.shallow_copy(value)
    if type(value) ~= "table" then
       return value
@@ -392,12 +401,32 @@ local function source_from_info(info)
    return source
 end
 
-local function source_directory(source)
-   local prefix = source:match("^(.*[/\\])")
-   if prefix == nil then
+-- Parses the file path out of a debug.getinfo(...) result. Returns nil for
+-- chunks loaded from strings.
+function M.source_of(info)
+   return source_from_info(info)
+end
+
+-- Returns `path`'s directory including the trailing separator (or "").
+function M.dirname(path)
+   if type(path) ~= "string" then
       return ""
    end
-   return prefix
+   return path:match("^(.*[/\\])") or ""
+end
+
+-- Joins a directory with a possibly relative path; absolute paths pass through.
+function M.join_path(directory, path)
+   if type(path) ~= "string" or path == "" then
+      raise("rig.join_path expects a non-empty path")
+   end
+   if directory == nil or directory == "" then
+      return path
+   end
+   if path:sub(1, 1) == "/" or path:sub(1, 1) == "\\" or path:match("^%a:[/\\]") then
+      return path
+   end
+   return directory .. path
 end
 
 local relative_extensions = { ".lua", ".fnl" }
@@ -420,7 +449,7 @@ local function relative_candidates(directory, name)
    return candidates
 end
 
-local function file_exists(path)
+function M.file_exists(path)
    local file = io.open(path, "rb")
    if file == nil then
       return false
@@ -429,7 +458,7 @@ local function file_exists(path)
    return true
 end
 
-local function read_file(path)
+function M.read_file(path)
    local file, open_err = io.open(path, "rb")
    if file == nil then
       return nil, open_err
@@ -461,7 +490,7 @@ function M.require(module_name)
       return require(module_name)
    end
 
-   local source = source_from_info(debug.getinfo(2, "S"))
+   local source = M.source_of(debug.getinfo(2, "S"))
    if source == nil then
       raise(
          "rig.require cannot resolve '%s': the calling chunk has no file path",
@@ -476,12 +505,12 @@ function M.require(module_name)
       raise("rig.require expects a module path after './'")
    end
 
-   local directory = source_directory(source)
+   local directory = M.dirname(source)
    local candidates = relative_candidates(directory, relative)
 
    local resolved = nil
    for i = 1, #candidates do
-      if file_exists(candidates[i]) then
+      if M.file_exists(candidates[i]) then
          resolved = candidates[i]
          break
       end
@@ -508,7 +537,7 @@ function M.require(module_name)
       return loaded
    end
 
-   local contents, read_err = read_file(resolved)
+   local contents, read_err = M.read_file(resolved)
    if contents == nil then
       raise("failed to read '%s': %s", resolved, read_err or "unknown error")
    end

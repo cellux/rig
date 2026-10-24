@@ -56,6 +56,19 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
     - `texture:parameter(pname, param)`
     - `texture:image(level, internalformat, width, height, format, type, pixels, border?)`
     - `texture:release()`
+- `glx.Framebuffer()`
+  - Creates a framebuffer object for offscreen rendering.
+  - Fields:
+    - `id`
+    - `depth_id`
+  - Methods:
+    - `framebuffer:bind()`
+    - `framebuffer:color(texture)` — attaches a `glx.Texture2D` as the color
+      attachment.
+    - `framebuffer:depth(width, height)` — allocates and attaches a depth
+      renderbuffer.
+    - `framebuffer:check()` — raises unless the framebuffer is complete.
+    - `framebuffer:release()`
 - `glx.get_version_string()`
 
 ## Notes

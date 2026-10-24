@@ -1,6 +1,8 @@
 # `shaderc`
 
-Runtime GLSL to SPIR-V compilation through `libshaderc_shared`.
+Runtime GLSL to SPIR-V compilation through shaderc. The loader tries
+`shaderc_shared` / `libshaderc_shared.so*` and the Debian/Ubuntu sonames
+`libshaderc.so*`.
 
 The shared library is loaded lazily when the module is required.
 

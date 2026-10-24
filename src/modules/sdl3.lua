@@ -108,6 +108,7 @@ bool SDL_RenderPresent(SDL_Renderer *renderer);
 void SDL_DestroyRenderer(SDL_Renderer *renderer);
 void SDL_DestroyWindow(SDL_Window *window);
 bool SDL_Init(Uint32 flags);
+bool SDL_InitSubSystem(Uint32 flags);
 void SDL_QuitSubSystem(Uint32 flags);
 Uint32 SDL_WasInit(Uint32 flags);
 void SDL_free(void *mem);
@@ -149,6 +150,7 @@ void *SDL_GL_GetProcAddress(const char *proc);
 ffi.cdef[[
 typedef struct SDL_GPUDevice SDL_GPUDevice;
 typedef struct SDL_GPUTexture SDL_GPUTexture;
+typedef struct SDL_GPUSampler SDL_GPUSampler;
 typedef struct SDL_GPUBuffer SDL_GPUBuffer;
 typedef struct SDL_GPUTransferBuffer SDL_GPUTransferBuffer;
 typedef struct SDL_GPUShader SDL_GPUShader;
@@ -234,6 +236,45 @@ typedef struct SDL_GPUTextureCreateInfo {
    SDL_GPUSampleCount sample_count;
    SDL_PropertiesID props;
 } SDL_GPUTextureCreateInfo;
+typedef struct SDL_GPUTextureTransferInfo {
+   SDL_GPUTransferBuffer *transfer_buffer;
+   Uint32 offset;
+   Uint32 pixels_per_row;
+   Uint32 rows_per_layer;
+} SDL_GPUTextureTransferInfo;
+typedef struct SDL_GPUTextureRegion {
+   SDL_GPUTexture *texture;
+   Uint32 mip_level;
+   Uint32 layer;
+   Uint32 x;
+   Uint32 y;
+   Uint32 z;
+   Uint32 w;
+   Uint32 h;
+   Uint32 d;
+} SDL_GPUTextureRegion;
+typedef struct SDL_GPUSamplerCreateInfo {
+   int min_filter;
+   int mag_filter;
+   int mipmap_mode;
+   int address_mode_u;
+   int address_mode_v;
+   int address_mode_w;
+   float mip_lod_bias;
+   float max_anisotropy;
+   int compare_op;
+   float min_lod;
+   float max_lod;
+   bool enable_anisotropy;
+   bool enable_compare;
+   Uint8 padding1;
+   Uint8 padding2;
+   SDL_PropertiesID props;
+} SDL_GPUSamplerCreateInfo;
+typedef struct SDL_GPUTextureSamplerBinding {
+   SDL_GPUTexture *texture;
+   SDL_GPUSampler *sampler;
+} SDL_GPUTextureSamplerBinding;
 typedef struct SDL_GPUTransferBufferLocation {
    SDL_GPUTransferBuffer *transfer_buffer;
    Uint32 offset;
@@ -390,23 +431,45 @@ void *SDL_MapGPUTransferBuffer(SDL_GPUDevice *device, SDL_GPUTransferBuffer *tra
 void SDL_UnmapGPUTransferBuffer(SDL_GPUDevice *device, SDL_GPUTransferBuffer *transfer_buffer);
 SDL_GPUTexture *SDL_CreateGPUTexture(SDL_GPUDevice *device, const SDL_GPUTextureCreateInfo *createinfo);
 void SDL_ReleaseGPUTexture(SDL_GPUDevice *device, SDL_GPUTexture *texture);
+SDL_GPUSampler *SDL_CreateGPUSampler(SDL_GPUDevice *device, const SDL_GPUSamplerCreateInfo *createinfo);
+void SDL_ReleaseGPUSampler(SDL_GPUDevice *device, SDL_GPUSampler *sampler);
 bool SDL_GPUTextureSupportsFormat(SDL_GPUDevice *device, SDL_GPUTextureFormat format, SDL_GPUTextureType type, SDL_GPUTextureUsageFlags usage);
 SDL_GPUCommandBuffer *SDL_AcquireGPUCommandBuffer(SDL_GPUDevice *device);
 void SDL_PushGPUVertexUniformData(SDL_GPUCommandBuffer *command_buffer, Uint32 slot_index, const void *data, Uint32 length);
 void SDL_PushGPUFragmentUniformData(SDL_GPUCommandBuffer *command_buffer, Uint32 slot_index, const void *data, Uint32 length);
 SDL_GPUCopyPass *SDL_BeginGPUCopyPass(SDL_GPUCommandBuffer *command_buffer);
 void SDL_UploadToGPUBuffer(SDL_GPUCopyPass *copy_pass, const SDL_GPUTransferBufferLocation *source, const SDL_GPUBufferRegion *destination, bool cycle);
+void SDL_UploadToGPUTexture(SDL_GPUCopyPass *copy_pass, const SDL_GPUTextureTransferInfo *source, const SDL_GPUTextureRegion *destination, bool cycle);
 void SDL_EndGPUCopyPass(SDL_GPUCopyPass *copy_pass);
 bool SDL_WaitAndAcquireGPUSwapchainTexture(SDL_GPUCommandBuffer *command_buffer, SDL_Window *window, SDL_GPUTexture **swapchain_texture, Uint32 *swapchain_texture_width, Uint32 *swapchain_texture_height);
 SDL_GPURenderPass *SDL_BeginGPURenderPass(SDL_GPUCommandBuffer *command_buffer, const SDL_GPUColorTargetInfo *color_target_infos, Uint32 num_color_targets, const SDL_GPUDepthStencilTargetInfo *depth_stencil_target_info);
 void SDL_BindGPUGraphicsPipeline(SDL_GPURenderPass *render_pass, SDL_GPUGraphicsPipeline *graphics_pipeline);
 void SDL_BindGPUVertexBuffers(SDL_GPURenderPass *render_pass, Uint32 first_slot, const SDL_GPUBufferBinding *bindings, Uint32 num_bindings);
+void SDL_BindGPUFragmentSamplers(SDL_GPURenderPass *render_pass, Uint32 first_slot, const SDL_GPUTextureSamplerBinding *texture_sampler_bindings, Uint32 num_bindings);
 void SDL_BindGPUIndexBuffer(SDL_GPURenderPass *render_pass, const SDL_GPUBufferBinding *binding, SDL_GPUIndexElementSize index_element_size);
 void SDL_DrawGPUPrimitives(SDL_GPURenderPass *render_pass, Uint32 num_vertices, Uint32 num_instances, Uint32 first_vertex, Uint32 first_instance);
 void SDL_DrawGPUIndexedPrimitives(SDL_GPURenderPass *render_pass, Uint32 num_indices, Uint32 num_instances, Uint32 first_index, Sint32 vertex_offset, Uint32 first_instance);
 void SDL_EndGPURenderPass(SDL_GPURenderPass *render_pass);
 bool SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer *command_buffer);
 bool SDL_WaitForGPUIdle(SDL_GPUDevice *device);
+
+typedef uint32_t SDL_AudioDeviceID;
+typedef int SDL_AudioFormat;
+typedef struct SDL_AudioStream SDL_AudioStream;
+typedef struct SDL_AudioSpec {
+   SDL_AudioFormat format;
+   int channels;
+   int freq;
+} SDL_AudioSpec;
+bool SDL_LoadWAV(const char *path, SDL_AudioSpec *spec, Uint8 **audio_buf, Uint32 *audio_len);
+SDL_AudioStream *SDL_OpenAudioDeviceStream(SDL_AudioDeviceID devid, const SDL_AudioSpec *spec, void *callback, void *userdata);
+void SDL_DestroyAudioStream(SDL_AudioStream *stream);
+bool SDL_PutAudioStreamData(SDL_AudioStream *stream, const void *buf, int len);
+bool SDL_ClearAudioStream(SDL_AudioStream *stream);
+int SDL_GetAudioStreamQueued(SDL_AudioStream *stream);
+bool SDL_PauseAudioStreamDevice(SDL_AudioStream *stream);
+bool SDL_ResumeAudioStreamDevice(SDL_AudioStream *stream);
+bool SDL_SetAudioStreamGain(SDL_AudioStream *stream, float gain);
 ]]
 
 local load_sdl_library = rig.create_ffi_library_loader({
@@ -448,6 +511,7 @@ export_sdl_function("RenderPresent")
 export_sdl_function("DestroyRenderer")
 export_sdl_function("DestroyWindow")
 export_sdl_function("Init")
+export_sdl_function("InitSubSystem")
 export_sdl_function("QuitSubSystem")
 export_sdl_function("WasInit")
 export_sdl_function("free")
@@ -484,6 +548,15 @@ export_sdl_function("GL_SetSwapInterval")
 export_sdl_function("GL_SwapWindow")
 export_sdl_function("GL_DestroyContext")
 export_sdl_function("GL_GetProcAddress")
+export_sdl_function("LoadWAV")
+export_sdl_function("OpenAudioDeviceStream")
+export_sdl_function("DestroyAudioStream")
+export_sdl_function("PutAudioStreamData")
+export_sdl_function("ClearAudioStream")
+export_sdl_function("GetAudioStreamQueued")
+export_sdl_function("PauseAudioStreamDevice")
+export_sdl_function("ResumeAudioStreamDevice")
+export_sdl_function("SetAudioStreamGain")
 export_sdl_function("GPUSupportsShaderFormats")
 export_sdl_function("CreateGPUDevice")
 export_sdl_function("DestroyGPUDevice")
@@ -506,17 +579,21 @@ export_sdl_function("MapGPUTransferBuffer")
 export_sdl_function("UnmapGPUTransferBuffer")
 export_sdl_function("CreateGPUTexture")
 export_sdl_function("ReleaseGPUTexture")
+export_sdl_function("CreateGPUSampler")
+export_sdl_function("ReleaseGPUSampler")
 export_sdl_function("GPUTextureSupportsFormat")
 export_sdl_function("AcquireGPUCommandBuffer")
 export_sdl_function("PushGPUVertexUniformData")
 export_sdl_function("PushGPUFragmentUniformData")
 export_sdl_function("BeginGPUCopyPass")
 export_sdl_function("UploadToGPUBuffer")
+export_sdl_function("UploadToGPUTexture")
 export_sdl_function("EndGPUCopyPass")
 export_sdl_function("WaitAndAcquireGPUSwapchainTexture")
 export_sdl_function("BeginGPURenderPass")
 export_sdl_function("BindGPUGraphicsPipeline")
 export_sdl_function("BindGPUVertexBuffers")
+export_sdl_function("BindGPUFragmentSamplers")
 export_sdl_function("BindGPUIndexBuffer")
 export_sdl_function("DrawGPUPrimitives")
 export_sdl_function("DrawGPUIndexedPrimitives")

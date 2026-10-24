@@ -428,16 +428,55 @@ naming it.
 `sdl3x` provides the `render.mesh` factories consumed by `render.entity_component`:
 
 - `sdl3x.gl_mesh_component(plugin, options)` — `properties = { backend = "gl" }`;
-  requires the GL graphics context, `gl.resolver`, and `shader.stage`. Its factory
-  compiles the built-in GLSL colored-mesh shaders into a `glx.Program` and owns a
-  `glx.Buffer`/`glx.VertexArray` pair per mesh.
+  requires the GL graphics context, `gl.resolver`, `shader.stage`, and (optionally)
+  `render.texture`. Its factory compiles the built-in GLSL colored-mesh shaders into
+  a `glx.Program` and owns a `glx.Buffer`/`glx.VertexArray` pair per mesh.
 - `sdl3x.gpu_mesh_component(plugin, options)` — `properties = { backend = "gpu" }`;
-  requires the GPU graphics context, `shader.stage`, and `mesh.vertex_input`. Its
-  factory compiles the built-in GLSL shaders to SPIR-V, builds a graphics pipeline,
-  and uploads each mesh into a GPU vertex buffer.
+  requires the GPU graphics context, `shader.stage`, `mesh.vertex_input`, and
+  (optionally) `render.texture`. Its factory compiles the built-in GLSL shaders to
+  SPIR-V, builds a graphics pipeline, and uploads each mesh into a GPU vertex buffer.
 
 Both factories adopt their resources into the runtime ownership graph, so a partially
-created mesh rolls back cleanly.
+created mesh rolls back cleanly. When a material carries a texture, the factory
+resolves the `render.texture` provider, shares one backend texture per value, and
+binds it to fragment sampler slot 0 at draw time (sampling `u_texture` for the
+built-in textured material).
+
+## Texture Factories
+
+`sdl3x` provides the `render.texture` factories consumed by the mesh factories:
+
+- `sdl3x.gl_texture_component(plugin, options)` — `properties = { backend = "gl" }`;
+  requires the GL graphics context and `gl.resolver`. It uploads each
+  `render.texture` into a `glx.Texture2D` (filter and wrap folded into the texture
+  object) and binds it by unit.
+- `sdl3x.gpu_texture_component(plugin, options)` — `properties = { backend = "gpu" }`;
+  requires the GPU graphics context. It uploads each `render.texture` into an
+  `SDL_GPUTexture` plus an `SDL_GPUSampler` and binds the pair to a fragment sampler
+  slot.
+
+Both share one backend texture per `render.texture` value and adopt their resources
+into the runtime ownership graph.
+
+## Target Factories
+
+`sdl3x` provides the `render.target` factories consumed by the scene and the mesh
+factories:
+
+- `sdl3x.gl_target_component(plugin, options)` — `properties = { backend = "gl" }`;
+  requires the GL graphics context and `gl.resolver`. Each target is a
+  `glx.Texture2D` attached to a `glx.Framebuffer` (with an optional depth
+  renderbuffer). Its texture handle reports `flip_v = true`, and the GL scene flips
+  the clip-space Y while rendering into it so the result samples top-down like an
+  uploaded image.
+- `sdl3x.gpu_target_component(plugin, options)` — `properties = { backend = "gpu" }`;
+  requires the GPU graphics context. Each target is an `SDL_GPUTexture` created with
+  the swapchain format and `COLOR_TARGET | SAMPLER` usage, plus an optional depth
+  texture and an `SDL_GPUSampler`.
+
+Both share one surface per `render.target` value. A material that samples a target
+resolves it through this factory, so the offscreen pass and the sampling pass share
+the same texture.
 
 ## Convenience Bundles
 
@@ -448,10 +487,10 @@ changes behavior.
   context, renderer font provider, frame loop.
 - `sdl3x.bundle_sdl3_gl(builder, options)` — subsystem, OpenGL window, input, GL
   context, GL font provider, GL resolver, GL shader stage, GL scene implementation, GL
-  mesh factory, frame loop.
+  texture factory, GL target factory, GL mesh factory, frame loop.
 - `sdl3x.bundle_sdl3_gpu(builder, options)` — subsystem, window, input, GPU context,
-  GPU mesh provider, GPU shader stage, GPU scene implementation, GPU mesh factory,
-  frame loop.
+  GPU mesh provider, GPU shader stage, GPU scene implementation, GPU texture factory,
+  GPU target factory, GPU mesh factory, frame loop.
 
 Common options: `init_flags`, `window_props`, `render`, `frame_profiler`; GL adds
 `gl_attributes`/`swap_interval`; GPU adds `shader_formats`/`debug_mode`/`backend_name`.

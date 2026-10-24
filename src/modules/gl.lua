@@ -62,6 +62,16 @@ typedef void (*rig_gl__Uniform2f)(GLint location, GLfloat v0, GLfloat v1);
 typedef void (*rig_gl__Uniform4f)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
 typedef void (*rig_gl__UniformMatrix4fv)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (*rig_gl__DrawArrays)(GLenum mode, GLint first, GLsizei count);
+typedef void (*rig_gl__GenFramebuffers)(GLsizei n, GLuint *framebuffers);
+typedef void (*rig_gl__BindFramebuffer)(GLenum target, GLuint framebuffer);
+typedef void (*rig_gl__DeleteFramebuffers)(GLsizei n, const GLuint *framebuffers);
+typedef void (*rig_gl__FramebufferTexture2D)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef GLenum (*rig_gl__CheckFramebufferStatus)(GLenum target);
+typedef void (*rig_gl__GenRenderbuffers)(GLsizei n, GLuint *renderbuffers);
+typedef void (*rig_gl__BindRenderbuffer)(GLenum target, GLuint renderbuffer);
+typedef void (*rig_gl__DeleteRenderbuffers)(GLsizei n, const GLuint *renderbuffers);
+typedef void (*rig_gl__RenderbufferStorage)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+typedef void (*rig_gl__FramebufferRenderbuffer)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
 ]]
 
 local function bind_function(name)

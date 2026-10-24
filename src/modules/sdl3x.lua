@@ -2010,6 +2010,71 @@ function M.upload_to_gpu_buffer(device, buffer, data)
    sdl3.ReleaseGPUTransferBuffer(device, transfer_buffer)
 end
 
+-- Uploads tightly packed RGBA8 pixels to a 2D SDL_GPU texture.
+function M.upload_to_gpu_texture(device, texture, data, width, height)
+   if device == nil then
+      rig.raise("sdl3x.upload_to_gpu_texture requires an SDL_GPUDevice*")
+   end
+   if texture == nil then
+      rig.raise("sdl3x.upload_to_gpu_texture requires an SDL_GPUTexture*")
+   end
+   if type(data) ~= "string" then
+      rig.raise("sdl3x.upload_to_gpu_texture requires data to be a string")
+   end
+
+   local transfer_info = ffi.new("SDL_GPUTransferBufferCreateInfo[1]")
+   transfer_info[0].usage = sdl3.GPU_TRANSFERBUFFERUSAGE_UPLOAD
+   transfer_info[0].size = #data
+   transfer_info[0].props = 0
+
+   local transfer_buffer = sdl3.CreateGPUTransferBuffer(device, transfer_info)
+   if transfer_buffer == nil then
+      rig.raise("failed to create GPU texture transfer buffer: " .. get_error_string())
+   end
+
+   local mapped = sdl3.MapGPUTransferBuffer(device, transfer_buffer, false)
+   if mapped == nil then
+      sdl3.ReleaseGPUTransferBuffer(device, transfer_buffer)
+      rig.raise("failed to map GPU texture transfer buffer: " .. get_error_string())
+   end
+   ffi.copy(mapped, data, #data)
+   sdl3.UnmapGPUTransferBuffer(device, transfer_buffer)
+
+   local command_buffer = sdl3.AcquireGPUCommandBuffer(device)
+   if command_buffer == nil then
+      sdl3.ReleaseGPUTransferBuffer(device, transfer_buffer)
+      rig.raise("failed to acquire GPU command buffer: " .. get_error_string())
+   end
+
+   local copy_pass = sdl3.BeginGPUCopyPass(command_buffer)
+   local source = ffi.new("SDL_GPUTextureTransferInfo[1]")
+   source[0].transfer_buffer = transfer_buffer
+   source[0].offset = 0
+   source[0].pixels_per_row = width or 0
+   source[0].rows_per_layer = height or 0
+
+   local destination = ffi.new("SDL_GPUTextureRegion[1]")
+   destination[0].texture = texture
+   destination[0].mip_level = 0
+   destination[0].layer = 0
+   destination[0].x = 0
+   destination[0].y = 0
+   destination[0].z = 0
+   destination[0].w = width or 0
+   destination[0].h = height or 0
+   destination[0].d = 1
+
+   sdl3.UploadToGPUTexture(copy_pass, source, destination, false)
+   sdl3.EndGPUCopyPass(copy_pass)
+
+   if not sdl3.SubmitGPUCommandBuffer(command_buffer) then
+      sdl3.ReleaseGPUTransferBuffer(device, transfer_buffer)
+      rig.raise("failed to submit GPU texture upload command buffer: " .. get_error_string())
+   end
+
+   sdl3.ReleaseGPUTransferBuffer(device, transfer_buffer)
+end
+
 function M.choose_depth_format(device)
    if device == nil then
       rig.raise("sdl3x.choose_depth_format requires an SDL_GPUDevice*")
@@ -2102,31 +2167,41 @@ local sdl3_gpu_mesh_service = {
          rig.raise("mesh.vertex_input provider expects a mesh table")
       end
 
+      local attributes = {
+         {
+            location = 0,
+            format = "FLOAT3",
+            offset = mesh.attribute_offsets.position,
+         },
+         {
+            location = 1,
+            format = "FLOAT3",
+            offset = mesh.attribute_offsets.color,
+         },
+      }
+
       if mesh.layout == "position_color_f32" then
-         return M.build_vertex_input_state {
-            buffers = {
-               {
-                  slot = 0,
-                  pitch = mesh.vertex_stride,
-                  input_rate = "vertex",
-                  attributes = {
-                     {
-                        location = 0,
-                        format = "FLOAT3",
-                        offset = mesh.attribute_offsets.position,
-                     },
-                     {
-                        location = 1,
-                        format = "FLOAT3",
-                        offset = mesh.attribute_offsets.color,
-                     },
-                  },
-               },
-            },
+         -- no additional attributes
+      elseif mesh.layout == "position_color_uv_f32" then
+         attributes[#attributes + 1] = {
+            location = 2,
+            format = "FLOAT2",
+            offset = mesh.attribute_offsets.uv,
          }
+      else
+         rig.raise("unsupported mesh layout '%s'", mesh.layout)
       end
 
-      rig.raise("unsupported mesh layout '%s'", mesh.layout)
+      return M.build_vertex_input_state {
+         buffers = {
+            {
+               slot = 0,
+               pitch = mesh.vertex_stride,
+               input_rate = "vertex",
+               attributes = attributes,
+            },
+         },
+      }
    end,
 }
 
@@ -2540,6 +2615,8 @@ function M.plugin(spec)
          ["render.scene"] = {},
          ["render.scene.impl"] = {},
          ["render.mesh"] = {},
+         ["render.texture"] = {},
+         ["render.target"] = {},
       },
       extension_points = {
          ["sdl3.key"] = { method = "on_key" },
@@ -3243,6 +3320,21 @@ function GlRenderScene:begin_frame()
    gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
 end
 
+function GlRenderScene:enter_target(handle)
+   local gl = require("gl")
+   handle.framebuffer:bind()
+   gl.Viewport(0, 0, handle.width, handle.height)
+   local r, g, b, a = self.background_color:to_rgbaf()
+   gl.ClearColor(r, g, b, a)
+   gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
+end
+
+function GlRenderScene:leave_target(handle)
+   local gl = require("gl")
+   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+   gl.Viewport(0, 0, self.width, self.height)
+end
+
 function M.gl_scene_component(plugin, options)
    options = options or {}
    return runtime.descriptor(plugin, {
@@ -3321,6 +3413,81 @@ void main()
 }
 ]]
 
+-- Textured variants of the built-in material. They add a UV attribute at
+-- location 2 and sample the texture through the conventional `u_texture`
+-- uniform/sampler at slot 0.
+local gl_mesh_textured_vertex_source = [[
+#version 330 core
+
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec2 in_uv;
+
+out vec3 out_color;
+out vec2 out_uv;
+
+uniform mat4 u_mvp;
+
+void main()
+{
+   gl_Position = u_mvp * vec4(in_position, 1.0);
+   out_color = in_color;
+   out_uv = in_uv;
+}
+]]
+
+local gl_mesh_textured_fragment_source = [[
+#version 330 core
+
+in vec3 out_color;
+in vec2 out_uv;
+out vec4 frag_color;
+
+uniform sampler2D u_texture;
+
+void main()
+{
+   frag_color = vec4(out_color, 1.0) * texture(u_texture, out_uv);
+}
+]]
+
+local gpu_mesh_textured_vertex_source = [[
+#version 450
+
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec2 in_uv;
+
+layout(location = 0) out vec3 out_color;
+layout(location = 1) out vec2 out_uv;
+
+layout(set = 1, binding = 0) uniform Camera {
+   mat4 mvp;
+} camera;
+
+void main()
+{
+   gl_Position = camera.mvp * vec4(in_position, 1.0);
+   out_color = in_color;
+   out_uv = in_uv;
+}
+]]
+
+local gpu_mesh_textured_fragment_source = [[
+#version 450
+
+layout(location = 0) in vec3 in_color;
+layout(location = 1) in vec2 in_uv;
+layout(location = 0) out vec4 out_color;
+
+layout(set = 2, binding = 0) uniform sampler2D u_texture;
+
+void main()
+{
+   out_color = vec4(in_color, 1.0) * texture(u_texture, in_uv);
+}
+]]
+
 local function release_scope(scope)
    local errors = scope:release()
    if errors ~= nil and #errors > 0 then
@@ -3328,23 +3495,220 @@ local function release_scope(scope)
    end
 end
 
+-- Resolves a material's `texture` into a backend texture handle. It accepts a
+-- `render.texture` value (uploaded by the texture factory), a `render.target`
+-- value (whose color surface is already a texture handle), or an already-created
+-- backend handle. Returns nil when the material has no texture.
+local function resolve_material_texture(material, texture_factory, target_factory)
+   if material == nil or material.texture == nil then
+      return nil
+   end
+
+   local spec = material.texture
+   if spec.kind == "render.texture" then
+      if texture_factory == nil then
+         rig.raise("textured material requires a render.texture provider")
+      end
+      return texture_factory.create(spec)
+   end
+   if spec.kind == "render.target" then
+      if target_factory == nil then
+         rig.raise("a material sampling a render target requires a render.target provider")
+      end
+      return target_factory.create(spec).texture
+   end
+
+   return spec
+end
+
 --[ mesh factories ]--
 
-local function make_gl_mesh_factory(shader_provider, scope)
+local function gl_primitive(gl, topology)
+   if topology == "lines" then
+      return gl.LINES
+   end
+   if topology == "line_strip" then
+      return gl.LINE_STRIP
+   end
+   return gl.TRIANGLES
+end
+
+--[ texture factories ]--
+
+local function gl_filter(gl, filter)
+   if filter == "nearest" then
+      return gl.NEAREST
+   end
+   return gl.LINEAR
+end
+
+local function gl_wrap(gl, wrap)
+   if wrap == "repeat" then
+      return gl.REPEAT
+   end
+   return gl.CLAMP_TO_EDGE
+end
+
+-- Turns `render.texture` values into GL textures, sharing one texture per value
+-- through the owning scope. Samplers are folded into the GL texture object, so
+-- binding the texture also selects its filtering and addressing mode.
+local function make_gl_texture_factory(scope)
+   local cache = {}
+
    return {
-      create = function(mesh)
+      create = function(texture)
+         if type(texture) ~= "table" or texture.kind ~= "render.texture" then
+            rig.raise("render.texture provider expects a render.texture value")
+         end
+
+         local cached = cache[texture]
+         if cached ~= nil then
+            return cached
+         end
+
          local gl = require("gl")
+         local image = texture.image
+         local handle = glx.Texture2D()
+         scope:adopt(handle, function(_, resource)
+            resource:release()
+         end)
+
+         handle:bind(0)
+         handle:parameter(gl.TEXTURE_MIN_FILTER, gl_filter(gl, texture.filter))
+         handle:parameter(gl.TEXTURE_MAG_FILTER, gl_filter(gl, texture.filter))
+         handle:parameter(gl.TEXTURE_WRAP_S, gl_wrap(gl, texture.wrap))
+         handle:parameter(gl.TEXTURE_WRAP_T, gl_wrap(gl, texture.wrap))
+         handle:image(
+            0,
+            gl.RGBA8,
+            image.width,
+            image.height,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            image.pixels
+         )
+
+         local value = {
+            width = image.width,
+            height = image.height,
+            bind = function(_, unit)
+               handle:bind(unit or 0)
+            end,
+         }
+         cache[texture] = value
+         return value
+      end,
+   }
+end
+
+-- Turns `render.target` values into a GL color texture plus a framebuffer,
+-- sharing one surface per value. The color texture is top-down for sampling: a
+-- pass renders into the framebuffer with a flipped projection, so the resulting
+-- texture matches the convention of uploaded images.
+local function make_gl_target_factory(scope)
+   local cache = {}
+
+   return {
+      create = function(target)
+         if type(target) ~= "table" or target.kind ~= "render.target" then
+            rig.raise("render.target provider expects a render.target value")
+         end
+
+         local cached = cache[target]
+         if cached ~= nil then
+            return cached
+         end
+
+         local gl = require("gl")
+         local handle = glx.Texture2D()
+         scope:adopt(handle, function(_, resource)
+            resource:release()
+         end)
+
+         handle:bind(0)
+         handle:parameter(gl.TEXTURE_MIN_FILTER, gl_filter(gl, target.filter))
+         handle:parameter(gl.TEXTURE_MAG_FILTER, gl_filter(gl, target.filter))
+         handle:parameter(gl.TEXTURE_WRAP_S, gl_wrap(gl, target.wrap))
+         handle:parameter(gl.TEXTURE_WRAP_T, gl_wrap(gl, target.wrap))
+         handle:image(
+            0,
+            gl.RGBA8,
+            target.width,
+            target.height,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            nil
+         )
+
+         local framebuffer = glx.Framebuffer()
+         scope:adopt(framebuffer, function(_, resource)
+            resource:release()
+         end)
+         framebuffer:color(handle)
+         if target.depth then
+            framebuffer:depth(target.width, target.height)
+         end
+         framebuffer:check()
+
+         local texture_handle = {
+            width = target.width,
+            height = target.height,
+            flip_v = false,
+            bind = function(_, unit)
+               handle:bind(unit or 0)
+            end,
+         }
+
+         local value = {
+            width = target.width,
+            height = target.height,
+            flip_v = true,
+            framebuffer = framebuffer,
+            texture = texture_handle,
+         }
+         cache[target] = value
+         return value
+      end,
+   }
+end
+
+local function make_gl_mesh_factory(shader_provider, scope, texture_factory, target_factory)
+   return {
+      create = function(mesh, material)
+         local gl = require("gl")
+
+         local texture_handle =
+            resolve_material_texture(material, texture_factory, target_factory)
+
+         local vertex_source = gl_mesh_vertex_source
+         local fragment_source = gl_mesh_fragment_source
+         local label = "rig.render.mesh"
+         if material ~= nil and material.vertex ~= nil then
+            vertex_source = material.vertex
+            fragment_source = material.fragment
+            label = "rig.render.material." .. (material.name or "unnamed")
+         elseif texture_handle ~= nil then
+            if mesh.attribute_offsets.uv == nil then
+               rig.raise(
+                  "the built-in textured material requires a mesh with UVs (for example mesh.make_quad or mesh.parse_obj)"
+               )
+            end
+            vertex_source = gl_mesh_textured_vertex_source
+            fragment_source = gl_mesh_textured_fragment_source
+            label = "rig.render.mesh.textured"
+         end
+
          local vertex_stage = shader_provider:create_stage({
-            language = "glsl",
+            language = material and material.language or "glsl",
             stage = "vertex",
-            source_name = "rig.render.mesh.vert.glsl",
-            source = gl_mesh_vertex_source,
+            source_name = label .. ".vert.glsl",
+            source = vertex_source,
          })
          local fragment_stage = shader_provider:create_stage({
-            language = "glsl",
+            language = material and material.language or "glsl",
             stage = "fragment",
-            source_name = "rig.render.mesh.frag.glsl",
-            source = gl_mesh_fragment_source,
+            source_name = label .. ".frag.glsl",
+            source = fragment_source,
          })
 
          local program = glx.Program {
@@ -3382,17 +3746,73 @@ local function make_gl_mesh_factory(shader_provider, scope)
             mesh.vertex_stride,
             mesh.attribute_offsets.color
          )
+         if mesh.attribute_offsets.uv ~= nil then
+            vao:attribute(
+               2,
+               2,
+               gl.FLOAT,
+               gl.FALSE,
+               mesh.vertex_stride,
+               mesh.attribute_offsets.uv
+            )
+         end
+
+         local primitive = gl_primitive(gl, mesh.topology)
+         local has_texture_uniform = texture_handle ~= nil
+            and program:uniform_location("u_texture") >= 0
 
          return {
             draw = function(_, surface, mvp)
                program:use()
                program:set_uniform_matrix4fv("u_mvp", mvp)
+               if texture_handle ~= nil then
+                  texture_handle:bind(0)
+                  if has_texture_uniform then
+                     program:set_uniform1i("u_texture", 0)
+                  end
+               end
                vao:bind()
-               gl.DrawArrays(gl.TRIANGLES, 0, mesh.vertex_count)
+               gl.DrawArrays(primitive, 0, mesh.vertex_count)
             end,
          }
       end,
    }
+end
+
+function M.gl_texture_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.texture", properties = { backend = "gl" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gl" } },
+         { capability = "gl.resolver" },
+      },
+      create = function(context)
+         local scope = rig.ResourceScope(context, "gl texture factory resources")
+         context.adopt(scope, release_scope)
+         return make_gl_texture_factory(scope)
+      end,
+   })
+end
+
+function M.gl_target_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.target", properties = { backend = "gl" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gl" } },
+         { capability = "gl.resolver" },
+      },
+      create = function(context)
+         local scope = rig.ResourceScope(context, "gl target factory resources")
+         context.adopt(scope, release_scope)
+         return make_gl_target_factory(scope)
+      end,
+   })
 end
 
 function M.gl_mesh_component(plugin, options)
@@ -3405,11 +3825,18 @@ function M.gl_mesh_component(plugin, options)
          { capability = "graphics.context", properties = { backend = "gl" } },
          { capability = "gl.resolver" },
          { capability = "shader.stage" },
+         { capability = "render.texture", optional = true },
+         { capability = "render.target", optional = true },
       },
       create = function(context)
          local scope = rig.ResourceScope(context, "gl mesh factory resources")
          context.adopt(scope, release_scope)
-         return make_gl_mesh_factory(context:capability("shader.stage"), scope)
+         return make_gl_mesh_factory(
+            context:capability("shader.stage"),
+            scope,
+            context:capability("render.texture"),
+            context:capability("render.target")
+         )
       end,
    })
 end
@@ -3434,6 +3861,9 @@ function GpuRenderScene:init(options)
    self.depth_height = 0
    self.command_buffer = nil
    self.pass = nil
+   self.swapchain_texture = nil
+   self.swapchain_width = 1
+   self.swapchain_height = 1
    self.gpu_resources = M.ResourceScope(self.device, "gpu scene resources")
    if self.adopt ~= nil then
       self.adopt(self.gpu_resources, release_scope)
@@ -3460,43 +3890,50 @@ function GpuRenderScene:ensure_depth_texture(width, height)
    self.depth_height = height
 end
 
-function GpuRenderScene:begin_frame(command_buffer, swapchain_texture, width, height)
-   self.width = math.max(1, tonumber(width) or 1)
-   self.height = math.max(1, tonumber(height) or 1)
-   self:ensure_depth_texture(self.width, self.height)
-   self.command_buffer = command_buffer
+local function build_gpu_color_target_info(texture, r, g, b, a)
+   local info = ffi.new("SDL_GPUColorTargetInfo[1]")
+   info[0].texture = texture
+   info[0].mip_level = 0
+   info[0].layer_or_depth_plane = 0
+   info[0].clear_color.r = r
+   info[0].clear_color.g = g
+   info[0].clear_color.b = b
+   info[0].clear_color.a = a
+   info[0].load_op = sdl3.GPU_LOADOP_CLEAR
+   info[0].store_op = sdl3.GPU_STOREOP_STORE
+   info[0].resolve_texture = nil
+   info[0].resolve_mip_level = 0
+   info[0].resolve_layer = 0
+   info[0].cycle = false
+   info[0].cycle_resolve_texture = false
+   return info
+end
 
-   local color_target_info = ffi.new("SDL_GPUColorTargetInfo[1]")
-   color_target_info[0].texture = swapchain_texture
-   color_target_info[0].mip_level = 0
-   color_target_info[0].layer_or_depth_plane = 0
+local function build_gpu_depth_target_info(texture)
+   local info = ffi.new("SDL_GPUDepthStencilTargetInfo[1]")
+   info[0].texture = texture
+   info[0].clear_depth = 1.0
+   info[0].load_op = sdl3.GPU_LOADOP_CLEAR
+   info[0].store_op = sdl3.GPU_STOREOP_DONT_CARE
+   info[0].stencil_load_op = sdl3.GPU_LOADOP_DONT_CARE
+   info[0].stencil_store_op = sdl3.GPU_STOREOP_DONT_CARE
+   info[0].cycle = false
+   info[0].clear_stencil = 0
+   info[0].mip_level = 0
+   info[0].layer = 0
+   return info
+end
+
+function GpuRenderScene:begin_pass(color_texture, depth_texture)
    local r, g, b, a = self.background_color:to_rgbaf()
-   color_target_info[0].clear_color.r = r
-   color_target_info[0].clear_color.g = g
-   color_target_info[0].clear_color.b = b
-   color_target_info[0].clear_color.a = a
-   color_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
-   color_target_info[0].store_op = sdl3.GPU_STOREOP_STORE
-   color_target_info[0].resolve_texture = nil
-   color_target_info[0].resolve_mip_level = 0
-   color_target_info[0].resolve_layer = 0
-   color_target_info[0].cycle = false
-   color_target_info[0].cycle_resolve_texture = false
-
-   local depth_target_info = ffi.new("SDL_GPUDepthStencilTargetInfo[1]")
-   depth_target_info[0].texture = self.depth_texture
-   depth_target_info[0].clear_depth = 1.0
-   depth_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
-   depth_target_info[0].store_op = sdl3.GPU_STOREOP_DONT_CARE
-   depth_target_info[0].stencil_load_op = sdl3.GPU_LOADOP_DONT_CARE
-   depth_target_info[0].stencil_store_op = sdl3.GPU_STOREOP_DONT_CARE
-   depth_target_info[0].cycle = false
-   depth_target_info[0].clear_stencil = 0
-   depth_target_info[0].mip_level = 0
-   depth_target_info[0].layer = 0
+   local color_target_info = build_gpu_color_target_info(color_texture, r, g, b, a)
+   local depth_target_info = nil
+   if depth_texture ~= nil then
+      depth_target_info = build_gpu_depth_target_info(depth_texture)
+   end
 
    self.pass = sdl3.BeginGPURenderPass(
-      command_buffer,
+      self.command_buffer,
       color_target_info,
       1,
       depth_target_info
@@ -3506,12 +3943,40 @@ function GpuRenderScene:begin_frame(command_buffer, swapchain_texture, width, he
    end
 end
 
+function GpuRenderScene:begin_frame(command_buffer, swapchain_texture, width, height)
+   self.width = math.max(1, tonumber(width) or 1)
+   self.height = math.max(1, tonumber(height) or 1)
+   self:ensure_depth_texture(self.width, self.height)
+   self.command_buffer = command_buffer
+   self.swapchain_texture = swapchain_texture
+   self.swapchain_width = self.width
+   self.swapchain_height = self.height
+   self:begin_pass(swapchain_texture, self.depth_texture)
+end
+
+function GpuRenderScene:enter_target(handle)
+   if self.pass ~= nil then
+      sdl3.EndGPURenderPass(self.pass)
+      self.pass = nil
+   end
+   self:begin_pass(handle.color_texture, handle.depth_texture)
+end
+
+function GpuRenderScene:leave_target(handle)
+   if self.pass ~= nil then
+      sdl3.EndGPURenderPass(self.pass)
+      self.pass = nil
+   end
+   self:begin_pass(self.swapchain_texture, self.depth_texture)
+end
+
 function GpuRenderScene:end_frame()
    if self.pass ~= nil then
       sdl3.EndGPURenderPass(self.pass)
       self.pass = nil
    end
    self.command_buffer = nil
+   self.swapchain_texture = nil
 end
 
 function M.gpu_scene_component(plugin, options)
@@ -3529,32 +3994,262 @@ function M.gpu_scene_component(plugin, options)
    })
 end
 
+local function gpu_primitive(topology)
+   if topology == "lines" then
+      return sdl3.GPU_PRIMITIVETYPE_LINELIST
+   end
+   if topology == "line_strip" then
+      return sdl3.GPU_PRIMITIVETYPE_LINESTRIP
+   end
+   return sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST
+end
+
+local function gpu_filter(filter)
+   if filter == "nearest" then
+      return sdl3.GPU_FILTER_NEAREST
+   end
+   return sdl3.GPU_FILTER_LINEAR
+end
+
+local function gpu_address_mode(wrap)
+   if wrap == "repeat" then
+      return sdl3.GPU_SAMPLERADDRESSMODE_REPEAT
+   end
+   if wrap == "mirror" then
+      return sdl3.GPU_SAMPLERADDRESSMODE_MIRRORED_REPEAT
+   end
+   return sdl3.GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE
+end
+
+-- Turns `render.texture` values into SDL_GPU textures plus their samplers,
+-- sharing one pair per value through the owning scope. Samplers are explicit on
+-- SDL_GPU, so the value carries both.
+local function create_gpu_sampler(device, scope, filter, wrap)
+   local sampler_info = ffi.new("SDL_GPUSamplerCreateInfo[1]")
+   sampler_info[0].min_filter = gpu_filter(filter)
+   sampler_info[0].mag_filter = gpu_filter(filter)
+   sampler_info[0].mipmap_mode = sdl3.GPU_SAMPLERMIPMAPMODE_NEAREST
+   sampler_info[0].address_mode_u = gpu_address_mode(wrap)
+   sampler_info[0].address_mode_v = gpu_address_mode(wrap)
+   sampler_info[0].address_mode_w = gpu_address_mode(wrap)
+   sampler_info[0].mip_lod_bias = 0.0
+   sampler_info[0].max_anisotropy = 0.0
+   sampler_info[0].compare_op = sdl3.GPU_COMPAREOP_ALWAYS
+   sampler_info[0].min_lod = 0.0
+   sampler_info[0].max_lod = 1000.0
+   sampler_info[0].enable_anisotropy = false
+   sampler_info[0].enable_compare = false
+   sampler_info[0].padding1 = 0
+   sampler_info[0].padding2 = 0
+   sampler_info[0].props = 0
+
+   local sampler = sdl3.CreateGPUSampler(device, sampler_info)
+   if sampler == nil then
+      rig.raise("failed to create GPU sampler: " .. get_error_string())
+   end
+   scope:adopt(sampler, function(dev, resource)
+      sdl3.ReleaseGPUSampler(dev, resource)
+   end)
+   return sampler
+end
+
+local function make_gpu_texture_factory(options)
+   local device = options.device
+   local scope = options.scope
+   local cache = {}
+
+   return {
+      create = function(texture)
+         if type(texture) ~= "table" or texture.kind ~= "render.texture" then
+            rig.raise("render.texture provider expects a render.texture value")
+         end
+
+         local cached = cache[texture]
+         if cached ~= nil then
+            return cached
+         end
+
+         local image = texture.image
+
+         local create_info = ffi.new("SDL_GPUTextureCreateInfo[1]")
+         create_info[0].type = sdl3.GPU_TEXTURETYPE_2D
+         create_info[0].format = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+         create_info[0].usage = sdl3.GPU_TEXTUREUSAGE_SAMPLER
+         create_info[0].width = image.width
+         create_info[0].height = image.height
+         create_info[0].layer_count_or_depth = 1
+         create_info[0].num_levels = 1
+         create_info[0].sample_count = sdl3.GPU_SAMPLECOUNT_1
+         create_info[0].props = 0
+
+         local gpu_texture = sdl3.CreateGPUTexture(device, create_info)
+         if gpu_texture == nil then
+            rig.raise("failed to create GPU texture: " .. get_error_string())
+         end
+         scope:adopt(gpu_texture, function(dev, resource)
+            sdl3.ReleaseGPUTexture(dev, resource)
+         end)
+         M.upload_to_gpu_texture(
+            device,
+            gpu_texture,
+            image.pixels,
+            image.width,
+            image.height
+         )
+
+         local sampler = create_gpu_sampler(device, scope, texture.filter, texture.wrap)
+
+         local binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
+         binding[0].texture = gpu_texture
+         binding[0].sampler = sampler
+
+         local value = {
+            width = image.width,
+            height = image.height,
+            bind = function(_, pass, slot)
+               sdl3.BindGPUFragmentSamplers(pass, slot or 0, binding, 1)
+            end,
+         }
+         cache[texture] = value
+         return value
+      end,
+   }
+end
+
+-- Turns `render.target` values into an SDL_GPU color texture (sampleable and a
+-- render target) plus an optional depth texture, sharing one surface per value.
+-- The color texture uses the swapchain format so mesh pipelines built for the
+-- window also match the offscreen pass.
+local function make_gpu_target_factory(options)
+   local device = options.device
+   local window = options.window
+   local scope = options.scope
+   local cache = {}
+
+   return {
+      create = function(target)
+         if type(target) ~= "table" or target.kind ~= "render.target" then
+            rig.raise("render.target provider expects a render.target value")
+         end
+
+         local cached = cache[target]
+         if cached ~= nil then
+            return cached
+         end
+
+         local format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
+         local create_info = ffi.new("SDL_GPUTextureCreateInfo[1]")
+         create_info[0].type = sdl3.GPU_TEXTURETYPE_2D
+         create_info[0].format = format
+         create_info[0].usage = bit.bor(
+            sdl3.GPU_TEXTUREUSAGE_COLOR_TARGET,
+            sdl3.GPU_TEXTUREUSAGE_SAMPLER
+         )
+         create_info[0].width = target.width
+         create_info[0].height = target.height
+         create_info[0].layer_count_or_depth = 1
+         create_info[0].num_levels = 1
+         create_info[0].sample_count = sdl3.GPU_SAMPLECOUNT_1
+         create_info[0].props = 0
+
+         local color_texture = sdl3.CreateGPUTexture(device, create_info)
+         if color_texture == nil then
+            rig.raise("failed to create GPU render target: " .. get_error_string())
+         end
+         scope:adopt(color_texture, function(dev, resource)
+            sdl3.ReleaseGPUTexture(dev, resource)
+         end)
+
+         local depth_texture = nil
+         if target.depth then
+            depth_texture = M.create_depth_texture(
+               device,
+               target.width,
+               target.height
+            )
+            scope:adopt(depth_texture, function(dev, resource)
+               sdl3.ReleaseGPUTexture(dev, resource)
+            end)
+         end
+
+         local sampler =
+            create_gpu_sampler(device, scope, target.filter, target.wrap)
+         local binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
+         binding[0].texture = color_texture
+         binding[0].sampler = sampler
+
+         local texture_handle = {
+            width = target.width,
+            height = target.height,
+            flip_v = false,
+            bind = function(_, pass, slot)
+               sdl3.BindGPUFragmentSamplers(pass, slot or 0, binding, 1)
+            end,
+         }
+
+         local value = {
+            width = target.width,
+            height = target.height,
+            flip_v = false,
+            color_texture = color_texture,
+            depth_texture = depth_texture,
+            texture = texture_handle,
+         }
+         cache[target] = value
+         return value
+      end,
+   }
+end
+
 local function make_gpu_mesh_factory(options)
    local device = options.device
    local window = options.window
    local shader_provider = options.shader_provider
    local mesh_provider = options.mesh_provider
+   local texture_factory = options.texture_factory
+   local target_factory = options.target_factory
    local scope = options.scope
 
    return {
-      create = function(mesh)
+      create = function(mesh, material)
          local vertex_input = mesh_provider:build_vertex_input(mesh)
 
+         local texture_handle =
+            resolve_material_texture(material, texture_factory, target_factory)
+
+         local vertex_source = gpu_mesh_vertex_source
+         local fragment_source = gpu_mesh_fragment_source
+         local label = "rig.render.mesh"
+         if material ~= nil and material.vertex ~= nil then
+            vertex_source = material.vertex
+            fragment_source = material.fragment
+            label = "rig.render.material." .. (material.name or "unnamed")
+         elseif texture_handle ~= nil then
+            if mesh.attribute_offsets.uv == nil then
+               rig.raise(
+                  "the built-in textured material requires a mesh with UVs (for example mesh.make_quad or mesh.parse_obj)"
+               )
+            end
+            vertex_source = gpu_mesh_textured_vertex_source
+            fragment_source = gpu_mesh_textured_fragment_source
+            label = "rig.render.mesh.textured"
+         end
+
          local vertex_stage = shader_provider:create_stage(shader.compile {
-            language = "glsl",
+            language = material and material.language or "glsl",
             stage = "vertex",
-            source_name = "rig.render.mesh.vert.glsl",
-            source = gpu_mesh_vertex_source,
+            source_name = label .. ".vert.glsl",
+            source = vertex_source,
          })
          scope:adopt(vertex_stage, function(_, resource)
             shader_provider:destroy_stage(resource)
          end)
 
          local fragment_stage = shader_provider:create_stage(shader.compile {
-            language = "glsl",
+            language = material and material.language or "glsl",
             stage = "fragment",
-            source_name = "rig.render.mesh.frag.glsl",
-            source = gpu_mesh_fragment_source,
+            source_name = label .. ".frag.glsl",
+            source = fragment_source,
          })
          scope:adopt(fragment_stage, function(_, resource)
             shader_provider:destroy_stage(resource)
@@ -3570,7 +4265,7 @@ local function make_gpu_mesh_factory(options)
             vertex_shader = vertex_stage,
             fragment_shader = fragment_stage,
             vertex_input = vertex_input,
-            primitive_type = sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST,
+            primitive_type = gpu_primitive(mesh.topology),
             rasterizer_state = {
                fill_mode = sdl3.GPU_FILLMODE_FILL,
                cull_mode = sdl3.GPU_CULLMODE_NONE,
@@ -3621,6 +4316,9 @@ local function make_gpu_mesh_factory(options)
                )
                sdl3.BindGPUGraphicsPipeline(surface.pass, pipeline)
                sdl3.BindGPUVertexBuffers(surface.pass, 0, binding, 1)
+               if texture_handle ~= nil then
+                  texture_handle:bind(surface.pass, 0)
+               end
                sdl3.DrawGPUPrimitives(
                   surface.pass,
                   mesh.vertex_count,
@@ -3634,6 +4332,51 @@ local function make_gpu_mesh_factory(options)
    }
 end
 
+function M.gpu_texture_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.texture", properties = { backend = "gpu" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gpu" } },
+      },
+      create = function(context)
+         local graphics = context:capability("graphics.context")
+         local scope =
+            M.ResourceScope(graphics.device, "gpu texture factory resources")
+         context.adopt(scope, release_scope)
+         return make_gpu_texture_factory {
+            device = graphics.device,
+            scope = scope,
+         }
+      end,
+   })
+end
+
+function M.gpu_target_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.target", properties = { backend = "gpu" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gpu" } },
+      },
+      create = function(context)
+         local graphics = context:capability("graphics.context")
+         local scope =
+            M.ResourceScope(graphics.device, "gpu target factory resources")
+         context.adopt(scope, release_scope)
+         return make_gpu_target_factory {
+            device = graphics.device,
+            window = graphics.window,
+            scope = scope,
+         }
+      end,
+   })
+end
+
 function M.gpu_mesh_component(plugin, options)
    options = options or {}
    return runtime.descriptor(plugin, {
@@ -3644,6 +4387,8 @@ function M.gpu_mesh_component(plugin, options)
          { capability = "graphics.context", properties = { backend = "gpu" } },
          { capability = "shader.stage" },
          { capability = "mesh.vertex_input" },
+         { capability = "render.texture", optional = true },
+         { capability = "render.target", optional = true },
       },
       create = function(context)
          local graphics = context:capability("graphics.context")
@@ -3655,6 +4400,8 @@ function M.gpu_mesh_component(plugin, options)
             window = graphics.window,
             shader_provider = context:capability("shader.stage"),
             mesh_provider = context:capability("mesh.vertex_input"),
+            texture_factory = context:capability("render.texture"),
+            target_factory = context:capability("render.target"),
             scope = scope,
          }
       end,
@@ -3750,6 +4497,8 @@ function M.bundle_sdl3_gl(builder, options)
    builder:add(M.gl_resolver_component(plugin, { name = "gl_resolver" }))
    builder:add(M.gl_shader_stage_component(plugin, { name = "shader" }))
    builder:add(M.gl_scene_component(plugin, {}))
+   builder:add(M.gl_texture_component(plugin, {}))
+   builder:add(M.gl_target_component(plugin, {}))
    builder:add(M.gl_mesh_component(plugin, {}))
    builder:add(M.frame_component(plugin, {
       name = "frame",
@@ -3783,6 +4532,8 @@ function M.bundle_sdl3_gpu(builder, options)
    builder:add(M.mesh_vertex_input_component(plugin, { name = "mesh" }))
    builder:add(M.gpu_shader_stage_component(plugin, { name = "shader" }))
    builder:add(M.gpu_scene_component(plugin, {}))
+   builder:add(M.gpu_texture_component(plugin, {}))
+   builder:add(M.gpu_target_component(plugin, {}))
    builder:add(M.gpu_mesh_component(plugin, {}))
    builder:add(M.frame_component(plugin, {
       name = "frame",

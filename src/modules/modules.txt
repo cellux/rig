@@ -31,5 +31,15 @@ animator
 profiler
 sdl3x
 mathx
+motion
+camera
 mesh
 render
+sketch
+input
+params
+overlay
+audio
+png
+jpeg
+asset

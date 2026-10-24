@@ -16,6 +16,11 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(LIBUV REQUIRED libuv)
 find_program(LUAJIT_BIN NAMES luajit luajit-2.1 REQUIRED)
 
+# JPEG decoding is optional: when libjpeg headers and library are present,
+# jpeg.c compiles the real decoder; otherwise it compiles a stub that reports
+# missing support at runtime.
+find_package(JPEG)
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/src/modules/modules.cmake")
 
 add_executable(rig
@@ -42,6 +47,12 @@ target_link_libraries(rig PRIVATE
     PkgConfig::LUAJIT
     ${CMAKE_DL_LIBS}
 )
+
+if(JPEG_FOUND)
+    target_compile_definitions(rig PRIVATE RIG_HAVE_JPEG=1)
+    target_include_directories(rig PRIVATE ${JPEG_INCLUDE_DIRS})
+    target_link_libraries(rig PRIVATE ${JPEG_LIBRARIES})
+endif()
 
 target_compile_options(rig PRIVATE
     ${SDL3_CFLAGS_OTHER}

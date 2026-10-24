@@ -8,12 +8,14 @@ local Program = rig.Class()
 local Buffer = rig.Class()
 local VertexArray = rig.Class()
 local Texture2D = rig.Class()
+local Framebuffer = rig.Class()
 
 M.Shader = Shader
 M.Program = Program
 M.Buffer = Buffer
 M.VertexArray = VertexArray
 M.Texture2D = Texture2D
+M.Framebuffer = Framebuffer
 
 local function ensure_shader(value)
    if getmetatable(value) ~= Shader then
@@ -680,6 +682,105 @@ function Texture2D:release()
    textures[0] = self.id
    gl.DeleteTextures(1, textures)
    self.id = 0
+end
+
+local function ensure_framebuffer(value)
+   if getmetatable(value) ~= Framebuffer then
+      rig.raise("glx operation expects a glx.Framebuffer")
+   end
+end
+
+-- A framebuffer object for offscreen rendering. `color` attaches a color
+-- texture; `depth` allocates and attaches a depth renderbuffer. Rendering into
+-- it draws with the OpenGL bottom-up texture convention, so callers that want
+-- top-down results (matching uploaded images) flip the projection when sampling
+-- the attached color texture.
+function Framebuffer:init()
+   local framebuffers = ffi.new("GLuint[1]")
+   gl.GenFramebuffers(1, framebuffers)
+
+   self.id = tonumber(framebuffers[0]) or 0
+   if self.id == 0 then
+      rig.raise("failed to create OpenGL framebuffer")
+   end
+   self.depth_id = 0
+end
+
+function Framebuffer:bind()
+   ensure_framebuffer(self)
+   gl.BindFramebuffer(gl.FRAMEBUFFER, self.id)
+   return self
+end
+
+function Framebuffer:color(texture)
+   ensure_framebuffer(self)
+   ensure_texture_2d_live(texture)
+
+   gl.BindFramebuffer(gl.FRAMEBUFFER, self.id)
+   gl.FramebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      texture.id,
+      0
+   )
+   return self
+end
+
+function Framebuffer:depth(width, height)
+   ensure_framebuffer(self)
+
+   local renderbuffers = ffi.new("GLuint[1]")
+   gl.GenRenderbuffers(1, renderbuffers)
+   local depth_id = tonumber(renderbuffers[0]) or 0
+   if depth_id == 0 then
+      rig.raise("failed to create OpenGL depth renderbuffer")
+   end
+
+   gl.BindRenderbuffer(gl.RENDERBUFFER, depth_id)
+   gl.RenderbufferStorage(
+      gl.RENDERBUFFER,
+      gl.DEPTH_COMPONENT24,
+      width,
+      height
+   )
+   gl.BindFramebuffer(gl.FRAMEBUFFER, self.id)
+   gl.FramebufferRenderbuffer(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.RENDERBUFFER,
+      depth_id
+   )
+
+   self.depth_id = depth_id
+   return self
+end
+
+function Framebuffer:check()
+   ensure_framebuffer(self)
+   local status = gl.CheckFramebufferStatus(gl.FRAMEBUFFER)
+   if status ~= gl.FRAMEBUFFER_COMPLETE then
+      rig.raise("OpenGL framebuffer is incomplete (0x%08x)", tonumber(status) or 0)
+   end
+   return self
+end
+
+function Framebuffer:release()
+   ensure_framebuffer(self)
+
+   if self.depth_id ~= 0 then
+      local renderbuffers = ffi.new("GLuint[1]")
+      renderbuffers[0] = self.depth_id
+      gl.DeleteRenderbuffers(1, renderbuffers)
+      self.depth_id = 0
+   end
+
+   if self.id ~= 0 then
+      local framebuffers = ffi.new("GLuint[1]")
+      framebuffers[0] = self.id
+      gl.DeleteFramebuffers(1, framebuffers)
+      self.id = 0
+   end
 end
 
 function M.get_version_string()
