@@ -1,15 +1,19 @@
-local sdl3 = require("sdl3")
-local sdl3x = require("sdl3x")
-local scenegraph = require("scenegraph")
-local animator = require("animator")
-local mathx = require("mathx")
-local profiler = require("profiler")
 local color = require("color")
-local ffi = require("ffi")
+local clamp = require("mathx").clamp
+local clamp01 = require("mathx").clamp01
+local profiler = require("profiler")
+local rig = require("rig")
+local time = require("time")
 
--- Populated by the initial sdl3 on_resize callback before after_setup runs.
-local window_width
-local window_height
+-- An ant colony built on the backend-neutral 2D stack: `draw` supplies the
+-- rectangles and lines, and everything else is plain Lua. The same script runs
+-- on SDL_Renderer, OpenGL, and SDL_GPU. Pick one with RIG_BACKEND (see
+-- examples/backend.lua); the default is `gl`.
+
+local backend = rig.require("./backend").select {
+   backends = { renderer = true, gl = true, gpu = true },
+}
+
 local ant_count = 96
 local ant_speed = 52.0
 local ant_margin = 8
@@ -18,18 +22,11 @@ local base_sensor_distance = 16.0
 local base_sensor_half_width = 6.0
 local base_body_radius = 6.0
 local max_turn_step = 0.12
+
+local surface_width = 1
+local surface_height = 1
 local ant_scale = 1.0
 
-local Object = scenegraph.Object
-local Ant = rig.Class(Object)
-local Slider = rig.Class(Object)
-local ProfilerOverlay = rig.Class(Object)
-local Scene = rig.Class(Object)
-local App = rig.Class(animator.App)
-
-local rect = ffi.new("SDL_FRect[1]")
-local clamp = mathx.clamp
-local clamp01 = mathx.clamp01
 local background_color = color.rgbaf(0.06, 0.08, 0.05, 1.0)
 local fps_panel_color = color.rgbaf(0.08, 0.09, 0.07, 1.0)
 local fps_text_color = color.rgbaf(0.96, 0.96, 0.88, 1.0)
@@ -49,124 +46,39 @@ local slider_fill_color = color.WHITE:copy()
 local slider_knob_color = color.WHITE:copy()
 local slider_outline_color = color.WHITE:copy()
 
-local palette = {
-   honey_gold = color.rgbaf(0.92, 0.72, 0.29, 1.0),
-   coral_red = color.rgbaf(0.93, 0.46, 0.34, 1.0),
-   jade_green = color.rgbaf(0.36, 0.77, 0.55, 1.0),
-   sky_blue = color.rgbaf(0.38, 0.66, 0.91, 1.0),
-   orchid_purple = color.rgbaf(0.84, 0.49, 0.83, 1.0),
-}
-
 local palette_cycle = {
-   palette.honey_gold,
-   palette.coral_red,
-   palette.jade_green,
-   palette.sky_blue,
-   palette.orchid_purple,
+   color.rgbaf(0.92, 0.72, 0.29, 1.0),
+   color.rgbaf(0.93, 0.46, 0.34, 1.0),
+   color.rgbaf(0.36, 0.77, 0.55, 1.0),
+   color.rgbaf(0.38, 0.66, 0.91, 1.0),
+   color.rgbaf(0.84, 0.49, 0.83, 1.0),
 }
 
+-- A tiny 3x5 bitmap font for the FPS readout, drawn entirely with `draw.rect`.
 local glyphs = {
-   ["0"] = {
-      "111",
-      "101",
-      "101",
-      "101",
-      "111",
-   },
-   ["1"] = {
-      "010",
-      "110",
-      "010",
-      "010",
-      "111",
-   },
-   ["2"] = {
-      "111",
-      "001",
-      "111",
-      "100",
-      "111",
-   },
-   ["3"] = {
-      "111",
-      "001",
-      "111",
-      "001",
-      "111",
-   },
-   ["4"] = {
-      "101",
-      "101",
-      "111",
-      "001",
-      "001",
-   },
-   ["5"] = {
-      "111",
-      "100",
-      "111",
-      "001",
-      "111",
-   },
-   ["6"] = {
-      "111",
-      "100",
-      "111",
-      "101",
-      "111",
-   },
-   ["7"] = {
-      "111",
-      "001",
-      "001",
-      "001",
-      "001",
-   },
-   ["8"] = {
-      "111",
-      "101",
-      "111",
-      "101",
-      "111",
-   },
-   ["9"] = {
-      "111",
-      "101",
-      "111",
-      "001",
-      "111",
-   },
-   ["F"] = {
-      "111",
-      "100",
-      "110",
-      "100",
-      "100",
-   },
-   ["P"] = {
-      "110",
-      "101",
-      "110",
-      "100",
-      "100",
-   },
-   ["S"] = {
-      "111",
-      "100",
-      "111",
-      "001",
-      "111",
-   },
-   [" "] = {
-      "000",
-      "000",
-      "000",
-      "000",
-      "000",
-   },
+   ["0"] = { "111", "101", "101", "101", "111" },
+   ["1"] = { "010", "110", "010", "010", "111" },
+   ["2"] = { "111", "001", "111", "100", "111" },
+   ["3"] = { "111", "001", "111", "001", "111" },
+   ["4"] = { "101", "101", "111", "001", "001" },
+   ["5"] = { "111", "100", "111", "001", "111" },
+   ["6"] = { "111", "100", "111", "101", "111" },
+   ["7"] = { "111", "001", "001", "001", "001" },
+   ["8"] = { "111", "101", "111", "101", "111" },
+   ["9"] = { "111", "101", "111", "001", "111" },
+   ["F"] = { "111", "100", "110", "100", "100" },
+   ["P"] = { "110", "101", "110", "100", "100" },
+   ["S"] = { "111", "100", "111", "001", "111" },
+   [" "] = { "000", "000", "000", "000", "000" },
 }
 
-math.randomseed(tonumber(sdl3.GetPerformanceCounter()))
+math.randomseed(math.floor(time.monotonic() * 1000000) % 2147483647)
+
+local ants = {}
+local canvas = nil
+local frame_profiler = nil
+
+--[ small math helpers ]--
 
 local function choose_turn()
    local roll = math.random()
@@ -215,40 +127,8 @@ local function to_world(ant, cos_angle, sin_angle, x, y)
    return ant.x + rx, ant.y + ry
 end
 
-local function set_color(renderer, draw_color)
-   if not sdl3.SetRenderDrawColor(
-      renderer,
-      draw_color.r,
-      draw_color.g,
-      draw_color.b,
-      draw_color.a
-   ) then
-      rig.raise("failed to set renderer color: " .. sdl3x.get_error())
-   end
-end
-
 local function point_in_rect(x, y, rx, ry, rw, rh)
    return x >= rx and x <= rx + rw and y >= ry and y <= ry + rh
-end
-
-local function update_ant_scale_from_slider(value)
-   ant_scale = 0.65 + value * 1.55
-end
-
-local function fill_rect(renderer, x, y, w, h)
-   rect[0].x = x
-   rect[0].y = y
-   rect[0].w = w
-   rect[0].h = h
-   if not sdl3.RenderFillRect(renderer, rect) then
-      rig.raise("failed to draw ant segment: " .. sdl3x.get_error())
-   end
-end
-
-local function draw_line(renderer, x1, y1, x2, y2)
-   if not sdl3.RenderLine(renderer, x1, y1, x2, y2) then
-      rig.raise("failed to draw ant leg: " .. sdl3x.get_error())
-   end
 end
 
 local function body_radius()
@@ -263,22 +143,27 @@ local function sensor_half_width()
    return base_sensor_half_width * ant_scale
 end
 
-function Slider:init()
-   self:super().init(self)
-   self.x = nil
-   self.y = 14
-   self.w = 152
-   self.h = 18
-   self.dragging = false
-   self.hover = false
-   self.value = 0.4
-   self.emphasis = 0.0
-   self.target_emphasis = 0.0
-   self.knob_size = 14
-   update_ant_scale_from_slider(self.value)
+local function update_ant_scale_from_slider(value)
+   ant_scale = 0.65 + value * 1.55
 end
 
-function Slider:update_value_from_mouse(x)
+--[ slider ]--
+
+local slider = {
+   x = 0,
+   y = 14,
+   w = 152,
+   h = 18,
+   dragging = false,
+   hover = false,
+   value = 0.4,
+   emphasis = 0.0,
+   target_emphasis = 0.0,
+   knob_size = 14,
+}
+update_ant_scale_from_slider(slider.value)
+
+function slider:update_value_from_mouse(x)
    local knob_half = self.knob_size * 0.5
    local usable_left = self.x + knob_half
    local usable_right = self.x + self.w - knob_half
@@ -287,7 +172,7 @@ function Slider:update_value_from_mouse(x)
    update_ant_scale_from_slider(self.value)
 end
 
-function Slider:update_hover(x, y)
+function slider:update_hover(x, y)
    local pad = 6
    self.hover = point_in_rect(
       x,
@@ -300,7 +185,7 @@ function Slider:update_hover(x, y)
    self.target_emphasis = (self.dragging or self.hover) and 1.0 or 0.0
 end
 
-function Slider:handle_mouse(mouse_info)
+function slider:handle_mouse(mouse_info)
    local x = mouse_info.x or 0
    local y = mouse_info.y or 0
 
@@ -313,7 +198,7 @@ function Slider:handle_mouse(mouse_info)
       return
    end
 
-   if mouse_info.button ~= sdl3.BUTTON_LEFT then
+   if mouse_info.button ~= 1 then
       return
    end
 
@@ -332,89 +217,21 @@ function Slider:handle_mouse(mouse_info)
    end
 end
 
-function Slider:update(dt)
+function slider:update(dt)
    local blend = 1.0 - math.exp(-12.0 * dt)
-   self.emphasis = self.emphasis
-      + (self.target_emphasis - self.emphasis) * blend
+   self.emphasis = self.emphasis + (self.target_emphasis - self.emphasis) * blend
 
    if math.abs(self.target_emphasis - self.emphasis) < 0.002 then
       self.emphasis = self.target_emphasis
    end
 end
 
-local function draw_glyph(renderer, glyph, x, y, scale)
-   for row = 1, #glyph do
-      local pattern = glyph[row]
-      for col = 1, #pattern do
-         if pattern:sub(col, col) == "1" then
-            fill_rect(
-               renderer,
-               x + (col - 1) * scale,
-               y + (row - 1) * scale,
-               scale,
-               scale
-            )
-         end
-      end
-   end
-end
-
-local function draw_text(renderer, text, x, y, draw_color, scale)
-   set_color(renderer, draw_color)
-
-   local cursor_x = x
-   for i = 1, #text do
-      local ch = text:sub(i, i)
-      local glyph = glyphs[ch] or glyphs[" "]
-      draw_glyph(renderer, glyph, cursor_x, y, scale)
-      cursor_x = cursor_x + 4 * scale
-   end
-end
-
-local function draw_fps_overlay(renderer, frame_profiler)
-   local profile = frame_profiler:snapshot()
-   local label = ("FPS %d"):format(math.floor(profile.fps + 0.5))
-   local panel_w = (#label * 4 * font_scale) + 8
-   local panel_h = (5 * font_scale) + 8
-   local panel_x = 12
-   local panel_y = 12
-
-   set_color(renderer, fps_panel_color)
-   fill_rect(renderer, panel_x, panel_y, panel_w, panel_h)
-
-   draw_text(
-      renderer,
-      label,
-      panel_x + 4,
-      panel_y + 4,
-      fps_text_color,
-      font_scale
-   )
-end
-
-function Slider:draw(context)
-   local renderer = context.renderer
+function slider:draw()
    local amount = clamp01(self.emphasis)
-   slider_panel_color:set_mix(
-      slider_panel_dim_color,
-      slider_panel_bright_color,
-      amount
-   )
-   slider_track_color:set_mix(
-      slider_track_dim_color,
-      slider_track_bright_color,
-      amount
-   )
-   slider_fill_color:set_mix(
-      slider_fill_dim_color,
-      slider_fill_bright_color,
-      amount
-   )
-   slider_knob_color:set_mix(
-      slider_knob_dim_color,
-      slider_knob_bright_color,
-      amount
-   )
+   slider_panel_color:set_mix(slider_panel_dim_color, slider_panel_bright_color, amount)
+   slider_track_color:set_mix(slider_track_dim_color, slider_track_bright_color, amount)
+   slider_fill_color:set_mix(slider_fill_dim_color, slider_fill_bright_color, amount)
+   slider_knob_color:set_mix(slider_knob_dim_color, slider_knob_bright_color, amount)
    slider_outline_color:set_mix(
       slider_outline_dim_color,
       slider_outline_bright_color,
@@ -429,181 +246,71 @@ function Slider:draw(context)
    local knob_y = self.y + self.h * 0.5
    local fill_w = math.max(0, knob_x - self.x)
 
-   set_color(renderer, slider_panel_color)
-   fill_rect(
-      renderer,
+   canvas:rect(
       self.x - panel_pad,
       self.y - panel_pad,
       self.w + panel_pad * 2,
-      self.h + panel_pad * 2
+      self.h + panel_pad * 2,
+      slider_panel_color
    )
 
-   set_color(renderer, slider_outline_color)
-   draw_line(
-      renderer,
-      self.x - panel_pad - 1,
-      self.y - panel_pad - 1,
-      self.x + self.w + panel_pad + 1,
-      self.y - panel_pad - 1
-   )
-   draw_line(
-      renderer,
-      self.x - panel_pad - 1,
-      self.y + self.h + panel_pad + 1,
-      self.x + self.w + panel_pad + 1,
-      self.y + self.h + panel_pad + 1
-   )
-   draw_line(
-      renderer,
-      self.x - panel_pad - 1,
-      self.y - panel_pad - 1,
-      self.x - panel_pad - 1,
-      self.y + self.h + panel_pad + 1
-   )
-   draw_line(
-      renderer,
-      self.x + self.w + panel_pad + 1,
-      self.y - panel_pad - 1,
-      self.x + self.w + panel_pad + 1,
-      self.y + self.h + panel_pad + 1
-   )
+   local left = self.x - panel_pad - 1
+   local right = self.x + self.w + panel_pad + 1
+   local top = self.y - panel_pad - 1
+   local bottom = self.y + self.h + panel_pad + 1
+   canvas:line(left, top, right, top, slider_outline_color)
+   canvas:line(left, bottom, right, bottom, slider_outline_color)
+   canvas:line(left, top, left, bottom, slider_outline_color)
+   canvas:line(right, top, right, bottom, slider_outline_color)
 
-   set_color(renderer, slider_track_color)
-   fill_rect(renderer, self.x, track_y, self.w, track_h)
-
-   set_color(renderer, slider_fill_color)
-   fill_rect(renderer, self.x, track_y, fill_w, track_h)
-
-   set_color(renderer, slider_knob_color)
-   fill_rect(
-      renderer,
+   canvas:rect(self.x, track_y, self.w, track_h, slider_track_color)
+   canvas:rect(self.x, track_y, fill_w, track_h, slider_fill_color)
+   canvas:rect(
       knob_x - knob_half,
       knob_y - knob_half,
       self.knob_size,
-      self.knob_size
+      self.knob_size,
+      slider_knob_color
    )
 end
 
-function Ant:init(index, ant_color)
-   self:super().init(self)
-   self.id = index
-   self.x = 0
-   self.y = 0
-   self.angle = math.random() * math.pi * 2.0
-   self.desired_angle = self.angle
-   self.turn_speed = max_turn_step * (0.8 + math.random() * 0.5)
-   self.step_interval = 0.012 + math.random() * 0.020
-   self.pause_chance = 0.01 + math.random() * 0.04
-   self.walk_phase = math.random() * math.pi * 2.0
-   self.color = ant_color
-   self.speed = ant_speed * self.step_interval * (0.85 + math.random() * 0.35)
-   self.scene = nil
+--[ ants ]--
+
+local function create_ant(index, ant_color)
+   return {
+      id = index,
+      x = 0,
+      y = 0,
+      angle = math.random() * math.pi * 2.0,
+      desired_angle = 0,
+      turn_speed = max_turn_step * (0.8 + math.random() * 0.5),
+      step_interval = 0.012 + math.random() * 0.020,
+      pause_chance = 0.01 + math.random() * 0.04,
+      walk_phase = math.random() * math.pi * 2.0,
+      color = ant_color,
+      timer = 0.0,
+   }
 end
 
-function Ant:place_randomly()
-   self.x = math.random(ant_margin, window_width - ant_margin)
-   self.y = math.random(ant_margin, window_height - ant_margin)
+local function initialize_ant(ant)
+   ant.desired_angle = ant.angle
+   ant.speed = ant_speed * ant.step_interval * (0.85 + math.random() * 0.35)
+   ant.timer = math.random() * ant.step_interval
 end
 
-function Ant:draw(context)
-   local renderer = context.renderer
-   local scale = ant_scale
-   local cos_angle = math.cos(self.angle)
-   local sin_angle = math.sin(self.angle)
-   local gait = math.sin(self.walk_phase)
-   local gait_opposite = math.sin(self.walk_phase + math.pi)
-   local front_leg_swing = gait * 1.8 * scale
-   local back_leg_swing = gait_opposite * 1.6 * scale
-   local antenna_swing = gait * 0.9 * scale
-
-   local head_x, head_y = to_world(self, cos_angle, sin_angle, 5.0 * scale, 0.0)
-   local thorax_x, thorax_y = to_world(self, cos_angle, sin_angle, 0.0, 0.0)
-   local abdomen_x, abdomen_y = to_world(self, cos_angle, sin_angle, -5.0 * scale, 0.0)
-
-   local leg_1_x1, leg_1_y1 = to_world(self, cos_angle, sin_angle, 1.0 * scale, -1.0 * scale)
-   local leg_1_x2, leg_1_y2 = to_world(
-      self,
-      cos_angle,
-      sin_angle,
-      5.0 * scale + front_leg_swing,
-      -4.0 * scale - front_leg_swing * 0.6
-   )
-   local leg_2_x1, leg_2_y1 = to_world(self, cos_angle, sin_angle, 1.0 * scale, 1.0 * scale)
-   local leg_2_x2, leg_2_y2 = to_world(
-      self,
-      cos_angle,
-      sin_angle,
-      5.0 * scale - front_leg_swing,
-      4.0 * scale + front_leg_swing * 0.6
-   )
-   local leg_3_x1, leg_3_y1 = to_world(self, cos_angle, sin_angle, -2.0 * scale, -1.0 * scale)
-   local leg_3_x2, leg_3_y2 = to_world(
-      self,
-      cos_angle,
-      sin_angle,
-      -6.0 * scale - back_leg_swing,
-      -4.0 * scale - back_leg_swing * 0.6
-   )
-   local leg_4_x1, leg_4_y1 = to_world(self, cos_angle, sin_angle, -2.0 * scale, 1.0 * scale)
-   local leg_4_x2, leg_4_y2 = to_world(
-      self,
-      cos_angle,
-      sin_angle,
-      -6.0 * scale + back_leg_swing,
-      4.0 * scale + back_leg_swing * 0.6
-   )
-   local antenna_1_x2, antenna_1_y2 = to_world(
-      self,
-      cos_angle,
-      sin_angle,
-      8.0 * scale,
-      -2.0 * scale - antenna_swing
-   )
-   local antenna_2_x2, antenna_2_y2 = to_world(
-      self,
-      cos_angle,
-      sin_angle,
-      8.0 * scale,
-      2.0 * scale + antenna_swing
-   )
-   local abdomen_radius = math.max(2.0, 2.0 * scale)
-   local thorax_radius = math.max(2.0, 2.0 * scale)
-   local head_radius = math.max(1.0, 1.5 * scale)
-
-   set_color(renderer, self.color)
-   fill_rect(
-      renderer,
-      abdomen_x - abdomen_radius,
-      abdomen_y - abdomen_radius,
-      abdomen_radius * 2.0,
-      abdomen_radius * 2.0
-   )
-   fill_rect(
-      renderer,
-      thorax_x - thorax_radius,
-      thorax_y - thorax_radius,
-      thorax_radius * 2.0,
-      thorax_radius * 2.0
-   )
-   fill_rect(
-      renderer,
-      head_x - head_radius,
-      head_y - head_radius,
-      head_radius * 2.0,
-      head_radius * 2.0
-   )
-
-   draw_line(renderer, leg_1_x1, leg_1_y1, leg_1_x2, leg_1_y2)
-   draw_line(renderer, leg_2_x1, leg_2_y1, leg_2_x2, leg_2_y2)
-   draw_line(renderer, leg_3_x1, leg_3_y1, leg_3_x2, leg_3_y2)
-   draw_line(renderer, leg_4_x1, leg_4_y1, leg_4_x2, leg_4_y2)
-   draw_line(renderer, head_x, head_y, antenna_1_x2, antenna_1_y2)
-   draw_line(renderer, head_x, head_y, antenna_2_x2, antenna_2_y2)
+local function place_ant_randomly(ant)
+   ant.x = math.random(ant_margin, math.max(ant_margin, surface_width - ant_margin))
+   ant.y = math.random(ant_margin, math.max(ant_margin, surface_height - ant_margin))
 end
 
-function Ant:sense_forward_obstacle(all_ants)
-   local fx = math.cos(self.angle)
-   local fy = math.sin(self.angle)
+local function clamp_ant_to_window(ant)
+   ant.x = clamp(ant.x, ant_margin, math.max(ant_margin, surface_width - ant_margin))
+   ant.y = clamp(ant.y, ant_margin, math.max(ant_margin, surface_height - ant_margin))
+end
+
+local function sense_forward_obstacle(ant, all_ants)
+   local fx = math.cos(ant.angle)
+   local fy = math.sin(ant.angle)
    local nearest_forward = nil
    local steer = 0
    local max_forward_distance = sensor_distance()
@@ -611,9 +318,9 @@ function Ant:sense_forward_obstacle(all_ants)
 
    for i = 1, #all_ants do
       local other = all_ants[i]
-      if other ~= self then
-         local dx = other.x - self.x
-         local dy = other.y - self.y
+      if other ~= ant then
+         local dx = other.x - ant.x
+         local dy = other.y - ant.y
          local forward = dx * fx + dy * fy
 
          if forward > 0.0 and forward < max_forward_distance then
@@ -639,7 +346,7 @@ function Ant:sense_forward_obstacle(all_ants)
    return steer, 1.0 - nearest_forward / max_forward_distance
 end
 
-function Ant:resolve_overlap(all_ants)
+local function resolve_overlap(ant, all_ants)
    local min_distance = body_radius() * 2.0
    local min_distance_sq = min_distance * min_distance
    local collided = false
@@ -648,9 +355,9 @@ function Ant:resolve_overlap(all_ants)
 
    for i = 1, #all_ants do
       local other = all_ants[i]
-      if other ~= self then
-         local dx = self.x - other.x
-         local dy = self.y - other.y
+      if other ~= ant then
+         local dx = ant.x - other.x
+         local dy = ant.y - other.y
          local distance_sq = dx * dx + dy * dy
 
          if distance_sq < min_distance_sq then
@@ -672,9 +379,9 @@ function Ant:resolve_overlap(all_ants)
    end
 
    if collided then
-      self.x = clamp(self.x + push_x, ant_margin, window_width - ant_margin)
-      self.y = clamp(self.y + push_y, ant_margin, window_height - ant_margin)
-      self.desired_angle = normalize_angle(
+      ant.x = clamp(ant.x + push_x, ant_margin, math.max(ant_margin, surface_width - ant_margin))
+      ant.y = clamp(ant.y + push_y, ant_margin, math.max(ant_margin, surface_height - ant_margin))
+      ant.desired_angle = normalize_angle(
          math.atan2(push_y, push_x) + (math.random() - 0.5) * 0.4
       )
    end
@@ -682,18 +389,13 @@ function Ant:resolve_overlap(all_ants)
    return collided
 end
 
-function Ant:clamp_to_window()
-   self.x = clamp(self.x, ant_margin, window_width - ant_margin)
-   self.y = clamp(self.y, ant_margin, window_height - ant_margin)
-end
+local function step_ant(ant)
+   ant.angle = turn_toward(ant.angle, ant.desired_angle, ant.turn_speed)
 
-function Ant:step(all_ants)
-   self.angle = turn_toward(self.angle, self.desired_angle, self.turn_speed)
-
-   local avoid_direction, avoid_strength = self:sense_forward_obstacle(all_ants)
+   local avoid_direction, avoid_strength = sense_forward_obstacle(ant, ants)
    if avoid_direction ~= 0 then
-      self.desired_angle = steer_angle(
-         self.desired_angle,
+      ant.desired_angle = steer_angle(
+         ant.desired_angle,
          avoid_direction * (0.020 + avoid_strength * 0.060)
       )
    end
@@ -706,32 +408,31 @@ function Ant:step(all_ants)
       end
    end
 
-   self.x = self.x + math.cos(self.angle) * self.speed * move_scale
-   self.y = self.y + math.sin(self.angle) * self.speed * move_scale
-   self.walk_phase = normalize_angle(self.walk_phase + 0.55 + move_scale * 0.65)
+   ant.x = ant.x + math.cos(ant.angle) * ant.speed * move_scale
+   ant.y = ant.y + math.sin(ant.angle) * ant.speed * move_scale
+   ant.walk_phase = normalize_angle(ant.walk_phase + 0.55 + move_scale * 0.65)
 
    local bounced = false
+   local max_x = math.max(ant_margin, surface_width - ant_margin)
+   local max_y = math.max(ant_margin, surface_height - ant_margin)
 
-   if self.x < ant_margin or self.x > window_width - ant_margin then
-      self.x = clamp(self.x, ant_margin, window_width - ant_margin)
-      self.desired_angle = normalize_angle(math.pi - self.angle)
+   if ant.x < ant_margin or ant.x > max_x then
+      ant.x = clamp(ant.x, ant_margin, max_x)
+      ant.desired_angle = normalize_angle(math.pi - ant.angle)
       bounced = true
    end
-   if self.y < ant_margin or self.y > window_height - ant_margin then
-      self.y = clamp(self.y, ant_margin, window_height - ant_margin)
-      self.desired_angle = normalize_angle(-self.angle)
+   if ant.y < ant_margin or ant.y > max_y then
+      ant.y = clamp(ant.y, ant_margin, max_y)
+      ant.desired_angle = normalize_angle(-ant.angle)
       bounced = true
    end
 
    if bounced then
-      self.desired_angle = steer_angle(
-         self.desired_angle,
-         (math.random() - 0.5) * 0.8
-      )
+      ant.desired_angle = steer_angle(ant.desired_angle, (math.random() - 0.5) * 0.8)
       return
    end
 
-   local collided = self:resolve_overlap(all_ants)
+   local collided = resolve_overlap(ant, ants)
    if collided then
       return
    end
@@ -739,156 +440,238 @@ function Ant:step(all_ants)
    if avoid_direction == 0 then
       local turn_choice = choose_turn()
       if turn_choice ~= 0 then
-         self.desired_angle = steer_angle(
-            self.desired_angle,
+         ant.desired_angle = steer_angle(
+            ant.desired_angle,
             turn_choice * (0.003 + math.random() * 0.006)
          )
       end
    end
 end
 
-function Ant:drive()
-   local all_ants = self.scene.ants
-   self.animator:sleep(math.random() * self.step_interval)
+local function draw_ant(ant)
+   local scale = ant_scale
+   local cos_angle = math.cos(ant.angle)
+   local sin_angle = math.sin(ant.angle)
+   local gait = math.sin(ant.walk_phase)
+   local gait_opposite = math.sin(ant.walk_phase + math.pi)
+   local front_leg_swing = gait * 1.8 * scale
+   local back_leg_swing = gait_opposite * 1.6 * scale
+   local antenna_swing = gait * 0.9 * scale
 
-   while self.running do
-      self:step(all_ants)
+   local head_x, head_y = to_world(ant, cos_angle, sin_angle, 5.0 * scale, 0.0)
+   local thorax_x, thorax_y = to_world(ant, cos_angle, sin_angle, 0.0, 0.0)
+   local abdomen_x, abdomen_y = to_world(ant, cos_angle, sin_angle, -5.0 * scale, 0.0)
 
-      local delay = self.step_interval
-      if math.random() < self.pause_chance then
-         delay = delay + 0.06 + math.random() * 0.18
+   local leg_1_x1, leg_1_y1 = to_world(ant, cos_angle, sin_angle, 1.0 * scale, -1.0 * scale)
+   local leg_1_x2, leg_1_y2 = to_world(
+      ant,
+      cos_angle,
+      sin_angle,
+      5.0 * scale + front_leg_swing,
+      -4.0 * scale - front_leg_swing * 0.6
+   )
+   local leg_2_x1, leg_2_y1 = to_world(ant, cos_angle, sin_angle, 1.0 * scale, 1.0 * scale)
+   local leg_2_x2, leg_2_y2 = to_world(
+      ant,
+      cos_angle,
+      sin_angle,
+      5.0 * scale - front_leg_swing,
+      4.0 * scale + front_leg_swing * 0.6
+   )
+   local leg_3_x1, leg_3_y1 = to_world(ant, cos_angle, sin_angle, -2.0 * scale, -1.0 * scale)
+   local leg_3_x2, leg_3_y2 = to_world(
+      ant,
+      cos_angle,
+      sin_angle,
+      -6.0 * scale - back_leg_swing,
+      -4.0 * scale - back_leg_swing * 0.6
+   )
+   local leg_4_x1, leg_4_y1 = to_world(ant, cos_angle, sin_angle, -2.0 * scale, 1.0 * scale)
+   local leg_4_x2, leg_4_y2 = to_world(
+      ant,
+      cos_angle,
+      sin_angle,
+      -6.0 * scale + back_leg_swing,
+      4.0 * scale + back_leg_swing * 0.6
+   )
+   local antenna_1_x2, antenna_1_y2 = to_world(
+      ant,
+      cos_angle,
+      sin_angle,
+      8.0 * scale,
+      -2.0 * scale - antenna_swing
+   )
+   local antenna_2_x2, antenna_2_y2 = to_world(
+      ant,
+      cos_angle,
+      sin_angle,
+      8.0 * scale,
+      2.0 * scale + antenna_swing
+   )
+   local abdomen_radius = math.max(2.0, 2.0 * scale)
+   local thorax_radius = math.max(2.0, 2.0 * scale)
+   local head_radius = math.max(1.0, 1.5 * scale)
+
+   local ant_color = ant.color
+   canvas:rect(
+      abdomen_x - abdomen_radius,
+      abdomen_y - abdomen_radius,
+      abdomen_radius * 2.0,
+      abdomen_radius * 2.0,
+      ant_color
+   )
+   canvas:rect(
+      thorax_x - thorax_radius,
+      thorax_y - thorax_radius,
+      thorax_radius * 2.0,
+      thorax_radius * 2.0,
+      ant_color
+   )
+   canvas:rect(
+      head_x - head_radius,
+      head_y - head_radius,
+      head_radius * 2.0,
+      head_radius * 2.0,
+      ant_color
+   )
+
+   canvas:line(leg_1_x1, leg_1_y1, leg_1_x2, leg_1_y2, ant_color)
+   canvas:line(leg_2_x1, leg_2_y1, leg_2_x2, leg_2_y2, ant_color)
+   canvas:line(leg_3_x1, leg_3_y1, leg_3_x2, leg_3_y2, ant_color)
+   canvas:line(leg_4_x1, leg_4_y1, leg_4_x2, leg_4_y2, ant_color)
+   canvas:line(head_x, head_y, antenna_1_x2, antenna_1_y2, ant_color)
+   canvas:line(head_x, head_y, antenna_2_x2, antenna_2_y2, ant_color)
+end
+
+local function update_ant(ant, dt)
+   ant.timer = ant.timer + dt
+   local steps = 0
+   while ant.timer >= ant.step_interval and steps < 8 do
+      ant.timer = ant.timer - ant.step_interval
+      step_ant(ant)
+      if math.random() < ant.pause_chance then
+         ant.timer = ant.timer - (0.06 + math.random() * 0.18)
       end
-
-      self.animator:sleep(delay)
+      steps = steps + 1
    end
 end
 
-function ProfilerOverlay:init()
-   self:super().init(self)
+--[ text and HUD ]--
+
+local function draw_glyph(glyph, x, y, scale, draw_color)
+   for row = 1, #glyph do
+      local pattern = glyph[row]
+      for col = 1, #pattern do
+         if pattern:sub(col, col) == "1" then
+            canvas:rect(
+               x + (col - 1) * scale,
+               y + (row - 1) * scale,
+               scale,
+               scale,
+               draw_color
+            )
+         end
+      end
+   end
 end
 
-function ProfilerOverlay:draw(context)
-   draw_fps_overlay(context.renderer, context.frame_profiler)
+local function draw_text(text, x, y, draw_color, scale)
+   local cursor_x = x
+   for i = 1, #text do
+      local ch = text:sub(i, i)
+      local glyph = glyphs[ch] or glyphs[" "]
+      draw_glyph(glyph, cursor_x, y, scale, draw_color)
+      cursor_x = cursor_x + 4 * scale
+   end
 end
 
-function Scene:init()
-   self:super().init(self)
-   self.background_color = background_color
-   self.ants = {}
-   self.slider = Slider()
+local function draw_fps_overlay()
+   local snapshot = frame_profiler:snapshot()
+   local label = ("FPS %d"):format(math.floor(snapshot.fps + 0.5))
+   local panel_w = (#label * 4 * font_scale) + 8
+   local panel_h = (5 * font_scale) + 8
+   local panel_x = 12
+   local panel_y = 12
+
+   canvas:rect(panel_x, panel_y, panel_w, panel_h, fps_panel_color)
+   draw_text(label, panel_x + 4, panel_y + 4, fps_text_color, font_scale)
+end
+
+--[ frame callbacks ]--
+
+local function update(app, frame)
+   surface_width = math.max(1, frame.surface.width or 1)
+   surface_height = math.max(1, frame.surface.height or 1)
+   slider.x = surface_width - 184
+
+   frame_profiler:begin_frame()
+
+   local dt = frame.dt
+   slider:update(dt)
+   for i = 1, #ants do
+      update_ant(ants[i], dt)
+   end
+end
+
+local function draw_overlay(app, frame)
+   surface_width = math.max(1, frame.surface.width or 1)
+   surface_height = math.max(1, frame.surface.height or 1)
+
+   frame_profiler:begin_cpu()
+
+   for i = 1, #ants do
+      draw_ant(ants[i])
+   end
+   draw_fps_overlay()
+   slider:draw()
+
+   frame_profiler:end_cpu()
+   frame_profiler:end_frame()
+end
+
+local function on_mouse(app, mouse_info)
+   slider:handle_mouse(mouse_info)
+end
+
+local function on_resize(app, info)
+   surface_width = math.max(1, info.pixel_width or info.width or 1)
+   surface_height = math.max(1, info.pixel_height or info.height or 1)
+   slider.x = surface_width - 184
+   for i = 1, #ants do
+      clamp_ant_to_window(ants[i])
+   end
+end
+
+local function start(app)
+   frame_profiler = profiler.FrameProfiler { fps = 60 }
+   canvas = app.ctx.draw
+
+   local window = app.ctx.window
+   if window ~= nil then
+      local pixel_width, pixel_height = window:get_size_in_pixels()
+      surface_width = math.max(1, tonumber(pixel_width) or 1)
+      surface_height = math.max(1, tonumber(pixel_height) or 1)
+   end
+   slider.x = surface_width - 184
 
    for i = 1, ant_count do
-      local ant_color = palette_cycle[((i - 1) % #palette_cycle) + 1]
-      local ant = self:add_child(Ant(i, ant_color))
-      ant.scene = self
-      self.ants[i] = ant
-   end
-
-   self.profiler_overlay = self:add_child(ProfilerOverlay())
-   self:add_child(self.slider)
-end
-
-function Scene:draw(context)
-   context.graphics:clear(self.background_color:to_rgbaf())
-end
-
-function Scene:activate()
-   for i = 1, #self.ants do
-      self.ants[i]:place_randomly()
+      local ant = create_ant(i, palette_cycle[((i - 1) % #palette_cycle) + 1])
+      initialize_ant(ant)
+      place_ant_randomly(ant)
+      ants[i] = ant
    end
 end
 
-function Scene:on_mouse(mouse_info)
-   self.slider:handle_mouse(mouse_info)
-end
-
-function Scene:on_resize(info)
-   window_width = math.max(1, info.width)
-   window_height = math.max(1, info.height)
-   self.slider.x = window_width - 184
-
-   for i = 1, #self.ants do
-      self.ants[i]:clamp_to_window()
-   end
-end
-
-function Scene:release()
-   self.profiler_overlay = nil
-   self.slider = nil
-   self.ants = {}
-end
-
-function App:init(context)
-   self:super().init(self, context)
-   self.frame_profiler = profiler.FrameProfiler {
-      fps = 60,
-   }
-   self.root = Scene()
-end
-
-function App:after_setup()
-   local window = self.ctx.window
-   if window == nil then
-      rig.raise("sdl3 runtime did not provide a window")
-   end
-
-   window_width, window_height = window:get_size()
-   self.root:on_resize({
-      width = window_width,
-      height = window_height,
-   })
-   self:super().after_setup(self)
-end
-
-function App:before_frame()
-   self:super().before_frame(self)
-   self.frame_profiler:begin_frame()
-end
-
-function App:after_frame()
-   self.frame_profiler:end_frame()
-end
-
-function App:on_mouse(mouse_info)
-   if self.root ~= nil then
-      self.root:on_mouse(mouse_info)
-   end
-end
-
-function App:on_resize(info)
-   window_width = math.max(1, info.width)
-   window_height = math.max(1, info.height)
-   if self.root ~= nil then
-      self.root:on_resize(info)
-   end
-end
-
-function App:render()
-   local renderer = self.ctx.graphics.renderer
-   if renderer == nil then
-      rig.raise("sdl3 runtime did not provide a renderer")
-   end
-
-   self.frame_profiler:begin_cpu()
-   if self.root ~= nil then
-      self.root:draw_tree({
-         renderer = renderer,
-         graphics = self.ctx.graphics,
-         frame_profiler = self.frame_profiler,
-      })
-   end
-   self.frame_profiler:end_cpu()
-end
-
-function App:release()
-   self.frame_profiler = nil
-end
-
-local builder = rig.runtime()
-sdl3x.bundle_sdl3(builder, {
-   window_props = {
-      [sdl3.PROP_WINDOW_CREATE_TITLE_STRING] = "Rig SDL Ants",
-      [sdl3.PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN] = true,
-   },
-})
-builder:execute(App):compile():start()
+rig.run {
+   title = "Rig " .. backend.label .. " Ants",
+   bundle = backend.bundle,
+   bundle_options = backend.bundle_options,
+   background = background_color,
+   build = function(app)
+      app:on_update(update)
+      app:on_overlay(draw_overlay)
+      app:on_mouse(on_mouse)
+      app:on_resize(on_resize)
+   end,
+   start = start,
+}
