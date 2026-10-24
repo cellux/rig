@@ -2,13 +2,16 @@
 
 Provider-neutral font shaping and rasterization built on top of `freetype` and `harfbuzz`.
 
-The `font` module owns:
+The `font` module owns the backend-neutral font pipeline:
 - shaping
 - glyph rasterization
 - atlas packing
 - text-run construction
+- atlas page → RGBA conversion and per-renderer page-texture caching
+- run walking and drawing (`font.draw_text_run`)
 
-Backend-specific atlas upload and drawing are provided through the `font.renderer` capability.
+Backends implement only the `font.renderer` capability: uploading/destroying a page
+texture and issuing a single packed-glyph draw.
 
 ## API
 
@@ -174,6 +177,25 @@ Text renderers returned by `font.create_text_renderer(...)` provide:
 - `text_renderer:draw_text_run(run, base_x, baseline_y[, color_fn])`
 - `text_renderer:release()`
 
+The text renderer owns the backend-neutral page-texture cache (keyed by
+`(page_index, page.revision)`) and walks runs itself; it delegates only texture
+creation/update/destruction and the single-glyph draw to the provider.
+
+## `font.renderer` provider
+
+A `font.renderer` provider is a table:
+
+- `upload_page_texture(text_renderer, texture, page, rgba) -> texture` (required)
+  - Creates the page texture when `texture` is `nil`, otherwise updates it.
+  - `rgba` is a `uint8_t[width * height * 4]` buffer of white RGB with the page's
+    grayscale coverage in the alpha channel; `font` builds it.
+- `destroy_page_texture(text_renderer, texture)` (required)
+- `draw_packed_glyph(text_renderer, texture, packed, x, y, color, scale)` (required)
+  - `color` is always a `color.Color`.
+- `create_text_renderer(text_renderer) -> state` (optional)
+  - The returned `state` is stored as `text_renderer._state`.
+- `release_text_renderer(text_renderer)` (optional)
+
 Atlas objects also expose:
 
 - `atlas.pages`
@@ -195,10 +217,18 @@ Atlas objects also expose:
   - This avoids size mutation conflicts between independently sized faces.
 - `font.create_atlas(...)` currently produces a single-channel grayscale atlas.
   - `FT_PIXEL_MODE_MONO` glyphs are expanded to 8-bit grayscale while packing.
-- `font.create_text_renderer(...)` requires a `font.renderer` provider argument.
+- `font.create_text_renderer(...)` requires a `font.renderer` provider argument that
+  implements `upload_page_texture`, `destroy_page_texture`, and `draw_packed_glyph`;
+  `create_text_renderer` and `release_text_renderer` are optional.
 - `font.create_style(face, options, provider)` forwards the provider to `font.create_text_renderer`.
+- `font.draw_text_run(...)` is backend-neutral: it walks the run and calls
+  `text_renderer:draw_packed_glyph(...)` for each entry.
 - `sdl3x.bundle_sdl3` provides a renderer-backed `font.renderer` provider;
-  `sdl3x.bundle_sdl3_gl` provides an OpenGL-backed one; the GPU bundle does not provide one yet.
+  `sdl3x.bundle_sdl3_gl` provides an OpenGL-backed one; `sdl3x.bundle_sdl3_gpu`
+  provides an SDL_GPU-backed one.
+- The GPU provider records glyph draws into the active render pass of the GPU render
+  scene, so text must be drawn from the scene's `on_overlay` hook or a scene node's
+  draw call. Drawing text with no active pass raises a clear error.
 
 ## Example
 

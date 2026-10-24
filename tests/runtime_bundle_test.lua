@@ -68,6 +68,7 @@ test.case("sdl3_gpu bundle composes the gpu stack", function()
       "graphics",
       "mesh",
       "shader",
+      "font",
       "frame",
    })
    test.equal(

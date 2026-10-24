@@ -229,12 +229,13 @@ test.case("font draw_packed_glyph accepts a color.Color", function()
    local observed = nil
 
    local provider = {
-      create_text_renderer = function()
-         return {}
+      upload_page_texture = function(_, _, page)
+         return { page = page }
       end,
-      release_text_renderer = function() end,
-      draw_packed_glyph = function(_, packed, x, y, draw_color, scale)
+      destroy_page_texture = function() end,
+      draw_packed_glyph = function(_, texture, packed, x, y, draw_color, scale)
          observed = {
+            texture = texture,
             packed = packed,
             x = x,
             y = y,
@@ -246,7 +247,6 @@ test.case("font draw_packed_glyph accepts a color.Color", function()
             a = draw_color.a,
          }
       end,
-      draw_text_run = function() end,
    }
 
    local face = font.load_face(font_path)

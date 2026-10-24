@@ -808,25 +808,106 @@ function M.atlas_get_glyph(atlas, glyph_id)
    return packed
 end
 
+local function page_to_rgba(page)
+   local pixel_count = page.width * page.height
+   local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
+
+   for i = 0, pixel_count - 1 do
+      local alpha = page.buffer[i]
+      local base = i * 4
+      rgba[base] = 255
+      rgba[base + 1] = 255
+      rgba[base + 2] = 255
+      rgba[base + 3] = alpha
+   end
+
+   return rgba
+end
+
+-- Returns the backend texture for `page_index`, reusing the cached handle until
+-- the atlas page revision changes. The provider creates the texture when the
+-- current handle is nil and updates it otherwise.
+local function ensure_page_texture(text_renderer, page_index)
+   local page = text_renderer.atlas.pages[page_index]
+   if page == nil then
+      rig.raise("font atlas has no page %d", page_index)
+   end
+
+   local revision = page.revision or 0
+   local texture = text_renderer._textures[page_index]
+   if texture ~= nil and text_renderer._revisions[page_index] == revision then
+      return texture
+   end
+
+   local rgba = page_to_rgba(page)
+   texture = text_renderer._provider.upload_page_texture(
+      text_renderer,
+      texture,
+      page,
+      rgba
+   )
+   if texture == nil then
+      rig.raise(
+         "font.renderer provider did not return a texture for page %d",
+         page_index
+      )
+   end
+
+   text_renderer._textures[page_index] = texture
+   text_renderer._revisions[page_index] = revision
+   return texture
+end
+
 function M.create_text_renderer(atlas, provider)
    ensure_atlas(atlas)
 
    provider = provider or rig.raise(
       "font.create_text_renderer requires a font.renderer provider"
    )
+   if type(provider) ~= "table" then
+      rig.raise("font.create_text_renderer expects a font.renderer provider")
+   end
+   if type(provider.upload_page_texture) ~= "function" then
+      rig.raise("font.renderer provider must implement upload_page_texture")
+   end
+   if type(provider.destroy_page_texture) ~= "function" then
+      rig.raise("font.renderer provider must implement destroy_page_texture")
+   end
+   if type(provider.draw_packed_glyph) ~= "function" then
+      rig.raise("font.renderer provider must implement draw_packed_glyph")
+   end
+
    local text_renderer = setmetatable({
       atlas = atlas,
       _provider = provider,
+      _textures = {},
+      _revisions = {},
       _released = false,
    }, text_renderer_mt)
 
-   text_renderer._state = provider.create_text_renderer(text_renderer)
+   if type(provider.create_text_renderer) == "function" then
+      text_renderer._state = provider.create_text_renderer(text_renderer)
+   end
+
    return text_renderer
 end
 
 function M.release_text_renderer(text_renderer)
    ensure_text_renderer(text_renderer)
-   text_renderer._provider.release_text_renderer(text_renderer)
+
+   local provider = text_renderer._provider
+   for page_index, texture in pairs(text_renderer._textures) do
+      if texture ~= nil then
+         provider.destroy_page_texture(text_renderer, texture)
+      end
+   end
+
+   if type(provider.release_text_renderer) == "function" then
+      provider.release_text_renderer(text_renderer)
+   end
+
+   text_renderer._textures = {}
+   text_renderer._revisions = {}
    text_renderer._state = nil
    text_renderer._released = true
 end
@@ -878,8 +959,10 @@ function M.draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
       rig.raise("font.draw_packed_glyph expects color to be a color.Color if provided")
    end
 
+   local texture = ensure_page_texture(text_renderer, packed.page_index)
    text_renderer._provider.draw_packed_glyph(
       text_renderer,
+      texture,
       packed,
       x,
       y,
@@ -903,13 +986,22 @@ function M.draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
       rig.raise("font.draw_text_run expects color_fn to be a function if provided")
    end
 
-   text_renderer._provider.draw_text_run(
-      text_renderer,
-      run,
-      base_x,
-      baseline_y,
-      color_fn
-   )
+   for i = 1, #run.entries do
+      local entry = run.entries[i]
+      local draw_color = nil
+      if color_fn ~= nil then
+         draw_color = color_fn(i, entry, run)
+      end
+
+      M.draw_packed_glyph(
+         text_renderer,
+         entry.packed,
+         base_x + entry.layout_x,
+         baseline_y + entry.layout_y,
+         draw_color,
+         1.0
+      )
+   end
 end
 
 function M.bind(provider)

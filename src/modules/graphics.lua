@@ -31,17 +31,24 @@ function M.provider_component(plugin, options, config)
       return config.provider
    end
 
+   local requires = {
+      {
+         capability = "graphics.context",
+         properties = { backend = config.backend },
+      },
+   }
+   if config.requires ~= nil then
+      for i = 1, #config.requires do
+         requires[#requires + 1] = config.requires[i]
+      end
+   end
+
    local descriptor = {
       name = options.name,
       provides = {
          { capability = config.capability },
       },
-      requires = {
-         {
-            capability = "graphics.context",
-            properties = { backend = config.backend },
-         },
-      },
+      requires = requires,
       create = function(context)
          return bind(make(context))
       end,

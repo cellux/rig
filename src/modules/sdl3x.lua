@@ -1609,19 +1609,7 @@ local function ensure_gl_font_backend_state()
    return gl_font_backend_state
 end
 
-local function upload_gl_font_page_texture(page, texture)
-   local pixel_count = page.width * page.height
-   local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
-
-   for i = 0, pixel_count - 1 do
-      local alpha = page.buffer[i]
-      local base = i * 4
-      rgba[base] = 255
-      rgba[base + 1] = 255
-      rgba[base + 2] = 255
-      rgba[base + 3] = alpha
-   end
-
+local function upload_gl_font_page_texture(texture, page, rgba)
    local gl = require("gl")
    local texture_2d = texture
    if texture_2d == nil then
@@ -1645,25 +1633,6 @@ local function upload_gl_font_page_texture(page, texture)
    )
 
    return texture_2d
-end
-
-local function ensure_gl_font_page_texture(text_renderer, page_index)
-   local atlas = text_renderer.atlas
-   local state = text_renderer._state
-   local page = atlas.pages[page_index]
-   if page == nil then
-      rig.raise("font atlas has no page %d", page_index)
-   end
-
-   local revision = page.revision or 0
-   if state.revisions[page_index] == revision and state.textures[page_index] ~= nil then
-      return state.textures[page_index]
-   end
-
-   local texture = upload_gl_font_page_texture(page, state.textures[page_index])
-   state.textures[page_index] = texture
-   state.revisions[page_index] = revision
-   return texture
 end
 
 local function write_gl_font_quad_vertices(packed, x, y, scale)
@@ -1708,19 +1677,7 @@ end
 local font_src_rect = ffi.new("SDL_FRect[1]")
 local font_dst_rect = ffi.new("SDL_FRect[1]")
 
-local function upload_font_page_texture(renderer, page, texture)
-   local pixel_count = page.width * page.height
-   local rgba = ffi.new("uint8_t[?]", pixel_count * 4)
-
-   for i = 0, pixel_count - 1 do
-      local alpha = page.buffer[i]
-      local base = i * 4
-      rgba[base] = 255
-      rgba[base + 1] = 255
-      rgba[base + 2] = 255
-      rgba[base + 3] = alpha
-   end
-
+local function upload_font_page_texture(renderer, texture, page, rgba)
    local page_texture = texture
    if page_texture == nil or page_texture == ffi.NULL then
       page_texture = sdl3.CreateTexture(
@@ -1750,75 +1707,28 @@ local function upload_font_page_texture(renderer, page, texture)
    return page_texture
 end
 
-local function ensure_font_page_texture(renderer, text_renderer, page_index)
-   local atlas = text_renderer.atlas
-   local state = text_renderer._state
-   local page = atlas.pages[page_index]
-   if page == nil then
-      rig.raise("font atlas has no page %d", page_index)
-   end
-
-   local revision = page.revision or 0
-   if state.revisions[page_index] == revision and state.textures[page_index] ~= nil then
-      return state.textures[page_index]
-   end
-
-   local texture = upload_font_page_texture(renderer, page, state.textures[page_index])
-   state.textures[page_index] = texture
-   state.revisions[page_index] = revision
-   return texture
-end
-
-local default_font_draw_color = color.WHITE
-
-local function resolve_font_draw_color(value)
-   if value == nil then
-      return default_font_draw_color
-   end
-   if color.is(value) then
-      return value
-   end
-
-   rig.raise("font draw color must be a color.Color if provided")
-end
-
 local function make_sdl3_font_provider(context)
    local renderer = context:capability("graphics.context").renderer
 
-   local function create_text_renderer(text_renderer)
-      return {
-         textures = {},
-         revisions = {},
-      }
+   local function upload_page_texture(text_renderer, texture, page, rgba)
+      return upload_font_page_texture(renderer, texture, page, rgba)
    end
 
-   local function release_text_renderer(text_renderer)
-      local state = text_renderer._state
-      if state == nil then
-         return
-      end
-
-      for i = 1, #state.textures do
-         local texture = state.textures[i]
-         if texture ~= nil and texture ~= ffi.NULL then
-            sdl3.DestroyTexture(texture)
-         end
-         state.textures[i] = nil
-         state.revisions[i] = nil
+   local function destroy_page_texture(text_renderer, texture)
+      if texture ~= nil and texture ~= ffi.NULL then
+         sdl3.DestroyTexture(texture)
       end
    end
 
-   local function draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
+   local function draw_packed_glyph(text_renderer, texture, packed, x, y, draw_color, scale)
       if packed.width <= 0 or packed.height <= 0 then
          return
       end
 
-      local glyph_color = resolve_font_draw_color(draw_color)
-      local texture = ensure_font_page_texture(renderer, text_renderer, packed.page_index)
-      if not sdl3.SetTextureColorMod(texture, glyph_color.r, glyph_color.g, glyph_color.b) then
+      if not sdl3.SetTextureColorMod(texture, draw_color.r, draw_color.g, draw_color.b) then
          rig.raise("failed to set texture color modulation: " .. get_error_string())
       end
-      if not sdl3.SetTextureAlphaMod(texture, glyph_color.a) then
+      if not sdl3.SetTextureAlphaMod(texture, draw_color.a) then
          rig.raise("failed to set texture alpha modulation: " .. get_error_string())
       end
 
@@ -1837,69 +1747,33 @@ local function make_sdl3_font_provider(context)
       end
    end
 
-   local function draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
-      for i = 1, #run.entries do
-         local entry = run.entries[i]
-         local draw_color = default_font_draw_color
-
-         if color_fn ~= nil then
-            draw_color = color_fn(i, entry, run)
-         end
-
-         draw_packed_glyph(
-            text_renderer,
-            entry.packed,
-            base_x + entry.layout_x,
-            baseline_y + entry.layout_y,
-            resolve_font_draw_color(draw_color),
-            1.0
-         )
-      end
-   end
-
    return {
-      create_text_renderer = create_text_renderer,
-      release_text_renderer = release_text_renderer,
+      upload_page_texture = upload_page_texture,
+      destroy_page_texture = destroy_page_texture,
       draw_packed_glyph = draw_packed_glyph,
-      draw_text_run = draw_text_run,
    }
 end
 
 local function make_sdl3_gl_font_provider(context)
    local window = context:capability("graphics.context").window
 
-   local function create_text_renderer(text_renderer)
-      return {
-         textures = {},
-         revisions = {},
-      }
+   local function upload_page_texture(text_renderer, texture, page, rgba)
+      return upload_gl_font_page_texture(texture, page, rgba)
    end
 
-   local function release_text_renderer(text_renderer)
-      local state = text_renderer._state
-      if state == nil then
-         return
-      end
-
-      for i = 1, #state.textures do
-         local texture = state.textures[i]
-         if texture ~= nil then
-            texture:release()
-         end
-         state.textures[i] = nil
-         state.revisions[i] = nil
+   local function destroy_page_texture(text_renderer, texture)
+      if texture ~= nil then
+         texture:release()
       end
    end
 
-   local function draw_packed_glyph(text_renderer, packed, x, y, draw_color, scale)
+   local function draw_packed_glyph(text_renderer, texture, packed, x, y, draw_color, scale)
       if packed.width <= 0 or packed.height <= 0 then
          return
       end
 
-      local glyph_color = resolve_font_draw_color(draw_color)
       local backend_state = ensure_gl_font_backend_state()
       local gl = backend_state.gl
-      local texture = ensure_gl_font_page_texture(text_renderer, packed.page_index)
       local window_width, window_height = window:get_size_in_pixels()
       if window_width <= 0 or window_height <= 0 then
          return
@@ -1913,10 +1787,10 @@ local function make_sdl3_gl_font_provider(context)
       backend_state.program:set_uniform2f("u_view_size", window_width, window_height)
       backend_state.program:set_uniform4f(
          "u_color",
-         glyph_color.r / 255.0,
-         glyph_color.g / 255.0,
-         glyph_color.b / 255.0,
-         glyph_color.a / 255.0
+         draw_color.r / 255.0,
+         draw_color.g / 255.0,
+         draw_color.b / 255.0,
+         draw_color.a / 255.0
       )
       texture:bind(0)
       backend_state.vao:bind()
@@ -1924,31 +1798,10 @@ local function make_sdl3_gl_font_provider(context)
       gl.DrawArrays(gl.TRIANGLES, 0, 6)
    end
 
-   local function draw_text_run(text_renderer, run, base_x, baseline_y, color_fn)
-      for i = 1, #run.entries do
-         local entry = run.entries[i]
-         local draw_color = default_font_draw_color
-
-         if color_fn ~= nil then
-            draw_color = color_fn(i, entry, run)
-         end
-
-         draw_packed_glyph(
-            text_renderer,
-            entry.packed,
-            base_x + entry.layout_x,
-            baseline_y + entry.layout_y,
-            resolve_font_draw_color(draw_color),
-            1.0
-         )
-      end
-   end
-
    return {
-      create_text_renderer = create_text_renderer,
-      release_text_renderer = release_text_renderer,
+      upload_page_texture = upload_page_texture,
+      destroy_page_texture = destroy_page_texture,
       draw_packed_glyph = draw_packed_glyph,
-      draw_text_run = draw_text_run,
    }
 end
 
@@ -2830,6 +2683,11 @@ function M.gl_font_renderer_component(plugin, options)
       backend = "gl",
       make = make_sdl3_gl_font_provider,
       bind = font.bind,
+      -- The GL font provider issues GL calls during creation, drawing, and
+      -- release, so it must outlive the resolver's release.
+      requires = {
+         { capability = "gl.resolver" },
+      },
       release = function()
          destroy_gl_font_backend_state()
       end,
@@ -3835,6 +3693,255 @@ local function make_gpu_mesh_factory(options)
    }
 end
 
+--[ GPU font backend ]--
+
+-- The SDL_GPU font pipeline. It draws one screen-space textured quad per packed
+-- glyph, generating the quad from `gl_VertexIndex` so no vertex buffer is needed;
+-- per-glyph rect/UV/color/view data is pushed as a vertex uniform. The draw lands
+-- in the active render pass owned by the GPU render scene.
+
+local gpu_font_vertex_source = [[
+#version 450
+
+layout(std140, set = 1, binding = 0) uniform FontDraw {
+   vec4 rect;
+   vec4 uv;
+   vec4 color;
+   vec4 view;
+} draw;
+
+layout(location = 0) out vec2 out_uv;
+layout(location = 1) out vec4 out_color;
+
+void main()
+{
+   vec2 corners[6] = vec2[6](
+      vec2(0.0, 0.0),
+      vec2(1.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 1.0)
+   );
+
+   vec2 corner = corners[gl_VertexIndex];
+   vec2 position = draw.rect.xy + corner * draw.rect.zw;
+   vec2 clip = vec2(
+      position.x / draw.view.x * 2.0 - 1.0,
+      1.0 - position.y / draw.view.y * 2.0
+   );
+
+   gl_Position = vec4(clip, 0.0, 1.0);
+   out_uv = mix(draw.uv.xy, draw.uv.zw, corner);
+   out_color = draw.color;
+}
+]]
+
+local gpu_font_fragment_source = [[
+#version 450
+
+layout(location = 0) in vec2 in_uv;
+layout(location = 1) in vec4 in_color;
+layout(location = 0) out vec4 out_color;
+
+layout(set = 2, binding = 0) uniform sampler2D u_atlas;
+
+void main()
+{
+   float coverage = texture(u_atlas, in_uv).a;
+   out_color = vec4(in_color.rgb, in_color.a * coverage);
+}
+]]
+
+local function make_sdl3_gpu_font_provider(context)
+   local graphics = context:capability("graphics.context")
+   local device = graphics.device
+   local window = graphics.window
+   local scene = context:capability("render.scene")
+   local shader_provider = context:capability("shader.stage")
+
+   local scope = M.ResourceScope(device, "gpu font resources")
+   context.adopt(scope, release_scope)
+
+   local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
+   local depth_format = M.choose_depth_format(device)
+
+   local vertex_stage = shader_provider:create_stage(shader.compile {
+      language = "glsl",
+      stage = "vertex",
+      source_name = "font.vert.glsl",
+      source = gpu_font_vertex_source,
+   })
+   scope:adopt(vertex_stage, function(_, resource)
+      shader_provider:destroy_stage(resource)
+   end)
+
+   local fragment_stage = shader_provider:create_stage(shader.compile {
+      language = "glsl",
+      stage = "fragment",
+      source_name = "font.frag.glsl",
+      source = gpu_font_fragment_source,
+   })
+   scope:adopt(fragment_stage, function(_, resource)
+      shader_provider:destroy_stage(resource)
+   end)
+
+   local pipeline = scope:create_graphics_pipeline {
+      vertex_shader = vertex_stage,
+      fragment_shader = fragment_stage,
+      vertex_input = M.build_vertex_input_state { buffers = {} },
+      primitive_type = sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST,
+      rasterizer_state = {
+         fill_mode = sdl3.GPU_FILLMODE_FILL,
+         cull_mode = sdl3.GPU_CULLMODE_NONE,
+         front_face = sdl3.GPU_FRONTFACE_COUNTER_CLOCKWISE,
+         enable_depth_bias = false,
+         enable_depth_clip = true,
+      },
+      multisample_state = {
+         sample_count = sdl3.GPU_SAMPLECOUNT_1,
+         sample_mask = 0,
+         enable_mask = false,
+         enable_alpha_to_coverage = false,
+      },
+      depth_stencil_state = {
+         compare_op = sdl3.GPU_COMPAREOP_ALWAYS,
+         enable_depth_test = false,
+         enable_depth_write = false,
+         enable_stencil_test = false,
+      },
+      target_info = {
+         color_target_descriptions = {
+            {
+               format = swapchain_format,
+               blend_state = {
+                  src_color_blendfactor = sdl3.GPU_BLENDFACTOR_SRC_ALPHA,
+                  dst_color_blendfactor = sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                  color_blend_op = sdl3.GPU_BLENDOP_ADD,
+                  src_alpha_blendfactor = sdl3.GPU_BLENDFACTOR_ONE,
+                  dst_alpha_blendfactor = sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                  alpha_blend_op = sdl3.GPU_BLENDOP_ADD,
+                  color_write_mask = 0xF,
+                  enable_blend = true,
+                  enable_color_write_mask = false,
+               },
+            },
+         },
+         depth_stencil_format = depth_format,
+         has_depth_stencil_target = true,
+      },
+      props = 0,
+   }
+
+   local sampler = create_gpu_sampler(device, scope, "linear", "clamp")
+   local sampler_binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
+   sampler_binding[0].sampler = sampler
+
+   local draw_data = ffi.new("float[16]")
+
+   local function upload_page_texture(text_renderer, texture, page, rgba)
+      if texture == nil then
+         local create_info = ffi.new("SDL_GPUTextureCreateInfo[1]")
+         create_info[0].type = sdl3.GPU_TEXTURETYPE_2D
+         create_info[0].format = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+         create_info[0].usage = sdl3.GPU_TEXTUREUSAGE_SAMPLER
+         create_info[0].width = page.width
+         create_info[0].height = page.height
+         create_info[0].layer_count_or_depth = 1
+         create_info[0].num_levels = 1
+         create_info[0].sample_count = sdl3.GPU_SAMPLECOUNT_1
+         create_info[0].props = 0
+
+         texture = sdl3.CreateGPUTexture(device, create_info)
+         if texture == nil then
+            rig.raise(
+               "failed to create GPU font atlas texture: " .. get_error_string()
+            )
+         end
+      end
+
+      local bytes = ffi.string(rgba, page.width * page.height * 4)
+      M.upload_to_gpu_texture(device, texture, bytes, page.width, page.height)
+      return texture
+   end
+
+   local function destroy_page_texture(text_renderer, texture)
+      if texture ~= nil then
+         sdl3.ReleaseGPUTexture(device, texture)
+      end
+   end
+
+   local function draw_packed_glyph(text_renderer, texture, packed, x, y, draw_color, scale)
+      if packed.width <= 0 or packed.height <= 0 then
+         return
+      end
+
+      local pass = scene ~= nil and scene.pass or nil
+      local command_buffer = scene ~= nil and scene.command_buffer or nil
+      if pass == nil or command_buffer == nil then
+         rig.raise(
+            "GPU font draws need an active render pass; draw text from the scene's on_overlay or a node draw"
+         )
+      end
+
+      local width = scene.width or 1
+      local height = scene.height or 1
+      if width <= 0 or height <= 0 then
+         return
+      end
+
+      draw_data[0] = x
+      draw_data[1] = y
+      draw_data[2] = packed.width * scale
+      draw_data[3] = packed.height * scale
+      draw_data[4] = packed.u0
+      draw_data[5] = packed.v0
+      draw_data[6] = packed.u1
+      draw_data[7] = packed.v1
+      draw_data[8] = draw_color.r / 255.0
+      draw_data[9] = draw_color.g / 255.0
+      draw_data[10] = draw_color.b / 255.0
+      draw_data[11] = draw_color.a / 255.0
+      draw_data[12] = width
+      draw_data[13] = height
+      draw_data[14] = 0.0
+      draw_data[15] = 0.0
+
+      sdl3.PushGPUVertexUniformData(
+         command_buffer,
+         0,
+         draw_data,
+         ffi.sizeof(draw_data)
+      )
+      sdl3.BindGPUGraphicsPipeline(pass, pipeline)
+      sampler_binding[0].texture = texture
+      sdl3.BindGPUFragmentSamplers(pass, 0, sampler_binding, 1)
+      sdl3.DrawGPUPrimitives(pass, 6, 1, 0, 0)
+   end
+
+   return {
+      upload_page_texture = upload_page_texture,
+      destroy_page_texture = destroy_page_texture,
+      draw_packed_glyph = draw_packed_glyph,
+   }
+end
+
+function M.gpu_font_renderer_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "font.renderer",
+      backend = "gpu",
+      make = make_sdl3_gpu_font_provider,
+      bind = font.bind,
+      requires = {
+         { capability = "shader.stage" },
+         -- Optional: text draws into the GPU render scene's active pass. Apps
+         -- without a scene compile, but drawing text raises a clear error.
+         { capability = "render.scene", optional = true },
+      },
+   })
+end
+
 function M.gpu_texture_component(plugin, options)
    options = options or {}
    return runtime.descriptor(plugin, {
@@ -4036,6 +4143,7 @@ function M.bundle_sdl3_gpu(builder, options)
    }))
    builder:add(M.mesh_vertex_input_component(plugin, { name = "mesh" }))
    builder:add(M.gpu_shader_stage_component(plugin, { name = "shader" }))
+   builder:add(M.gpu_font_renderer_component(plugin, { name = "font" }))
    builder:add(M.gpu_scene_component(plugin, {}))
    builder:add(M.gpu_texture_component(plugin, {}))
    builder:add(M.gpu_target_component(plugin, {}))

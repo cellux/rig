@@ -16,6 +16,9 @@ no SDL- or GL-specific behavior.
   - `config.make(context)` creates the provider (defaulting to `config.provider`).
   - `config.bind(provider)` wraps the provider before it is exposed (defaults to the
     provider itself).
+  - `config.requires` is an optional list of extra requirements appended after the
+    `graphics.context` one (for example `{ { capability = "gl.resolver" } }`), used to
+    order the provider against other components it depends on.
   - `config.release()` is called when the component is released, when present.
   - `options.name` names the component.
 - `graphics.frame_component(plugin, options)`
