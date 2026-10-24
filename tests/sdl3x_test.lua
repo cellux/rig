@@ -1,4 +1,5 @@
 local animator = require("animator")
+local color = require("color")
 local ffi = require("ffi")
 local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
@@ -1019,4 +1020,33 @@ test.case("GpuRenderScene keeps the inherited scene interface fields", function(
    test.truthy(gpu_scene.children ~= nil)
    test.truthy(gpu_scene.local_matrix ~= nil)
    test.equal(gpu_scene.depth_format, nil)
+end)
+
+test.case("RendererRenderScene tracks the window pixel size each frame", function()
+   local cleared = 0
+   local graphics = {
+      window = {
+         get_size_in_pixels = function()
+            return 640, 480
+         end,
+      },
+      clear = function()
+         cleared = cleared + 1
+      end,
+   }
+
+   local renderer_scene = sdl3x.RendererRenderScene {
+      name = "scene",
+      graphics = graphics,
+      background_color = color.rgb(0, 0, 0),
+   }
+
+   test.equal(renderer_scene.width, 1)
+   test.equal(renderer_scene.height, 1)
+
+   renderer_scene:begin_frame()
+
+   test.equal(renderer_scene.width, 640)
+   test.equal(renderer_scene.height, 480)
+   test.equal(cleared, 1)
 end)

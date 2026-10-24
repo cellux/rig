@@ -88,6 +88,7 @@ typedef union SDL_Event {
    Uint8 padding[128];
 } SDL_Event;
 bool SDL_SetRenderDrawColor(SDL_Renderer *renderer, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+bool SDL_SetRenderDrawBlendMode(SDL_Renderer *renderer, SDL_BlendMode blendMode);
 bool SDL_RenderClear(SDL_Renderer *renderer);
 bool SDL_RenderPoint(SDL_Renderer *renderer, float x, float y);
 bool SDL_RenderLine(SDL_Renderer *renderer, float x1, float y1, float x2, float y2);
@@ -491,6 +492,7 @@ local function export_sdl_function(export_name, symbol_name)
 end
 
 export_sdl_function("SetRenderDrawColor")
+export_sdl_function("SetRenderDrawBlendMode")
 export_sdl_function("RenderClear")
 export_sdl_function("RenderPoint")
 export_sdl_function("RenderLine")

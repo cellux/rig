@@ -103,3 +103,185 @@ test.case("a released canvas rejects further draws", function()
    test.falsey(ok)
    test.match(tostring(err), "released")
 end)
+
+local function texture_provider(observed)
+   local provider = fake_provider(observed)
+   provider.create_texture = function(_, spec)
+      observed.spec = spec
+      return { kind = "handle", width = spec.width, height = spec.height }
+   end
+   provider.destroy_texture = function(_, handle)
+      observed.destroyed = handle
+   end
+   provider.draw_texture = function(_, handle, sx, sy, sw, sh, dx, dy, dw, dh, draw_color)
+      observed.handle = handle
+      observed.sx = sx
+      observed.sy = sy
+      observed.sw = sw
+      observed.sh = sh
+      observed.dx = dx
+      observed.dy = dy
+      observed.dw = dw
+      observed.dh = dh
+      observed.color = draw_color
+   end
+   return provider
+end
+
+test.case("draw.create_texture validates and forwards the pixel spec", function()
+   local observed = {}
+   local canvas = draw.create(texture_provider(observed))
+
+   local texture = canvas:create_texture {
+      width = 2,
+      height = 3,
+      pixels = string.rep("\0", 2 * 3 * 4),
+   }
+
+   test.equal(texture.width, 2)
+   test.equal(texture.height, 3)
+   test.equal(observed.spec.width, 2)
+   test.equal(observed.spec.height, 3)
+   test.equal(#observed.spec.pixels, 24)
+   test.equal(observed.spec.filter, "linear")
+   test.equal(observed.spec.wrap, "clamp")
+
+   canvas:release()
+end)
+
+test.case("draw.create_texture rejects a wrong pixel byte count", function()
+   local canvas = draw.create(texture_provider({}))
+
+   local ok, err = pcall(function()
+      canvas:create_texture { width = 2, height = 2, pixels = "too short" }
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "pixel bytes")
+   test.falsey(ok)
+
+   canvas:release()
+end)
+
+test.case("draw.draw_texture forwards the full source region", function()
+   local observed = {}
+   local canvas = draw.create(texture_provider(observed))
+   local texture = canvas:create_texture {
+      width = 4,
+      height = 6,
+      pixels = string.rep("\0", 4 * 6 * 4),
+      filter = "nearest",
+   }
+
+   canvas:draw_texture(texture, 11, 22)
+
+   test.truthy(observed.handle)
+   test.equal(observed.sx, 0)
+   test.equal(observed.sy, 0)
+   test.equal(observed.sw, 4)
+   test.equal(observed.sh, 6)
+   test.equal(observed.dx, 11)
+   test.equal(observed.dy, 22)
+   test.equal(observed.dw, 4)
+   test.equal(observed.dh, 6)
+   test.equal(observed.color.a, 255)
+   test.equal(observed.spec.filter, "nearest")
+
+   canvas:release()
+end)
+
+test.case("draw.draw_texture_region forwards the region and modulation color", function()
+   local observed = {}
+   local canvas = draw.create(texture_provider(observed))
+   local texture = canvas:create_texture {
+      width = 8,
+      height = 8,
+      pixels = string.rep("\0", 8 * 8 * 4),
+   }
+
+   canvas:draw_texture_region(
+      texture,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      color.rgba(10, 20, 30, 40)
+   )
+
+   test.equal(observed.sx, 1)
+   test.equal(observed.sy, 2)
+   test.equal(observed.sw, 3)
+   test.equal(observed.sh, 4)
+   test.equal(observed.dx, 5)
+   test.equal(observed.dy, 6)
+   test.equal(observed.dw, 7)
+   test.equal(observed.dh, 8)
+   test.equal(observed.color.r, 10)
+   test.equal(observed.color.a, 40)
+
+   canvas:release()
+end)
+
+test.case("draw.draw_texture_region skips empty regions", function()
+   local observed = {}
+   local canvas = draw.create(texture_provider(observed))
+   local texture = canvas:create_texture {
+      width = 1,
+      height = 1,
+      pixels = string.rep("\0", 4),
+   }
+
+   canvas:draw_texture_region(texture, 0, 0, 0, 1, 0, 0, 1, 1)
+
+   test.equal(observed.handle, nil)
+
+   canvas:release()
+end)
+
+test.case("a released texture rejects further draws", function()
+   local observed = {}
+   local canvas = draw.create(texture_provider(observed))
+   local texture = canvas:create_texture {
+      width = 1,
+      height = 1,
+      pixels = string.rep("\0", 4),
+   }
+
+   texture:release()
+   test.truthy(observed.destroyed)
+
+   local ok, err = pcall(function()
+      canvas:draw_texture(texture, 0, 0)
+   end)
+   test.falsey(ok)
+   test.match(tostring(err), "released")
+
+   canvas:release()
+end)
+
+test.case("releasing a canvas releases its outstanding textures", function()
+   local observed = {}
+   local canvas = draw.create(texture_provider(observed))
+   canvas:create_texture { width = 1, height = 1, pixels = string.rep("\0", 4) }
+
+   canvas:release()
+
+   test.truthy(observed.destroyed)
+end)
+
+test.case("textures require a provider that implements create_texture", function()
+   local canvas = draw.create(fake_provider({}))
+
+   local ok, err = pcall(function()
+      canvas:create_texture { width = 1, height = 1, pixels = string.rep("\0", 4) }
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "create_texture")
+
+   canvas:release()
+end)

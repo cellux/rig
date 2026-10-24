@@ -1809,9 +1809,15 @@ end
 --[ 2D draw backends ]--
 
 local draw_rect_sdl3 = ffi.new("SDL_FRect[1]")
+local draw_texture_src_sdl3 = ffi.new("SDL_FRect[1]")
+local draw_texture_dst_sdl3 = ffi.new("SDL_FRect[1]")
 
 local function make_renderer_draw_provider(context)
    local renderer = context:capability("graphics.context").renderer
+
+   if not sdl3.SetRenderDrawBlendMode(renderer, sdl3.BLENDMODE_BLEND) then
+      rig.raise("failed to set draw blend mode: " .. get_error_string())
+   end
 
    local function set_color(draw_color)
       if not sdl3.SetRenderDrawColor(
@@ -1843,9 +1849,66 @@ local function make_renderer_draw_provider(context)
       end
    end
 
+   local function create_texture(canvas, spec)
+      local texture = sdl3.CreateTexture(
+         renderer,
+         sdl3.PIXELFORMAT_RGBA32,
+         sdl3.TEXTUREACCESS_STATIC,
+         spec.width,
+         spec.height
+      )
+      if texture == nil or texture == ffi.NULL then
+         rig.raise("failed to create draw texture: " .. get_error_string())
+      end
+
+      if not sdl3.SetTextureBlendMode(texture, sdl3.BLENDMODE_BLEND) then
+         sdl3.DestroyTexture(texture)
+         rig.raise("failed to set draw texture blend mode: " .. get_error_string())
+      end
+
+      if not sdl3.UpdateTexture(texture, nil, spec.pixels, spec.width * 4) then
+         sdl3.DestroyTexture(texture)
+         rig.raise("failed to upload draw texture: " .. get_error_string())
+      end
+
+      return texture
+   end
+
+   local function destroy_texture(canvas, handle)
+      if handle ~= nil and handle ~= ffi.NULL then
+         sdl3.DestroyTexture(handle)
+      end
+   end
+
+   local function draw_texture(canvas, handle, sx, sy, sw, sh, dx, dy, dw, dh, draw_color)
+      if not sdl3.SetTextureColorMod(handle, draw_color.r, draw_color.g, draw_color.b) then
+         rig.raise("failed to set draw texture color modulation: " .. get_error_string())
+      end
+      if not sdl3.SetTextureAlphaMod(handle, draw_color.a) then
+         rig.raise("failed to set draw texture alpha modulation: " .. get_error_string())
+      end
+
+      draw_texture_src_sdl3[0].x = sx
+      draw_texture_src_sdl3[0].y = sy
+      draw_texture_src_sdl3[0].w = sw
+      draw_texture_src_sdl3[0].h = sh
+
+      draw_texture_dst_sdl3[0].x = dx
+      draw_texture_dst_sdl3[0].y = dy
+      draw_texture_dst_sdl3[0].w = dw
+      draw_texture_dst_sdl3[0].h = dh
+
+      if not sdl3.RenderTexture(renderer, handle, draw_texture_src_sdl3, draw_texture_dst_sdl3) then
+         rig.raise("failed to draw texture: " .. get_error_string())
+      end
+   end
+
    return {
       draw_rect = draw_rect,
       draw_line = draw_line,
+      create_texture = create_texture,
+      destroy_texture = destroy_texture,
+      draw_texture = draw_texture,
    }
 end
 
@@ -1909,6 +1972,56 @@ void main()
 }
 ]]
 
+-- Textured variant of the OpenGL 2D pipeline: the same attribute-less quad but
+-- with a source rectangle mapped to UV coordinates and sampled through
+-- `u_texture`, then modulated by `u_color`.
+local gl_draw_texture_vertex_source = [[
+#version 330 core
+
+uniform vec4 u_geometry;
+uniform vec4 u_uv;
+uniform vec2 u_view;
+
+out vec2 out_uv;
+
+void main()
+{
+   vec2 corners[6] = vec2[6](
+      vec2(0.0, 0.0),
+      vec2(1.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 1.0)
+   );
+
+   vec2 corner = corners[gl_VertexID];
+   vec2 position = u_geometry.xy + corner * u_geometry.zw;
+   vec2 clip = vec2(
+      position.x / u_view.x * 2.0 - 1.0,
+      1.0 - position.y / u_view.y * 2.0
+   );
+
+   gl_Position = vec4(clip, 0.0, 1.0);
+   out_uv = mix(u_uv.xy, u_uv.zw, corner);
+}
+]]
+
+local gl_draw_texture_fragment_source = [[
+#version 330 core
+
+in vec2 out_uv;
+out vec4 frag_color;
+
+uniform sampler2D u_texture;
+uniform vec4 u_color;
+
+void main()
+{
+   frag_color = texture(u_texture, out_uv) * u_color;
+}
+]]
+
 local gl_draw_backend_state = nil
 
 local function destroy_gl_draw_backend_state()
@@ -1923,6 +2036,9 @@ local function destroy_gl_draw_backend_state()
    if state.program ~= nil then
       state.program:release()
    end
+   if state.texture_program ~= nil then
+      state.texture_program:release()
+   end
 
    gl_draw_backend_state = nil
 end
@@ -1936,25 +2052,44 @@ local function ensure_gl_draw_backend_state()
       vertex_source = gl_draw_vertex_source,
       fragment_source = gl_draw_fragment_source,
    }
+   local texture_program = glx.Program {
+      vertex_source = gl_draw_texture_vertex_source,
+      fragment_source = gl_draw_texture_fragment_source,
+   }
    local vao = glx.VertexArray()
 
    local geometry_location = program:uniform_location("u_geometry")
    local geometry2_location = program:uniform_location("u_geometry2")
    local color_location = program:uniform_location("u_color")
    local view_location = program:uniform_location("u_view")
+   local texture_geometry_location = texture_program:uniform_location("u_geometry")
+   local uv_location = texture_program:uniform_location("u_uv")
+   local texture_color_location = texture_program:uniform_location("u_color")
+   local texture_view_location = texture_program:uniform_location("u_view")
+   local texture_location = texture_program:uniform_location("u_texture")
    if geometry_location < 0
       or geometry2_location < 0
       or color_location < 0
-      or view_location < 0 then
+      or view_location < 0
+      or texture_geometry_location < 0
+      or uv_location < 0
+      or texture_color_location < 0
+      or texture_view_location < 0
+      or texture_location < 0 then
       vao:release()
       program:release()
+      texture_program:release()
       rig.raise("failed to locate OpenGL draw shader uniforms")
    end
 
    program:use()
+   texture_program:use()
+   texture_program:set_uniform1i("u_texture", 0)
+
    gl_draw_backend_state = {
       gl = require("gl"),
       program = program,
+      texture_program = texture_program,
       vao = vao,
    }
 
@@ -2014,9 +2149,85 @@ local function make_sdl3_gl_draw_provider(context)
       )
    end
 
+   local function create_texture(canvas, spec)
+      local gl = require("gl")
+      local glx = require("glx")
+
+      local filter = spec.filter == "nearest" and gl.NEAREST or gl.LINEAR
+      local wrap = gl.CLAMP_TO_EDGE
+      if spec.wrap == "repeat" then
+         wrap = gl.REPEAT
+      elseif spec.wrap == "mirror" then
+         wrap = gl.MIRRORED_REPEAT
+      end
+
+      local texture = glx.Texture2D()
+      texture:bind(0)
+      texture:parameter(gl.TEXTURE_MIN_FILTER, filter)
+      texture:parameter(gl.TEXTURE_MAG_FILTER, filter)
+      texture:parameter(gl.TEXTURE_WRAP_S, wrap)
+      texture:parameter(gl.TEXTURE_WRAP_T, wrap)
+      texture:image(
+         0,
+         gl.RGBA8,
+         spec.width,
+         spec.height,
+         gl.RGBA,
+         gl.UNSIGNED_BYTE,
+         spec.pixels
+      )
+
+      return {
+         width = spec.width,
+         height = spec.height,
+         texture = texture,
+      }
+   end
+
+   local function destroy_texture(canvas, handle)
+      if handle ~= nil and handle.texture ~= nil then
+         handle.texture:release()
+         handle.texture = nil
+      end
+   end
+
+   local function draw_texture(canvas, handle, sx, sy, sw, sh, dx, dy, dw, dh, draw_color)
+      local state = ensure_gl_draw_backend_state()
+      local gl = state.gl
+      local width, height = window:get_size_in_pixels()
+      if width <= 0 or height <= 0 then
+         return
+      end
+
+      local u0 = sx / handle.width
+      local v0 = sy / handle.height
+      local u1 = (sx + sw) / handle.width
+      local v1 = (sy + sh) / handle.height
+
+      gl.Enable(gl.BLEND)
+      gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+      state.texture_program:use()
+      state.texture_program:set_uniform4f("u_geometry", dx, dy, dw, dh)
+      state.texture_program:set_uniform4f("u_uv", u0, v0, u1, v1)
+      state.texture_program:set_uniform4f(
+         "u_color",
+         draw_color.r / 255.0,
+         draw_color.g / 255.0,
+         draw_color.b / 255.0,
+         draw_color.a / 255.0
+      )
+      state.texture_program:set_uniform2f("u_view", width, height)
+      handle.texture:bind(0)
+      state.vao:bind()
+      gl.DrawArrays(gl.TRIANGLES, 0, 6)
+   end
+
    return {
       draw_rect = draw_rect,
       draw_line = draw_line,
+      create_texture = create_texture,
+      destroy_texture = destroy_texture,
+      draw_texture = draw_texture,
    }
 end
 
@@ -2960,6 +3171,13 @@ local RendererRenderScene = rig.Class(scene.RenderScene)
 M.RendererRenderScene = RendererRenderScene
 
 function RendererRenderScene:begin_frame()
+   local window = self.graphics.window
+   if window ~= nil then
+      local pixel_width, pixel_height = window:get_size_in_pixels()
+      self.width = math.max(1, tonumber(pixel_width) or 1)
+      self.height = math.max(1, tonumber(pixel_height) or 1)
+   end
+
    local r, g, b, a = self.background_color:to_rgbaf()
    self.graphics:clear(r, g, b, a)
 end
@@ -3655,7 +3873,7 @@ end
 -- Turns `render.texture` values into SDL_GPU textures plus their samplers,
 -- sharing one pair per value through the owning scope. Samplers are explicit on
 -- SDL_GPU, so the value carries both.
-local function create_gpu_sampler(device, scope, filter, wrap)
+local function create_gpu_sampler(device, filter, wrap)
    local sampler_info = ffi.new("SDL_GPUSamplerCreateInfo[1]")
    sampler_info[0].min_filter = gpu_filter(filter)
    sampler_info[0].mag_filter = gpu_filter(filter)
@@ -3678,6 +3896,11 @@ local function create_gpu_sampler(device, scope, filter, wrap)
    if sampler == nil then
       rig.raise("failed to create GPU sampler: " .. get_error_string())
    end
+   return sampler
+end
+
+local function create_scoped_gpu_sampler(device, scope, filter, wrap)
+   local sampler = create_gpu_sampler(device, filter, wrap)
    scope:adopt(sampler, function(dev, resource)
       sdl3.ReleaseGPUSampler(dev, resource)
    end)
@@ -3728,7 +3951,7 @@ local function make_gpu_texture_factory(options)
             image.height
          )
 
-         local sampler = create_gpu_sampler(device, scope, texture.filter, texture.wrap)
+         local sampler = create_scoped_gpu_sampler(device, scope, texture.filter, texture.wrap)
 
          local binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
          binding[0].texture = gpu_texture
@@ -3804,7 +4027,7 @@ local function make_gpu_target_factory(options)
          end
 
          local sampler =
-            create_gpu_sampler(device, scope, target.filter, target.wrap)
+            create_scoped_gpu_sampler(device, scope, target.filter, target.wrap)
          local binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
          binding[0].texture = color_texture
          binding[0].sampler = sampler
@@ -4111,7 +4334,7 @@ local function make_sdl3_gpu_font_provider(context)
       fragment_source = gpu_font_fragment_source,
    }
 
-   local sampler = create_gpu_sampler(device, scope, "linear", "clamp")
+   local sampler = create_scoped_gpu_sampler(device, scope, "linear", "clamp")
    local sampler_binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
    sampler_binding[0].sampler = sampler
 
@@ -4274,6 +4497,60 @@ void main()
 }
 ]]
 
+-- Textured variant of the SDL_GPU 2D pipeline. It reuses the font shader shape:
+-- a screen-space quad, a source UV rectangle, and a sampler at fragment set 2.
+local gpu_draw_texture_vertex_source = [[
+#version 450
+
+layout(std140, set = 1, binding = 0) uniform DrawTexture {
+   vec4 rect;
+   vec4 uv;
+   vec4 color;
+   vec4 view;
+} draw;
+
+layout(location = 0) out vec2 out_uv;
+layout(location = 1) out vec4 out_color;
+
+void main()
+{
+   vec2 corners[6] = vec2[6](
+      vec2(0.0, 0.0),
+      vec2(1.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 1.0)
+   );
+
+   vec2 corner = corners[gl_VertexIndex];
+   vec2 position = draw.rect.xy + corner * draw.rect.zw;
+   vec2 clip = vec2(
+      position.x / draw.view.x * 2.0 - 1.0,
+      1.0 - position.y / draw.view.y * 2.0
+   );
+
+   gl_Position = vec4(clip, 0.0, 1.0);
+   out_uv = mix(draw.uv.xy, draw.uv.zw, corner);
+   out_color = draw.color;
+}
+]]
+
+local gpu_draw_texture_fragment_source = [[
+#version 450
+
+layout(location = 0) in vec2 in_uv;
+layout(location = 1) in vec4 in_color;
+layout(location = 0) out vec4 out_color;
+
+layout(set = 2, binding = 0) uniform sampler2D u_texture;
+
+void main()
+{
+   out_color = texture(u_texture, in_uv) * in_color;
+}
+]]
+
 local function make_sdl3_gpu_draw_provider(context)
    local graphics = context:capability("graphics.context")
    local device = graphics.device
@@ -4293,6 +4570,17 @@ local function make_sdl3_gpu_draw_provider(context)
       vertex_source = gpu_draw_vertex_source,
       fragment_name = "draw.frag.glsl",
       fragment_source = gpu_draw_fragment_source,
+   }
+
+   local texture_pipeline = create_gpu_screen_pipeline {
+      scope = scope,
+      device = device,
+      window = window,
+      shader_provider = shader_provider,
+      vertex_name = "draw_texture.vert.glsl",
+      vertex_source = gpu_draw_texture_vertex_source,
+      fragment_name = "draw_texture.frag.glsl",
+      fragment_source = gpu_draw_texture_fragment_source,
    }
 
    local draw_data = ffi.new("float[16]")
@@ -4364,9 +4652,107 @@ local function make_sdl3_gpu_draw_provider(context)
       )
    end
 
+   local function create_texture(canvas, spec)
+      local create_info = ffi.new("SDL_GPUTextureCreateInfo[1]")
+      create_info[0].type = sdl3.GPU_TEXTURETYPE_2D
+      create_info[0].format = sdl3.GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+      create_info[0].usage = sdl3.GPU_TEXTUREUSAGE_SAMPLER
+      create_info[0].width = spec.width
+      create_info[0].height = spec.height
+      create_info[0].layer_count_or_depth = 1
+      create_info[0].num_levels = 1
+      create_info[0].sample_count = sdl3.GPU_SAMPLECOUNT_1
+      create_info[0].props = 0
+
+      local texture = sdl3.CreateGPUTexture(device, create_info)
+      if texture == nil then
+         rig.raise("failed to create GPU draw texture: " .. get_error_string())
+      end
+
+      M.upload_to_gpu_texture(device, texture, spec.pixels, spec.width, spec.height)
+
+      local sampler = create_gpu_sampler(device, spec.filter, spec.wrap)
+      local binding = ffi.new("SDL_GPUTextureSamplerBinding[1]")
+      binding[0].texture = texture
+      binding[0].sampler = sampler
+
+      return {
+         width = spec.width,
+         height = spec.height,
+         texture = texture,
+         sampler = sampler,
+         binding = binding,
+      }
+   end
+
+   local function destroy_texture(canvas, handle)
+      if handle == nil then
+         return
+      end
+      if handle.texture ~= nil then
+         sdl3.ReleaseGPUTexture(device, handle.texture)
+         handle.texture = nil
+      end
+      if handle.sampler ~= nil then
+         sdl3.ReleaseGPUSampler(device, handle.sampler)
+         handle.sampler = nil
+      end
+   end
+
+   local function draw_texture(canvas, handle, sx, sy, sw, sh, dx, dy, dw, dh, draw_color)
+      local pass = scene ~= nil and scene.pass or nil
+      local command_buffer = scene ~= nil and scene.command_buffer or nil
+      if pass == nil or command_buffer == nil then
+         rig.raise(
+            "GPU 2D draws need an active render pass; draw from the scene's on_overlay or a node draw"
+         )
+      end
+
+      local width = scene.width or 1
+      local height = scene.height or 1
+      if width <= 0 or height <= 0 then
+         return
+      end
+
+      local u0 = sx / handle.width
+      local v0 = sy / handle.height
+      local u1 = (sx + sw) / handle.width
+      local v1 = (sy + sh) / handle.height
+
+      draw_data[0] = dx
+      draw_data[1] = dy
+      draw_data[2] = dw
+      draw_data[3] = dh
+      draw_data[4] = u0
+      draw_data[5] = v0
+      draw_data[6] = u1
+      draw_data[7] = v1
+      draw_data[8] = draw_color.r / 255.0
+      draw_data[9] = draw_color.g / 255.0
+      draw_data[10] = draw_color.b / 255.0
+      draw_data[11] = draw_color.a / 255.0
+      draw_data[12] = width
+      draw_data[13] = height
+      draw_data[14] = 0.0
+      draw_data[15] = 0.0
+
+      sdl3.PushGPUVertexUniformData(
+         command_buffer,
+         0,
+         draw_data,
+         ffi.sizeof(draw_data)
+      )
+      sdl3.BindGPUGraphicsPipeline(pass, texture_pipeline)
+      sdl3.BindGPUFragmentSamplers(pass, 0, handle.binding, 1)
+      sdl3.DrawGPUPrimitives(pass, 6, 1, 0, 0)
+   end
+
    return {
       draw_rect = draw_rect,
       draw_line = draw_line,
+      create_texture = create_texture,
+      destroy_texture = destroy_texture,
+      draw_texture = draw_texture,
    }
 end
 
