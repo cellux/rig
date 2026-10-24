@@ -1,4 +1,5 @@
 local test = require("test")
+local graphics = require("graphics")
 local runtime = require("runtime")
 local rig = require("rig")
 local font = require("font")
@@ -161,6 +162,7 @@ test.case("gpu mesh provider builds vertex input through capabilities", function
    local compiled = rig.runtime()
       :use(sp)
       :use(mp)
+      :use(graphics.plugin())
       :add(sdl3x.subsystem_component(sp, { name = "sdl" }))
       :add(sdl3x.window_component(sp, { name = "window" }))
       :add(sdl3x.gpu_context_component(sp, { name = "graphics" }))

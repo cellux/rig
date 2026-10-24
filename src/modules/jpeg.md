@@ -16,6 +16,11 @@ it through FFI. Path handling and caching belong to `asset`.
 
 ## Build
 
-`CMakeLists.txt` looks for libjpeg with `find_package(JPEG)`. Installing
-`libjpeg62-turbo-dev` (Debian/Ubuntu) enables the real decoder; without it, `jpeg.c`
-compiles a stub and `jpeg.decode` reports missing support.
+`CMakeLists.txt` locates libjpeg with `find_package(JPEG)` for its headers only.
+Installing `libjpeg62-turbo-dev` (Debian/Ubuntu) enables the real decoder; without
+the headers, `jpeg.c` compiles a stub and `jpeg.decode` reports missing support.
+
+The library itself is resolved at runtime through the `dl` loader, so rig has no hard
+runtime dependency on a particular libjpeg soname: a build can use the headers while
+the runtime picks up whichever `libjpeg.so` / `libjpeg.dll` is installed. When no
+library can be loaded, `jpeg.decode` reports missing support.

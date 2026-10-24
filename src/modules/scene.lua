@@ -1,5 +1,7 @@
 local M = ... or {}
 
+local animator = require("animator")
+local app = require("app")
 local mathx = require("mathx")
 local rig = require("rig")
 local runtime = require("runtime")
@@ -548,6 +550,49 @@ M.container_component = function(plugin, options)
          }
       end,
    })
+end
+
+--[ scene app ]--
+
+-- `scene.SceneApp` is the scene-oriented application base. It composes the
+-- generic application conveniences (`app.App`) with the scene animation
+-- lifecycle (`animator.App`). It extends `app.App` and calls the `animator.App`
+-- lifecycle methods directly so the single-inheritance chain stays rooted at
+-- `app.App`.
+local SceneApp = rig.Class(app.App)
+M.SceneApp = SceneApp
+
+SceneApp.app_name = "scene"
+SceneApp.config_namespace = "app"
+SceneApp.scope_label = "scene app resources"
+
+SceneApp.create_scene_animator = animator.App.create_scene_animator
+SceneApp.create_root = animator.App.create_root
+SceneApp.release = animator.App.release
+
+function SceneApp:init(context)
+   animator.App.init(self, context)
+   self:super().init(self, context)
+end
+
+function SceneApp:after_setup()
+   animator.App.after_setup(self)
+   self:super().after_setup(self)
+end
+
+function SceneApp:before_frame()
+   animator.App.before_frame(self)
+   self:super().before_frame(self)
+end
+
+function SceneApp:before_shutdown()
+   local ok, err = pcall(function()
+      animator.App.before_shutdown(self)
+   end)
+   self:super().before_shutdown(self)
+   if not ok then
+      rig.raise(err)
+   end
 end
 
 return M

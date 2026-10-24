@@ -1,19 +1,19 @@
 local M = ... or {}
-local animator = require("animator")
+local app = require("app")
 local bit = bit
 local color = require("color")
 local font = require("font")
 local ffi = require("ffi")
 local glx = require("glx")
-local profiler = require("profiler")
+local graphics = require("graphics")
 local rig = require("rig")
 local runtime = require("runtime")
 local scene = require("scene")
-local sched = require("sched")
 local schema = require("schema")
 local sdl3 = require("sdl3")
 require("gl")
 local mesh = require("mesh")
+local render = require("render")
 local shader = require("shader")
 require("time")
 
@@ -2128,20 +2128,6 @@ function M.create_depth_texture(device, width, height, format)
    return texture, format
 end
 
-local function color_component(value, default_value)
-   local v = value
-   if v == nil then
-      v = default_value
-   end
-   v = tonumber(v) or default_value
-   if v < 0 then
-      v = 0
-   elseif v > 1 then
-      v = 1
-   end
-   return math.floor(v * 255 + 0.5)
-end
-
 local function current_monotonic_seconds()
    local counter = tonumber(sdl3.GetPerformanceCounter())
    local frequency = tonumber(sdl3.GetPerformanceFrequency())
@@ -2266,333 +2252,19 @@ local gl_resolver_service_sdl3_gl = {
    end,
 }
 
---[ App support ]--
-
-local app_config_schema = schema.record({
-   frame_profiler = schema.one_of({
-      schema.boolean(),
-      schema.table(),
-   }, "a boolean or table"):optional(),
-   fullscreen = schema.boolean():optional(),
-   vsync = schema.boolean():optional(),
-}, {
-   allow_extra = true,
-})
-
-local function get_app_config(context)
-   local options = {}
-   if type(context) == "table" and type(context.options) == "table" then
-      options = context.options
-   end
-
-   local config = options.sdl3x
-   if config == nil then
-      config = options
-   end
-
-   return schema.assert(app_config_schema, config, "sdl3x configuration")
-end
-
-local function create_frame_profiler(spec)
-   if spec == nil or spec == false then
-      return nil
-   end
-   if spec == true then
-      return profiler.FrameProfiler()
-   end
-   return profiler.FrameProfiler(spec)
-end
-
-local function init_common_state(self, context, scope_label)
-   local config = get_app_config(context or {})
-
-   self.context = context
-   self.window = context and context.window or nil
-   self.graphics = context and context.graphics or nil
-   self.window_width = 0
-   self.window_height = 0
-   self.pixel_width = 0
-   self.pixel_height = 0
-   self.fullscreen_enabled = config.fullscreen == true
-   self.vsync_enabled = config.vsync ~= false
-   self.frame_profiler = create_frame_profiler(config.frame_profiler)
-   self.frame_profiler_enabled = self.frame_profiler ~= nil
-   self.font_faces = {}
-   self.owned_resources = ResourceScope(self, scope_label)
-   self._owned_resources_adopted = false
-   if context ~= nil and context.resources ~= nil then
-      self._owned_resources_adopted = true
-      context.resources:adopt(self, self.owned_resources, function(owned_scope)
-         local errors = owned_scope:release()
-         if errors ~= nil and #errors > 0 then
-            error(table.concat(errors, "\n"), 0)
-         end
-      end)
-   end
-   self._sdl3x_config = config
-end
-
-local function release_common_state(self)
-   if self.owned_resources ~= nil then
-      if not self._owned_resources_adopted then
-         local errors = self.owned_resources:release()
-         if errors ~= nil and #errors > 0 then
-            error(table.concat(errors, "\n"), 0)
-         end
-      end
-      self.owned_resources = nil
-   end
-
-   self.font_faces = {}
-   self.frame_profiler = nil
-   self.frame_profiler_enabled = false
-end
-
-local function apply_runtime_toggles(self)
-   local config = self._sdl3x_config or {}
-
-   if config.vsync ~= nil then
-      self:set_vsync(config.vsync)
-   end
-   if config.fullscreen ~= nil then
-      self:set_fullscreen(config.fullscreen)
-   end
-end
-
-local function before_frame_common(self)
-   if self.frame_profiler ~= nil and self.frame_profiler_enabled then
-      self.frame_profiler:begin_frame()
-   end
-end
-
-local function after_frame_common(self)
-   if self.frame_profiler ~= nil and self.frame_profiler_enabled then
-      self.frame_profiler:end_frame()
-   end
-end
-
-local function invoke_render_common(self, ...)
-   if type(self.render) ~= "function" then
-      return
-   end
-
-   if self.frame_profiler ~= nil and self.frame_profiler_enabled then
-      self.frame_profiler:begin_cpu()
-      local ok, result_or_err = pcall(self.render, self, ...)
-      self.frame_profiler:end_cpu()
-      if not ok then
-         rig.raise(result_or_err)
-      end
-      return result_or_err
-   end
-
-   return self:render(...)
-end
-
-local function set_vsync_common(self, enabled)
-   if type(enabled) ~= "boolean" then
-      rig.raise("sdl3x.App:set_vsync expects enabled to be a boolean")
-   end
-
-   local graphics = self.graphics
-   if graphics == nil then
-      rig.raise("sdl3x.App:set_vsync requires a graphics context")
-   end
-
-   if type(graphics.set_vsync) == "function" then
-      graphics.set_vsync(enabled)
-   elseif type(graphics.set_swap_interval) == "function" then
-      graphics.set_swap_interval(enabled and 1 or 0)
-   else
-      rig.raise("sdl3x.App:set_vsync is not supported by the active SDL runtime")
-   end
-
-   self.vsync_enabled = enabled
-   return enabled
-end
-
-local function toggle_vsync_common(self)
-   return self:set_vsync(not self.vsync_enabled)
-end
-
-local function set_fullscreen_common(self, enabled)
-   if type(enabled) ~= "boolean" then
-      rig.raise("sdl3x.App:set_fullscreen expects enabled to be a boolean")
-   end
-
-   local window = self.window
-   if window == nil then
-      rig.raise("sdl3 runtime did not provide a window")
-   end
-   window:set_fullscreen(enabled)
-   window:sync()
-
-   self.fullscreen_enabled = enabled
-   return enabled
-end
-
-local function toggle_fullscreen_common(self)
-   return self:set_fullscreen(not self.fullscreen_enabled)
-end
-
-local function set_frame_profiler_enabled_common(self, enabled)
-   if type(enabled) ~= "boolean" then
-      rig.raise("sdl3x.App:set_frame_profiler_enabled expects enabled to be a boolean")
-   end
-   if self.frame_profiler == nil and enabled then
-      self.frame_profiler = profiler.FrameProfiler()
-   end
-   self.frame_profiler_enabled = enabled and self.frame_profiler ~= nil
-   return self.frame_profiler_enabled
-end
-
-local function toggle_frame_profiler_common(self)
-   return self:set_frame_profiler_enabled(not self.frame_profiler_enabled)
-end
-
-local function own_common(self, resource, release_fn)
-   if self.owned_resources == nil then
-      rig.raise("sdl3x.App has already released its owned resources")
-   end
-   return self.owned_resources:adopt(resource, release_fn)
-end
-
-local function replace_owned_common(self, key, resource, release_fn)
-   if self.owned_resources == nil then
-      rig.raise("sdl3x.App has already released its owned resources")
-   end
-   return self.owned_resources:replace(key, resource, release_fn)
-end
-
-local function create_owned_scope_common(self, label)
-   local scope = rig.ResourceScope(self, label or "sdl3x owned scope")
-   return self:own(scope, function(_, owned_scope)
-      local errors = owned_scope:release()
-      if errors ~= nil and #errors > 0 then
-         error(table.concat(errors, "\n"), 0)
-      end
-   end)
-end
-
-local function release_owned_resources_common(self)
-   if self.owned_resources == nil then
-      return
-   end
-   self.owned_resources:release()
-   self.owned_resources = nil
-   self.font_faces = {}
-end
-
-local function load_font_face_common(self, name, path, face_index)
-   if type(name) ~= "string" or name == "" then
-      rig.raise("sdl3x.App:load_font_face expects name to be a non-empty string")
-   end
-
-   local face = font.load_face(path, face_index)
-   self.font_faces[name] = self:replace_owned(
-      "font_face:" .. name,
-      face,
-      function(_, resource)
-         resource:release()
-      end
-   )
-   return self.font_faces[name]
-end
-
-local function get_font_face_common(self, name)
-   if type(name) ~= "string" or name == "" then
-      rig.raise("sdl3x.App:get_font_face expects name to be a non-empty string")
-   end
-   return self.font_faces[name]
-end
-
-local function on_resize_common(self, resize_info)
-   self.window_width = resize_info.width or 0
-   self.window_height = resize_info.height or 0
-   self.pixel_width = resize_info.pixel_width or 0
-   self.pixel_height = resize_info.pixel_height or 0
-end
-
 --[ App classes ]--
 
-local App = rig.Class()
-local SceneApp = rig.Class(animator.App)
+-- SDL binds the generic application base to the SDL window/graphics context.
+local App = rig.Class(app.App)
+local SceneApp = rig.Class(scene.SceneApp)
+
+App.app_name = "sdl3x"
+App.config_namespace = "sdl3x"
+SceneApp.app_name = "sdl3x"
+SceneApp.config_namespace = "sdl3x"
 
 M.App = App
 M.SceneApp = SceneApp
-
-function App:init(context)
-   init_common_state(self, context or {}, "sdl3x app resources")
-end
-
-function App:after_setup()
-   apply_runtime_toggles(self)
-end
-
-function App:before_shutdown()
-   release_common_state(self)
-end
-
-function SceneApp:init(context)
-   animator.App.init(self, context)
-   init_common_state(self, context or {}, "sdl3x scene app resources")
-end
-
-function SceneApp:after_setup()
-   animator.App.after_setup(self)
-   apply_runtime_toggles(self)
-end
-
-function SceneApp:before_shutdown()
-   local ok, err = pcall(function()
-      animator.App.before_shutdown(self)
-   end)
-   release_common_state(self)
-   if not ok then
-      rig.raise(err)
-   end
-end
-
-local function scene_before_frame_common(self)
-   animator.App.before_frame(self)
-   before_frame_common(self)
-end
-
---[ App method wiring ]--
-
-App.before_frame = before_frame_common
-App.after_frame = after_frame_common
-App.invoke_render = invoke_render_common
-App.set_vsync = set_vsync_common
-App.toggle_vsync = toggle_vsync_common
-App.set_fullscreen = set_fullscreen_common
-App.toggle_fullscreen = toggle_fullscreen_common
-App.set_frame_profiler_enabled = set_frame_profiler_enabled_common
-App.toggle_frame_profiler = toggle_frame_profiler_common
-App.own = own_common
-App.replace_owned = replace_owned_common
-App.create_owned_scope = create_owned_scope_common
-App.release_owned_resources = release_owned_resources_common
-App.load_font_face = load_font_face_common
-App.get_font_face = get_font_face_common
-App.on_resize = on_resize_common
-
-SceneApp.before_frame = scene_before_frame_common
-SceneApp.after_frame = after_frame_common
-SceneApp.invoke_render = invoke_render_common
-SceneApp.set_vsync = set_vsync_common
-SceneApp.toggle_vsync = toggle_vsync_common
-SceneApp.set_fullscreen = set_fullscreen_common
-SceneApp.toggle_fullscreen = toggle_fullscreen_common
-SceneApp.set_frame_profiler_enabled = set_frame_profiler_enabled_common
-SceneApp.toggle_frame_profiler = toggle_frame_profiler_common
-SceneApp.own = own_common
-SceneApp.replace_owned = replace_owned_common
-SceneApp.create_owned_scope = create_owned_scope_common
-SceneApp.release_owned_resources = release_owned_resources_common
-SceneApp.load_font_face = load_font_face_common
-SceneApp.get_font_face = get_font_face_common
-SceneApp.on_resize = on_resize_common
 
 --[ compositional runtime components ]--
 
@@ -2607,7 +2279,6 @@ function M.plugin(spec)
          ["sdl3.subsystem"] = {},
          ["sdl3.window"] = {},
          ["sdl3.input"] = {},
-         ["graphics.context"] = {},
          ["font.renderer"] = {},
          ["shader.stage"] = {},
          ["mesh.vertex_input"] = {},
@@ -2896,10 +2567,10 @@ local function create_renderer_context(options, context)
       window = window,
       renderer = renderer,
       clear = function(self, r, g, b, a)
-         local rr = color_component(r)
-         local gg = color_component(g, 0)
-         local bb = color_component(b, 0)
-         local aa = color_component(a, 1)
+         local rr = color.unit_to_byte(r)
+         local gg = color.unit_to_byte(g, 0)
+         local bb = color.unit_to_byte(b, 0)
+         local aa = color.unit_to_byte(a, 1)
 
          if not sdl3.SetRenderDrawColor(renderer, rr, gg, bb, aa) then
             rig.raise("failed to set draw color: " .. get_error_string())
@@ -3110,120 +2781,11 @@ function M.gpu_context_component(plugin, options)
    })
 end
 
-function M.frame_component(plugin, options)
-   options = options or {}
-
-   local frame_profiler = nil
-   if options.frame_profiler == true then
-      frame_profiler = profiler.FrameProfiler()
-   elseif type(options.frame_profiler) == "table" then
-      frame_profiler = profiler.FrameProfiler(options.frame_profiler)
-   end
-
-   return runtime.descriptor(plugin, {
-      name = options.name,
-      requires = {
-         { capability = "graphics.context" },
-         { capability = "render.scene", optional = true },
-      },
-      create = function()
-         return {
-            profiler = frame_profiler,
-         }
-      end,
-      progress = {
-         frame = function(context)
-            local rt = context.runtime
-            local graphics = rt.capability_values["graphics.context"]
-            if graphics == nil then
-               return
-            end
-
-            if frame_profiler ~= nil then
-               frame_profiler:begin_frame()
-            end
-
-            local payload = {
-               runtime = rt,
-               ctx = rt.ctx,
-               graphics = graphics,
-               step = context.step,
-            }
-            rt:emit("core.before_frame", payload)
-
-            local render = options.render
-            if render == nil
-               and rt.instance ~= nil
-               and type(rt.instance.render) == "function" then
-               render = function(...)
-                  return rt.instance:render(...)
-               end
-            end
-            if render == nil then
-               local scene = rt.capability_values["render.scene"]
-               if scene ~= nil then
-                  render = function(...)
-                     return scene:render(...)
-                  end
-               end
-            end
-
-            if frame_profiler ~= nil then
-               frame_profiler:begin_cpu()
-            end
-            graphics:render_frame(render)
-            if frame_profiler ~= nil then
-               frame_profiler:end_cpu()
-            end
-
-            rt:emit("core.after_frame", payload)
-
-            if frame_profiler ~= nil then
-               frame_profiler:end_frame()
-            end
-         end,
-      },
-   })
-end
-
 --[ rendering service provider components ]--
-
-local function provider_component(plugin, options, config)
-   local bind = config.bind or function(provider)
-      return provider
-   end
-   local make = config.make or function()
-      return config.provider
-   end
-
-   local descriptor = {
-      name = options.name,
-      provides = {
-         { capability = config.capability },
-      },
-      requires = {
-         {
-            capability = "graphics.context",
-            properties = { backend = config.backend },
-         },
-      },
-      create = function(context)
-         return bind(make(context))
-      end,
-   }
-
-   if config.release ~= nil then
-      descriptor.release = function()
-         config.release()
-      end
-   end
-
-   return runtime.descriptor(plugin, descriptor)
-end
 
 function M.mesh_vertex_input_component(plugin, options)
    options = options or {}
-   return provider_component(plugin, options, {
+   return graphics.provider_component(plugin, options, {
       capability = "mesh.vertex_input",
       backend = "gpu",
       provider = sdl3_gpu_mesh_service,
@@ -3233,7 +2795,7 @@ end
 
 function M.gpu_shader_stage_component(plugin, options)
    options = options or {}
-   return provider_component(plugin, options, {
+   return graphics.provider_component(plugin, options, {
       capability = "shader.stage",
       backend = "gpu",
       make = make_shader_stage_service_sdl3_gpu,
@@ -3243,7 +2805,7 @@ end
 
 function M.gl_shader_stage_component(plugin, options)
    options = options or {}
-   return provider_component(plugin, options, {
+   return graphics.provider_component(plugin, options, {
       capability = "shader.stage",
       backend = "gl",
       provider = shader_stage_service_sdl3_gl,
@@ -3253,7 +2815,7 @@ end
 
 function M.font_renderer_component(plugin, options)
    options = options or {}
-   return provider_component(plugin, options, {
+   return graphics.provider_component(plugin, options, {
       capability = "font.renderer",
       backend = "renderer",
       make = make_sdl3_font_provider,
@@ -3263,7 +2825,7 @@ end
 
 function M.gl_font_renderer_component(plugin, options)
    options = options or {}
-   return provider_component(plugin, options, {
+   return graphics.provider_component(plugin, options, {
       capability = "font.renderer",
       backend = "gl",
       make = make_sdl3_gl_font_provider,
@@ -3300,41 +2862,8 @@ end
 
 --[ render scene implementations ]--
 
--- The OpenGL specialization of the scene interface. It owns the GL state that
--- must be set once per frame before its drawables run.
-local GlRenderScene = rig.Class(scene.RenderScene)
-M.GlRenderScene = GlRenderScene
-
-function GlRenderScene:begin_frame()
-   local gl = require("gl")
-   local window = self.graphics.window
-   local pixel_width, pixel_height = window:get_size_in_pixels()
-   self.width = math.max(1, tonumber(pixel_width) or 1)
-   self.height = math.max(1, tonumber(pixel_height) or 1)
-
-   gl.Enable(gl.DEPTH_TEST)
-   gl.DepthFunc(gl.LEQUAL)
-   gl.Viewport(0, 0, self.width, self.height)
-   local r, g, b, a = self.background_color:to_rgbaf()
-   gl.ClearColor(r, g, b, a)
-   gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
-end
-
-function GlRenderScene:enter_target(handle)
-   local gl = require("gl")
-   handle.framebuffer:bind()
-   gl.Viewport(0, 0, handle.width, handle.height)
-   local r, g, b, a = self.background_color:to_rgbaf()
-   gl.ClearColor(r, g, b, a)
-   gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
-end
-
-function GlRenderScene:leave_target(handle)
-   local gl = require("gl")
-   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-   gl.Viewport(0, 0, self.width, self.height)
-end
-
+-- The OpenGL scene implementation lives in `glx` (see `glx.RenderScene`). This
+-- component selects it for the GL graphics context.
 function M.gl_scene_component(plugin, options)
    options = options or {}
    return runtime.descriptor(plugin, {
@@ -3346,7 +2875,7 @@ function M.gl_scene_component(plugin, options)
          { capability = "gl.resolver" },
       },
       create = function()
-         return GlRenderScene
+         return glx.RenderScene
       end,
    })
 end
@@ -3488,37 +3017,33 @@ void main()
 }
 ]]
 
+local gl_builtin_material = {
+   unlit = {
+      vertex = gl_mesh_vertex_source,
+      fragment = gl_mesh_fragment_source,
+   },
+   textured = {
+      vertex = gl_mesh_textured_vertex_source,
+      fragment = gl_mesh_textured_fragment_source,
+   },
+}
+
+local gpu_builtin_material = {
+   unlit = {
+      vertex = gpu_mesh_vertex_source,
+      fragment = gpu_mesh_fragment_source,
+   },
+   textured = {
+      vertex = gpu_mesh_textured_vertex_source,
+      fragment = gpu_mesh_textured_fragment_source,
+   },
+}
+
 local function release_scope(scope)
    local errors = scope:release()
    if errors ~= nil and #errors > 0 then
       error(table.concat(errors, "\n"), 0)
    end
-end
-
--- Resolves a material's `texture` into a backend texture handle. It accepts a
--- `render.texture` value (uploaded by the texture factory), a `render.target`
--- value (whose color surface is already a texture handle), or an already-created
--- backend handle. Returns nil when the material has no texture.
-local function resolve_material_texture(material, texture_factory, target_factory)
-   if material == nil or material.texture == nil then
-      return nil
-   end
-
-   local spec = material.texture
-   if spec.kind == "render.texture" then
-      if texture_factory == nil then
-         rig.raise("textured material requires a render.texture provider")
-      end
-      return texture_factory.create(spec)
-   end
-   if spec.kind == "render.target" then
-      if target_factory == nil then
-         rig.raise("a material sampling a render target requires a render.target provider")
-      end
-      return target_factory.create(spec).texture
-   end
-
-   return spec
 end
 
 --[ mesh factories ]--
@@ -3678,25 +3203,14 @@ local function make_gl_mesh_factory(shader_provider, scope, texture_factory, tar
          local gl = require("gl")
 
          local texture_handle =
-            resolve_material_texture(material, texture_factory, target_factory)
+            render.resolve_material_texture(material, texture_factory, target_factory)
 
-         local vertex_source = gl_mesh_vertex_source
-         local fragment_source = gl_mesh_fragment_source
-         local label = "rig.render.mesh"
-         if material ~= nil and material.vertex ~= nil then
-            vertex_source = material.vertex
-            fragment_source = material.fragment
-            label = "rig.render.material." .. (material.name or "unnamed")
-         elseif texture_handle ~= nil then
-            if mesh.attribute_offsets.uv == nil then
-               rig.raise(
-                  "the built-in textured material requires a mesh with UVs (for example mesh.make_quad or mesh.parse_obj)"
-               )
-            end
-            vertex_source = gl_mesh_textured_vertex_source
-            fragment_source = gl_mesh_textured_fragment_source
-            label = "rig.render.mesh.textured"
-         end
+         local vertex_source, fragment_source, label = render.material_sources(
+            mesh,
+            material,
+            texture_handle ~= nil,
+            gl_builtin_material
+         )
 
          local vertex_stage = shader_provider:create_stage({
             language = material and material.language or "glsl",
@@ -4215,25 +3729,14 @@ local function make_gpu_mesh_factory(options)
          local vertex_input = mesh_provider:build_vertex_input(mesh)
 
          local texture_handle =
-            resolve_material_texture(material, texture_factory, target_factory)
+            render.resolve_material_texture(material, texture_factory, target_factory)
 
-         local vertex_source = gpu_mesh_vertex_source
-         local fragment_source = gpu_mesh_fragment_source
-         local label = "rig.render.mesh"
-         if material ~= nil and material.vertex ~= nil then
-            vertex_source = material.vertex
-            fragment_source = material.fragment
-            label = "rig.render.material." .. (material.name or "unnamed")
-         elseif texture_handle ~= nil then
-            if mesh.attribute_offsets.uv == nil then
-               rig.raise(
-                  "the built-in textured material requires a mesh with UVs (for example mesh.make_quad or mesh.parse_obj)"
-               )
-            end
-            vertex_source = gpu_mesh_textured_vertex_source
-            fragment_source = gpu_mesh_textured_fragment_source
-            label = "rig.render.mesh.textured"
-         end
+         local vertex_source, fragment_source, label = render.material_sources(
+            mesh,
+            material,
+            texture_handle ~= nil,
+            gpu_builtin_material
+         )
 
          local vertex_stage = shader_provider:create_stage(shader.compile {
             language = material and material.language or "glsl",
@@ -4425,8 +3928,7 @@ local function merge_window_props(base, override)
    return merged
 end
 
-local function add_core_components(builder, plugin, options)
-   local core = runtime.scheduler_plugin()
+local function add_core_components(builder, options)
    local clock = runtime.Clock {
       now = function()
          return current_time_seconds()
@@ -4436,10 +3938,10 @@ local function add_core_components(builder, plugin, options)
       end,
    }
 
-   builder:use(core)
-   builder:add(runtime.clock_component(core, { name = "clock", clock = clock }))
-   builder:add(runtime.timer_component(core, { name = "timer", timer = options.timer }))
-   builder:add(runtime.scheduler_component(core, { name = "scheduler" }))
+   runtime.headless_bundle(builder, {
+      clock = clock,
+      timer = options.timer,
+   })
 end
 
 function M.bundle_sdl3(builder, options)
@@ -4447,7 +3949,8 @@ function M.bundle_sdl3(builder, options)
    local plugin = M.plugin()
 
    builder:use(plugin)
-   add_core_components(builder, plugin, options)
+   builder:use(graphics.plugin())
+   add_core_components(builder, options)
    builder:add(M.subsystem_component(plugin, {
       name = "sdl",
       init_flags = options.init_flags,
@@ -4462,7 +3965,7 @@ function M.bundle_sdl3(builder, options)
       create_renderer = options.create_renderer,
    }))
    builder:add(M.font_renderer_component(plugin, { name = "font" }))
-   builder:add(M.frame_component(plugin, {
+   builder:add(graphics.frame_component(plugin, {
       name = "frame",
       render = options.render,
       frame_profiler = options.frame_profiler,
@@ -4478,7 +3981,8 @@ function M.bundle_sdl3_gl(builder, options)
    })
 
    builder:use(plugin)
-   add_core_components(builder, plugin, options)
+   builder:use(graphics.plugin())
+   add_core_components(builder, options)
    builder:add(M.subsystem_component(plugin, {
       name = "sdl",
       init_flags = options.init_flags,
@@ -4500,7 +4004,7 @@ function M.bundle_sdl3_gl(builder, options)
    builder:add(M.gl_texture_component(plugin, {}))
    builder:add(M.gl_target_component(plugin, {}))
    builder:add(M.gl_mesh_component(plugin, {}))
-   builder:add(M.frame_component(plugin, {
+   builder:add(graphics.frame_component(plugin, {
       name = "frame",
       render = options.render,
       frame_profiler = options.frame_profiler,
@@ -4513,7 +4017,8 @@ function M.bundle_sdl3_gpu(builder, options)
    local plugin = M.plugin()
 
    builder:use(plugin)
-   add_core_components(builder, plugin, options)
+   builder:use(graphics.plugin())
+   add_core_components(builder, options)
    builder:add(M.subsystem_component(plugin, {
       name = "sdl",
       init_flags = options.init_flags,
@@ -4535,7 +4040,7 @@ function M.bundle_sdl3_gpu(builder, options)
    builder:add(M.gpu_texture_component(plugin, {}))
    builder:add(M.gpu_target_component(plugin, {}))
    builder:add(M.gpu_mesh_component(plugin, {}))
-   builder:add(M.frame_component(plugin, {
+   builder:add(graphics.frame_component(plugin, {
       name = "frame",
       render = options.render,
       frame_profiler = options.frame_profiler,

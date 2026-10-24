@@ -2,6 +2,7 @@ local M = ... or {}
 local ffi = require("ffi")
 local gl = require("gl")
 local rig = require("rig")
+local scene = require("scene")
 
 local Shader = rig.Class()
 local Program = rig.Class()
@@ -781,6 +782,42 @@ function Framebuffer:release()
       gl.DeleteFramebuffers(1, framebuffers)
       self.id = 0
    end
+end
+
+--[ render scene ]--
+
+-- The OpenGL specialization of the scene interface. It owns the GL state that
+-- must be set once per frame before its drawables run. It is backend-neutral
+-- with respect to any windowing library: `graphics.window` only needs
+-- `get_size_in_pixels()`.
+local RenderScene = rig.Class(scene.RenderScene)
+M.RenderScene = RenderScene
+
+function RenderScene:begin_frame()
+   local window = self.graphics.window
+   local pixel_width, pixel_height = window:get_size_in_pixels()
+   self.width = math.max(1, tonumber(pixel_width) or 1)
+   self.height = math.max(1, tonumber(pixel_height) or 1)
+
+   gl.Enable(gl.DEPTH_TEST)
+   gl.DepthFunc(gl.LEQUAL)
+   gl.Viewport(0, 0, self.width, self.height)
+   local r, g, b, a = self.background_color:to_rgbaf()
+   gl.ClearColor(r, g, b, a)
+   gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
+end
+
+function RenderScene:enter_target(handle)
+   handle.framebuffer:bind()
+   gl.Viewport(0, 0, handle.width, handle.height)
+   local r, g, b, a = self.background_color:to_rgbaf()
+   gl.ClearColor(r, g, b, a)
+   gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
+end
+
+function RenderScene:leave_target(handle)
+   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+   gl.Viewport(0, 0, self.width, self.height)
 end
 
 function M.get_version_string()

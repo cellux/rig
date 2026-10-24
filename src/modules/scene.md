@@ -106,6 +106,17 @@ a lightweight per-frame transform tree that backend modules specialize.
   - `options.backend` optionally constrains both `graphics.context` and
     `render.scene.impl` to the given backend when several are composed.
 
+- `scene.SceneApp`
+  - Scene-oriented application execution base. It extends `app.App` and composes
+    the scene animation lifecycle from `animator.App` (calling its methods
+    directly so the single-inheritance chain stays rooted at `app.App`).
+  - Adds `root`, `animator`, `animator_options`, and `start` (from
+    `animator.App`) to the `app.App` conveniences.
+  - Subclasses override `create_root()` and `create_scene_animator(root)` to
+    control the scene root and animator.
+  - `before_frame` ticks the animator and then starts the frame profiler;
+    `after_setup` starts the animator and applies the presentation toggles.
+
 ## Implementation selection
 
 A backend module ships a scene implementation beside the graphics context it owns and

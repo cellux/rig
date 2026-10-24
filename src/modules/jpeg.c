@@ -4,6 +4,10 @@
  * which cannot be expressed safely in pure LuaJIT FFI. This file contains only
  * that guarded decode; path handling, caching and pixel wrapping live in
  * `jpeg.lua`.
+ *
+ * libjpeg is resolved at runtime through the `dl` loader, so rig has no hard
+ * runtime dependency on a particular libjpeg soname. The headers remain a
+ * compile-time dependency (struct layout and `JPEG_LIB_VERSION`).
  */
 
 #include <lua.h>
@@ -13,10 +17,94 @@
 #if defined(RIG_HAVE_JPEG) && RIG_HAVE_JPEG
 
 #include <setjmp.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <jpeglib.h>
+
+/* Entry points provided by `dl.c`. */
+extern void *rig_dl_open(const char *path);
+extern void *rig_dl_sym(void *handle, const char *name);
+extern int rig_dl_close(void *handle);
+
+typedef struct jpeg_error_mgr *(*rig_jpeg__std_error_fn)(
+    struct jpeg_error_mgr *);
+typedef void (*rig_jpeg__create_decompress_fn)(j_decompress_ptr, int, size_t);
+typedef void (*rig_jpeg__destroy_decompress_fn)(j_decompress_ptr);
+typedef void (*rig_jpeg__mem_src_fn)(j_decompress_ptr, const unsigned char *,
+                                     unsigned long);
+typedef int (*rig_jpeg__read_header_fn)(j_decompress_ptr, int);
+typedef int (*rig_jpeg__start_decompress_fn)(j_decompress_ptr);
+typedef unsigned int (*rig_jpeg__read_scanlines_fn)(j_decompress_ptr,
+                                                    JSAMPARRAY, JDIMENSION);
+typedef int (*rig_jpeg__finish_decompress_fn)(j_decompress_ptr);
+
+static rig_jpeg__std_error_fn rig_jpeg__jpeg_std_error;
+static rig_jpeg__create_decompress_fn rig_jpeg__jpeg_CreateDecompress;
+static rig_jpeg__destroy_decompress_fn rig_jpeg__jpeg_destroy_decompress;
+static rig_jpeg__mem_src_fn rig_jpeg__jpeg_mem_src;
+static rig_jpeg__read_header_fn rig_jpeg__jpeg_read_header;
+static rig_jpeg__start_decompress_fn rig_jpeg__jpeg_start_decompress;
+static rig_jpeg__read_scanlines_fn rig_jpeg__jpeg_read_scanlines;
+static rig_jpeg__finish_decompress_fn rig_jpeg__jpeg_finish_decompress;
+
+static int rig_jpeg_load_attempted = 0;
+static int rig_jpeg_loaded = 0;
+
+static const char *rig_jpeg_candidates[] = {
+    "libjpeg.so.62",   "libjpeg.so",     "libjpeg.62.dylib",
+    "libjpeg.dylib",   "libjpeg-62.dll", "jpeg.dll",
+    NULL,
+};
+
+static int rig_jpeg_bind_all(void *handle) {
+  void *symbol;
+
+#define RIG_JPEG_BIND(field, symbol_name)                                      \
+  do {                                                                         \
+    symbol = rig_dl_sym(handle, symbol_name);                                  \
+    if (symbol == NULL) {                                                      \
+      return 0;                                                                \
+    }                                                                          \
+    *(void **)(&(field)) = symbol;                                             \
+  } while (0)
+
+  RIG_JPEG_BIND(rig_jpeg__jpeg_std_error, "jpeg_std_error");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_CreateDecompress, "jpeg_CreateDecompress");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_destroy_decompress, "jpeg_destroy_decompress");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_mem_src, "jpeg_mem_src");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_read_header, "jpeg_read_header");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_start_decompress, "jpeg_start_decompress");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_read_scanlines, "jpeg_read_scanlines");
+  RIG_JPEG_BIND(rig_jpeg__jpeg_finish_decompress, "jpeg_finish_decompress");
+
+#undef RIG_JPEG_BIND
+  return 1;
+}
+
+static int rig_jpeg_load(void) {
+  size_t i;
+
+  if (rig_jpeg_load_attempted) {
+    return rig_jpeg_loaded;
+  }
+  rig_jpeg_load_attempted = 1;
+
+  for (i = 0; rig_jpeg_candidates[i] != NULL; i++) {
+    void *handle = rig_dl_open(rig_jpeg_candidates[i]);
+    if (handle == NULL) {
+      continue;
+    }
+    if (rig_jpeg_bind_all(handle)) {
+      rig_jpeg_loaded = 1;
+      return 1;
+    }
+    rig_dl_close(handle);
+  }
+
+  return 0;
+}
 
 typedef struct {
   struct jpeg_error_mgr pub;
@@ -30,7 +118,7 @@ static void rig_jpeg_error_exit(j_common_ptr cinfo) {
 }
 
 /* Decodes `size` bytes of JPEG data into a malloc'd top-down RGBA8 buffer.
- * Returns 0 on success, -1 on decode failure. */
+ * Returns 0 on success, -1 on decode failure, -2 when libjpeg is unavailable. */
 int rig_jpeg_decode(const void *data, size_t size, unsigned char **out_pixels,
                     int *out_width, int *out_height) {
   struct jpeg_decompress_struct cinfo;
@@ -40,34 +128,39 @@ int rig_jpeg_decode(const void *data, size_t size, unsigned char **out_pixels,
   int width;
   int height;
 
+  if (!rig_jpeg_load()) {
+    return -2;
+  }
+
   memset(&cinfo, 0, sizeof(cinfo));
-  cinfo.err = jpeg_std_error(&error.pub);
+  cinfo.err = rig_jpeg__jpeg_std_error(&error.pub);
   error.pub.error_exit = rig_jpeg_error_exit;
 
   if (setjmp(error.jump)) {
-    jpeg_destroy_decompress(&cinfo);
+    rig_jpeg__jpeg_destroy_decompress(&cinfo);
     free(row);
     free(rgba);
     return -1;
   }
 
-  jpeg_create_decompress(&cinfo);
-  jpeg_mem_src(&cinfo, (const unsigned char *)data, (unsigned long)size);
-  jpeg_read_header(&cinfo, TRUE);
+  rig_jpeg__jpeg_CreateDecompress(&cinfo, JPEG_LIB_VERSION, sizeof(cinfo));
+  rig_jpeg__jpeg_mem_src(&cinfo, (const unsigned char *)data,
+                         (unsigned long)size);
+  rig_jpeg__jpeg_read_header(&cinfo, TRUE);
   cinfo.out_color_space = JCS_RGB;
-  jpeg_start_decompress(&cinfo);
+  rig_jpeg__jpeg_start_decompress(&cinfo);
 
   width = (int)cinfo.output_width;
   height = (int)cinfo.output_height;
   if (width <= 0 || height <= 0) {
-    jpeg_destroy_decompress(&cinfo);
+    rig_jpeg__jpeg_destroy_decompress(&cinfo);
     return -1;
   }
 
   rgba = (unsigned char *)malloc((size_t)width * (size_t)height * 4u);
   row = (unsigned char *)malloc((size_t)width * 3u);
   if (rgba == NULL || row == NULL) {
-    jpeg_destroy_decompress(&cinfo);
+    rig_jpeg__jpeg_destroy_decompress(&cinfo);
     free(row);
     free(rgba);
     return -1;
@@ -80,7 +173,7 @@ int rig_jpeg_decode(const void *data, size_t size, unsigned char **out_pixels,
     int x;
 
     rows[0] = row;
-    jpeg_read_scanlines(&cinfo, rows, 1);
+    rig_jpeg__jpeg_read_scanlines(&cinfo, rows, 1);
     y = (size_t)cinfo.output_scanline - 1u;
     dst = rgba + y * (size_t)width * 4u;
     for (x = 0; x < width; x++) {
@@ -91,8 +184,8 @@ int rig_jpeg_decode(const void *data, size_t size, unsigned char **out_pixels,
     }
   }
 
-  jpeg_finish_decompress(&cinfo);
-  jpeg_destroy_decompress(&cinfo);
+  rig_jpeg__jpeg_finish_decompress(&cinfo);
+  rig_jpeg__jpeg_destroy_decompress(&cinfo);
 
   free(row);
   *out_pixels = rgba;

@@ -91,6 +91,18 @@ The factory's capability `properties` record its backend (`{ backend = "gl" }`,
 resource scope. `sdl3x` ships the GL and SDL_GPU factories and bundles them beside
 the matching graphics context.
 
+Mesh factories share two backend-neutral helpers from `render`:
+
+- `render.resolve_material_texture(material, texture_factory, target_factory)`
+  - Resolves `material.texture` into a backend handle through the texture or target
+    factory, or returns an already-created handle. Returns `nil` when the material
+    has no texture.
+- `render.material_sources(mesh, material, has_texture, builtin)`
+  - Returns `vertex_source, fragment_source, label` for the drawable. A custom
+    material supplies its own sources; otherwise `builtin.unlit` or
+    `builtin.textured` (`{ vertex = ..., fragment = ... }`) is selected. A built-in
+    textured material raises when the mesh has no UVs.
+
 A `render.texture` provider is a table with `create(texture) -> handle`, where the
 handle exposes `:bind(unit)` (GL) or `:bind(pass, slot)` (GPU), plus `width` and
 `height`. Mesh factories resolve it from the composition; a mesh factory without a

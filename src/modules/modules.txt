@@ -29,6 +29,8 @@ shader
 time
 animator
 profiler
+app
+graphics
 sdl3x
 mathx
 motion

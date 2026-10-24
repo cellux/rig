@@ -186,6 +186,55 @@ function M.material(options)
    }
 end
 
+-- Resolves a material's `texture` into a backend texture handle. It accepts a
+-- `render.texture` value (uploaded by the texture factory), a `render.target`
+-- value (whose color surface is already a texture handle), or an already-created
+-- backend handle. Returns nil when the material has no texture.
+function M.resolve_material_texture(material, texture_factory, target_factory)
+   if material == nil or material.texture == nil then
+      return nil
+   end
+
+   local spec = material.texture
+   if spec.kind == "render.texture" then
+      if texture_factory == nil then
+         rig.raise("textured material requires a render.texture provider")
+      end
+      return texture_factory.create(spec)
+   end
+   if spec.kind == "render.target" then
+      if target_factory == nil then
+         rig.raise("a material sampling a render target requires a render.target provider")
+      end
+      return target_factory.create(spec).texture
+   end
+
+   return spec
+end
+
+-- Selects the vertex/fragment sources and resource label for a mesh drawable.
+-- A custom material supplies its own sources; otherwise the backend's built-in
+-- unlit or textured sources are used. `builtin` supplies both pairs:
+--   builtin.unlit    = { vertex = ..., fragment = ... }
+--   builtin.textured = { vertex = ..., fragment = ... }
+-- A built-in textured material requires a mesh with UVs.
+function M.material_sources(mesh, material, has_texture, builtin)
+   if material ~= nil and material.vertex ~= nil then
+      return material.vertex, material.fragment,
+         "rig.render.material." .. (material.name or "unnamed")
+   end
+   if has_texture then
+      if mesh.attribute_offsets.uv == nil then
+         rig.raise(
+            "the built-in textured material requires a mesh with UVs (for example mesh.make_quad or mesh.parse_obj)"
+         )
+      end
+      return builtin.textured.vertex, builtin.textured.fragment,
+         "rig.render.mesh.textured"
+   end
+   return builtin.unlit.vertex, builtin.unlit.fragment, "rig.render.mesh"
+end
+
 M.plugin = function(spec)
    spec = spec or {}
    return runtime.plugin {

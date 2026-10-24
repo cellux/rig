@@ -1,3 +1,4 @@
+local graphics = require("graphics")
 local test = require("test")
 local runtime = require("runtime")
 local rig = require("rig")
@@ -10,7 +11,8 @@ test.case("frame component requires a graphics context", function()
    local ok, err = pcall(function()
       rig.runtime()
          :use(p)
-         :add(sdl3x.frame_component(p, { name = "frame" }))
+         :use(graphics.plugin())
+         :add(graphics.frame_component(p, { name = "frame" }))
          :execute(function() end)
          :compile()
    end)
@@ -27,10 +29,11 @@ test.case("core frame phases map to class methods", function()
 
    local compiled = rig.runtime()
       :use(p)
+      :use(graphics.plugin())
       :add(sdl3x.subsystem_component(p, { name = "sdl" }))
       :add(sdl3x.window_component(p, { name = "window" }))
       :add(sdl3x.renderer_context_component(p, { name = "graphics" }))
-      :add(sdl3x.frame_component(p, { name = "frame" }))
+      :add(graphics.frame_component(p, { name = "frame" }))
       :execute(rig.Class())
       :compile()
 
@@ -59,10 +62,11 @@ test.case("frame component renders and dispatches lifecycle phases", function()
 
    local compiled = rig.runtime()
       :use(p)
+      :use(graphics.plugin())
       :add(sdl3x.subsystem_component(p, { name = "sdl" }))
       :add(sdl3x.window_component(p, { name = "window" }))
       :add(sdl3x.renderer_context_component(p, { name = "graphics" }))
-      :add(sdl3x.frame_component(p, { name = "frame" }))
+      :add(graphics.frame_component(p, { name = "frame" }))
       :add(runtime.descriptor(p, {
          name = "stop",
          progress = {
@@ -100,11 +104,12 @@ test.case("frame component renders the resolved render.scene", function()
 
    local compiled = rig.runtime()
       :use(p)
+      :use(graphics.plugin())
       :use(sp)
       :add(sdl3x.subsystem_component(p, { name = "sdl" }))
       :add(sdl3x.window_component(p, { name = "window" }))
       :add(sdl3x.renderer_context_component(p, { name = "graphics" }))
-      :add(sdl3x.frame_component(p, { name = "frame" }))
+      :add(graphics.frame_component(p, { name = "frame" }))
       :add(scene.container_component(sp, {
          name = "scene",
          scene_class = RecordingScene,
@@ -144,10 +149,11 @@ test.case("gpu graphics context renders a frame", function()
 
    local compiled = rig.runtime()
       :use(p)
+      :use(graphics.plugin())
       :add(sdl3x.subsystem_component(p, { name = "sdl" }))
       :add(sdl3x.window_component(p, { name = "window" }))
       :add(sdl3x.gpu_context_component(p, { name = "graphics" }))
-      :add(sdl3x.frame_component(p, { name = "frame" }))
+      :add(graphics.frame_component(p, { name = "frame" }))
       :add(runtime.descriptor(p, {
          name = "stop",
          progress = {

@@ -38,6 +38,16 @@ local function normalize_byte(value, label, default_value)
    return math.floor(resolved + 0.5)
 end
 
+local function unit_to_byte(resolved)
+   if resolved < 0 then
+      resolved = 0
+   elseif resolved > 1 then
+      resolved = 1
+   end
+
+   return math.floor(resolved * 255 + 0.5)
+end
+
 local function normalize_unit(value, label, default_value)
    local resolved = value
    if resolved == nil then
@@ -52,13 +62,7 @@ local function normalize_unit(value, label, default_value)
       rig.raise("color component '" .. label .. "' must be numeric")
    end
 
-   if resolved < 0 then
-      resolved = 0
-   elseif resolved > 1 then
-      resolved = 1
-   end
-
-   return math.floor(resolved * 255 + 0.5)
+   return unit_to_byte(resolved)
 end
 
 local function parse_hex(value)
@@ -419,6 +423,24 @@ end
 
 function M.is(value)
    return ffi.istype(Color, value)
+end
+
+-- Converts a unit (0..1) color component to a clamped 0..255 byte. `default_value`
+-- is used when `value` is nil.
+function M.unit_to_byte(value, default_value)
+   if value == nil then
+      value = default_value
+   end
+   if value == nil then
+      rig.raise("color unit component must be numeric")
+   end
+
+   value = tonumber(value)
+   if value == nil then
+      rig.raise("color unit component must be numeric")
+   end
+
+   return unit_to_byte(value)
 end
 
 function M.rgb(r, g, b)

@@ -69,6 +69,13 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
       renderbuffer.
     - `framebuffer:check()` — raises unless the framebuffer is complete.
     - `framebuffer:release()`
+- `glx.RenderScene`
+  - `scene.RenderScene` specialization that owns the GL state set once per frame.
+  - `begin_frame` enables the depth test, sets the viewport to `graphics.window`'s
+    pixel size, and clears the color/depth buffers with `background_color`.
+  - `enter_target(handle)` / `leave_target(handle)` bind the target framebuffer and
+    restore the default framebuffer. `graphics.window` only needs
+    `get_size_in_pixels()`.
 - `glx.get_version_string()`
 
 ## Notes

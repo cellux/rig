@@ -255,40 +255,16 @@ Construction uses temporary `sdl3x.Properties`, merges builtin default window pr
 
 ## `sdl3x.App`
 
-`sdl3x.App` extends `rig.Class()` with SDL window/event/render conveniences. It is
-instantiated as a runtime execution class, so `init(context)` receives the runtime
-context and `context.window` / `context.graphics`:
-
-- `window_width`
-- `window_height`
-- `pixel_width`
-- `pixel_height`
-- `fullscreen_enabled`
-- `vsync_enabled`
-- `frame_profiler`
-- `frame_profiler_enabled`
-- `font_faces`
-- `owned_resources`
-
-Methods:
-
-- `app:set_vsync(enabled)`
-- `app:toggle_vsync()`
-- `app:set_fullscreen(enabled)`
-- `app:toggle_fullscreen()`
-- `app:set_frame_profiler_enabled(enabled)`
-- `app:toggle_frame_profiler()`
-- `app:own(resource, release_fn)`
-- `app:replace_owned(key, resource, release_fn)`
-- `app:create_owned_scope(label?)`
-- `app:release_owned_resources()`
-- `app:load_font_face(name, path[, face_index])`
-- `app:get_font_face(name)`
-- `app:invoke_render(...)`
+`sdl3x.App` is a thin subclass of `app.App` (see `app.md`) bound to the SDL
+window/graphics context. It is instantiated as a runtime execution class, so
+`init(context)` receives the runtime context and `context.window` /
+`context.graphics`. All conveniences (`set_vsync`, `set_fullscreen`, owned
+resources, font faces, frame profiler, `invoke_render`, ...) come from `app.App`.
 
 ## `sdl3x.SceneApp`
 
-`sdl3x.SceneApp` extends `animator.App` with the same SDL/window/render conveniences as `sdl3x.App`.
+`sdl3x.SceneApp` is a thin subclass of `scene.SceneApp` (see `scene.md`) with the
+same SDL window/render binding as `sdl3x.App`.
 
 Typical usage:
 
@@ -351,9 +327,9 @@ local compiled = rig.runtime()
 
 ## Graphics Context Components
 
-Graphics contexts provide the `graphics.context` capability (declared by
-`sdl3x.plugin`) and require `sdl3.window`. Each provider records its backend in the
-capability `properties`, so consumers can require a specific backend
+Graphics contexts provide the `graphics.context` capability (declared by the
+`graphics` module) and require `sdl3.window`. Each provider records its backend in
+the capability `properties`, so consumers can require a specific backend
 (`{ capability = "graphics.context", properties = { backend = "gl" } }`) without
 naming a component.
 
@@ -379,21 +355,9 @@ so a partially initialized context never leaks.
 
 ## Frame Component
 
-`sdl3x.frame_component(plugin, options)` provides the per-frame loop:
-
-- It requires `graphics.context` and contributes a `frame` progress operation that:
-  1. emits `core.before_frame`;
-  2. calls the render callback;
-  3. presents through the graphics context (`graphics:render_frame(render)`);
-  4. emits `core.after_frame`.
-- `options.render` is an optional render callback. When omitted, class execution uses
-  `instance:render(...)`; if that is also absent, the runtime uses the component
-  providing `render.scene` (see the `scene` module) as the render callback.
-- `options.frame_profiler` may be `true` or a `profiler.FrameProfiler` options table;
-  the frame profiler wraps the whole frame and the render call.
-
-`core.before_frame` maps to the class method `before_frame`, and `core.after_frame` to
-`after_frame`.
+The backend-neutral per-frame loop lives in the `graphics` module as
+`graphics.frame_component` (see `graphics.md`). `sdl3x` bundles add it after the
+matching graphics context, so an application gets the frame loop without naming it.
 
 Each graphics context implements `render_frame(render_fn)`:
 
@@ -403,14 +367,14 @@ Each graphics context implements `render_frame(render_fn)`:
 
 ## Scene Implementation
 
-`sdl3x` owns the backend-specific implementations of the `scene` interface and
-provides the `render.scene.impl` capability:
+`sdl3x` provides the `render.scene.impl` capability for its backends:
 
-- `sdl3x.GlRenderScene` — `scene.RenderScene` subclass whose `begin_frame` enables
-  the depth test, sets the OpenGL viewport, and clears the color/depth buffers.
+The OpenGL implementation itself lives in `glx` (see `glx.RenderScene`); `sdl3x`
+only selects it for the GL context.
+
 - `sdl3x.gl_scene_component(plugin, options)` — provides `render.scene.impl` with
   `properties = { backend = "gl" }` and requires the GL graphics context and
-  `gl.resolver`; its value is `GlRenderScene`.
+  `gl.resolver`; its value is `glx.RenderScene`.
 - `sdl3x.GpuRenderScene` — `scene.RenderScene` subclass that owns the depth target and
   the SDL_GPU render pass. `begin_frame(command_buffer, swapchain_texture, width,
   height)` opens the pass and exposes it (with the command buffer) to its drawables;

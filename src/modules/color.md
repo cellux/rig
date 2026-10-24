@@ -33,6 +33,12 @@
 - `color.is(value)`
   - Returns `true` when `value` is a `color.Color`.
 
+## Components
+
+- `color.unit_to_byte(value[, default_value])`
+  - Converts a unit (0..1) color component to a clamped 0..255 byte.
+  - `default_value` is used when `value` is nil.
+
 ## Constants
 
 - `color.WHITE`
