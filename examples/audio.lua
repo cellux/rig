@@ -21,10 +21,8 @@ local CUBE_COLORS = {
 -- a mute toggle. If no audio device is available, it prints a notice and runs
 -- silently rather than failing.
 --
--- options:
---   title          window title
---   bundle         sdl3x.bundle_sdl3_gl or sdl3x.bundle_sdl3_gpu (the backend hint)
---   bundle_options extra options forwarded to the bundle
+-- Pick the backend with RIG_BACKEND (see examples/backend.lua); the default is
+-- `gl`.
 function M.run(options)
    options = options or {}
 
@@ -75,4 +73,12 @@ function M.run(options)
    }
 end
 
-return M
+local backend = rig.require("./backend").select {
+   backends = { gl = true, gpu = true },
+}
+
+M.run {
+   title = "Rig " .. backend.label .. " Audio",
+   bundle = backend.bundle,
+   bundle_options = backend.bundle_options,
+}

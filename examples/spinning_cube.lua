@@ -14,10 +14,8 @@ M.cube_face_colors = {
    color.rgb(112, 232, 255),
 }
 
--- options:
---   title          window title
---   bundle         sdl3x.bundle_sdl3_gl or sdl3x.bundle_sdl3_gpu (the backend hint)
---   bundle_options extra options forwarded to the bundle
+-- Spins a cube through the scene/mesh stack. Pick the backend with RIG_BACKEND
+-- (see examples/backend.lua); the default is `gl`.
 function M.run(options)
    options = options or {}
 
@@ -37,4 +35,12 @@ function M.run(options)
    }
 end
 
-return M
+local backend = rig.require("./backend").select {
+   backends = { gl = true, gpu = true },
+}
+
+M.run {
+   title = "Rig " .. backend.label .. " Spinning Cube",
+   bundle = backend.bundle,
+   bundle_options = backend.bundle_options,
+}

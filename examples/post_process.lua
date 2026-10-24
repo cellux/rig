@@ -20,12 +20,8 @@ local CUBE_COLORS = {
 -- fullscreen post shader. This is the smallest chained pass: render to texture,
 -- sample it, draw to the window.
 --
--- options:
---   title          window title
---   bundle         sdl3x.bundle_sdl3_gl or sdl3x.bundle_sdl3_gpu (the backend hint)
---   bundle_options extra options forwarded to the bundle
---   post_vertex    path (relative to this script) of the post vertex shader
---   post_fragment  path of the post fragment shader
+-- Pick the backend with RIG_BACKEND (see examples/backend.lua); the default is
+-- `gl`. The SDL_GPU backend uses the `post_gpu` shader pair.
 function M.run(options)
    options = options or {}
 
@@ -61,4 +57,18 @@ function M.run(options)
    }
 end
 
-return M
+local backend = rig.require("./backend").select {
+   backends = { gl = true, gpu = true },
+}
+
+local options = {
+   title = "Rig " .. backend.label .. " Post Process",
+   bundle = backend.bundle,
+   bundle_options = backend.bundle_options,
+}
+if backend.name == "gpu" then
+   options.post_vertex = "assets/post_gpu.vert"
+   options.post_fragment = "assets/post_gpu.frag"
+end
+
+M.run(options)

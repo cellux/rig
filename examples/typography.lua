@@ -2,31 +2,17 @@ local asset = require("asset")
 local color = require("color")
 local font = require("font")
 local rig = require("rig")
-local sdl3x = require("sdl3x")
 
 -- Typography stress test for the font stack. A handful of large words drift
 -- right-to-left at different sizes, colors, speeds, and alphas, so a single run
 -- exercises shaping, rasterization, atlas packing, and per-backend drawing.
 --
--- Pick the rendering backend with the RIG_BACKEND environment variable:
---
---    RIG_BACKEND=renderer ./build/rig examples/typography.lua
---    RIG_BACKEND=gl       ./build/rig examples/typography.lua
---    RIG_BACKEND=gpu      ./build/rig examples/typography.lua
---
--- The default is `gl`.
+-- Pick the rendering backend with RIG_BACKEND (see examples/backend.lua); the
+-- default is `gl`.
 
-local BUNDLES = {
-   renderer = sdl3x.bundle_sdl3,
-   gl = sdl3x.bundle_sdl3_gl,
-   gpu = sdl3x.bundle_sdl3_gpu,
+local backend = rig.require("./backend").select {
+   backends = { renderer = true, gl = true, gpu = true },
 }
-
-local backend = os.getenv("RIG_BACKEND") or "gl"
-local bundle = BUNDLES[backend]
-if bundle == nil then
-   rig.raise("RIG_BACKEND must be 'renderer', 'gl', or 'gpu' (got '%s')", backend)
-end
 
 local face_path = asset.path("../assets/DejaVuSans.ttf")
 
@@ -159,8 +145,9 @@ local function draw_words(frame)
 end
 
 rig.run {
-   title = "Rig Typography",
-   bundle = bundle,
+   title = "Rig " .. backend.label .. " Typography",
+   bundle = backend.bundle,
+   bundle_options = backend.bundle_options,
    background = color.rgb(9, 11, 18),
    build = function(app)
       app:on_overlay(function(_, frame)

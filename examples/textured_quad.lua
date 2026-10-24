@@ -13,10 +13,8 @@ local M = {}
 local quad = mesh.make_quad { size = 3.0 }
 local checker = nil
 
--- options:
---   title          window title
---   bundle         sdl3x.bundle_sdl3_gl or sdl3x.bundle_sdl3_gpu (the backend hint)
---   bundle_options extra options forwarded to the bundle
+-- Pick the backend with RIG_BACKEND (see examples/backend.lua); the default is
+-- `gl`.
 function M.run(options)
    options = options or {}
 
@@ -42,4 +40,12 @@ function M.run(options)
    }
 end
 
-return M
+local backend = rig.require("./backend").select {
+   backends = { gl = true, gpu = true },
+}
+
+M.run {
+   title = "Rig " .. backend.label .. " Textured Quad",
+   bundle = backend.bundle,
+   bundle_options = backend.bundle_options,
+}
