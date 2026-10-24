@@ -71,13 +71,29 @@ Core runtime helpers that are always loaded at interpreter startup.
 - `rig.script_loaders`
   - Ordered list of script loader functions.
   - Built in with Lua first and Fennel second.
-  - Each loader receives `(script_path, source)` and should return either a compiled chunk or `nil, err`.
+  - Each loader receives `(source, script_path)` and should return either a compiled chunk or `nil, err`.
 - `rig.load_script(source, script_path)`
   - Runs `rig.script_loaders` in order until one returns a compiled chunk.
   - Executes the first accepted chunk.
   - Raises a combined error if no loader accepts the source.
 - `rig.run_script_file(script_path)`
   - Reads the file with `io.open(..., "rb")` and forwards the contents to `rig.load_script(...)`.
+- `rig.require(module_name)`
+  - Loads a module. When `module_name` begins with `.` it is resolved against the
+    directory of the calling script file, so `rig.require("./helper")` loads a
+    sibling `helper.lua`/`helper.fnl` (or `helper/init.lua`/`helper/init.fnl`).
+  - Relative modules are executed through `rig.load_script` and cached in a
+    rig-private table keyed by canonical absolute path (`rig.realpath`), so
+    equivalent spellings and symlinks share one instance and the modules never
+    enter -- or conflict with -- the stock Lua `require` cache. Nested relative
+    requires resolve against their own file.
+  - Every other name is forwarded unchanged to the stock Lua `require`.
+- `rig.realpath(path)`
+  - Returns the canonical absolute path for `path`, resolving symlinks and
+    relative components.
+  - Returns `nil, message` when the path does not exist or cannot be resolved.
+  - Backed by `realpath` on POSIX and `_fullpath` on Windows; no async backend is
+    required.
 
 ## Notes
 

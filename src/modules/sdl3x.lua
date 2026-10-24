@@ -4,9 +4,11 @@ local bit = bit
 local color = require("color")
 local font = require("font")
 local ffi = require("ffi")
+local glx = require("glx")
 local profiler = require("profiler")
 local rig = require("rig")
 local runtime = require("runtime")
+local scene = require("scene")
 local sched = require("sched")
 local schema = require("schema")
 local sdl3 = require("sdl3")
@@ -2536,6 +2538,8 @@ function M.plugin(spec)
          ["mesh.vertex_input"] = {},
          ["gl.resolver"] = {},
          ["render.scene"] = {},
+         ["render.scene.impl"] = {},
+         ["render.mesh"] = {},
       },
       extension_points = {
          ["sdl3.key"] = { method = "on_key" },
@@ -3217,6 +3221,446 @@ function M.gl_resolver_component(plugin, options)
    })
 end
 
+--[ render scene implementations ]--
+
+-- The OpenGL specialization of the scene interface. It owns the GL state that
+-- must be set once per frame before its drawables run.
+local GlRenderScene = rig.Class(scene.RenderScene)
+M.GlRenderScene = GlRenderScene
+
+function GlRenderScene:begin_frame()
+   local gl = require("gl")
+   local window = self.graphics.window
+   local pixel_width, pixel_height = window:get_size_in_pixels()
+   self.width = math.max(1, tonumber(pixel_width) or 1)
+   self.height = math.max(1, tonumber(pixel_height) or 1)
+
+   gl.Enable(gl.DEPTH_TEST)
+   gl.DepthFunc(gl.LEQUAL)
+   gl.Viewport(0, 0, self.width, self.height)
+   local r, g, b, a = self.background_color:to_rgbaf()
+   gl.ClearColor(r, g, b, a)
+   gl.Clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT)
+end
+
+function M.gl_scene_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.scene.impl", properties = { backend = "gl" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gl" } },
+         { capability = "gl.resolver" },
+      },
+      create = function()
+         return GlRenderScene
+      end,
+   })
+end
+
+--[ default mesh shaders ]--
+
+local gl_mesh_vertex_source = [[
+#version 330 core
+
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
+
+out vec3 out_color;
+
+uniform mat4 u_mvp;
+
+void main()
+{
+   gl_Position = u_mvp * vec4(in_position, 1.0);
+   out_color = in_color;
+}
+]]
+
+local gl_mesh_fragment_source = [[
+#version 330 core
+
+in vec3 out_color;
+out vec4 frag_color;
+
+void main()
+{
+   frag_color = vec4(out_color, 1.0);
+}
+]]
+
+local gpu_mesh_vertex_source = [[
+#version 450
+
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
+
+layout(location = 0) out vec3 out_color;
+
+layout(set = 1, binding = 0) uniform Camera {
+   mat4 mvp;
+} camera;
+
+void main()
+{
+   gl_Position = camera.mvp * vec4(in_position, 1.0);
+   out_color = in_color;
+}
+]]
+
+local gpu_mesh_fragment_source = [[
+#version 450
+
+layout(location = 0) in vec3 in_color;
+layout(location = 0) out vec4 out_color;
+
+void main()
+{
+   out_color = vec4(in_color, 1.0);
+}
+]]
+
+local function release_scope(scope)
+   local errors = scope:release()
+   if errors ~= nil and #errors > 0 then
+      error(table.concat(errors, "\n"), 0)
+   end
+end
+
+--[ mesh factories ]--
+
+local function make_gl_mesh_factory(shader_provider, scope)
+   return {
+      create = function(mesh)
+         local gl = require("gl")
+         local vertex_stage = shader_provider:create_stage({
+            language = "glsl",
+            stage = "vertex",
+            source_name = "rig.render.mesh.vert.glsl",
+            source = gl_mesh_vertex_source,
+         })
+         local fragment_stage = shader_provider:create_stage({
+            language = "glsl",
+            stage = "fragment",
+            source_name = "rig.render.mesh.frag.glsl",
+            source = gl_mesh_fragment_source,
+         })
+
+         local program = glx.Program {
+            shaders = { vertex_stage, fragment_stage },
+         }
+         scope:adopt(program, function(_, resource)
+            resource:release()
+         end)
+
+         local vbo = glx.Buffer { target = gl.ARRAY_BUFFER }
+         scope:adopt(vbo, function(_, resource)
+            resource:release()
+         end)
+
+         local vao = glx.VertexArray()
+         scope:adopt(vao, function(_, resource)
+            resource:release()
+         end)
+
+         vao:bind()
+         vbo:set_data(mesh.vertex_blob, gl.STATIC_DRAW)
+         vao:attribute(
+            0,
+            3,
+            gl.FLOAT,
+            gl.FALSE,
+            mesh.vertex_stride,
+            mesh.attribute_offsets.position
+         )
+         vao:attribute(
+            1,
+            3,
+            gl.FLOAT,
+            gl.FALSE,
+            mesh.vertex_stride,
+            mesh.attribute_offsets.color
+         )
+
+         return {
+            draw = function(_, surface, mvp)
+               program:use()
+               program:set_uniform_matrix4fv("u_mvp", mvp)
+               vao:bind()
+               gl.DrawArrays(gl.TRIANGLES, 0, mesh.vertex_count)
+            end,
+         }
+      end,
+   }
+end
+
+function M.gl_mesh_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.mesh", properties = { backend = "gl" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gl" } },
+         { capability = "gl.resolver" },
+         { capability = "shader.stage" },
+      },
+      create = function(context)
+         local scope = rig.ResourceScope(context, "gl mesh factory resources")
+         context.adopt(scope, release_scope)
+         return make_gl_mesh_factory(context:capability("shader.stage"), scope)
+      end,
+   })
+end
+
+--[ GPU render scene ]--
+
+-- The SDL_GPU specialization of the scene interface. It owns the depth target
+-- and the render pass that its drawables record into.
+local GpuRenderScene = rig.Class(scene.RenderScene)
+M.GpuRenderScene = GpuRenderScene
+
+function GpuRenderScene:init(options)
+   self:super().init(self, options)
+
+   self.device = self.graphics.device
+   self.window = self.graphics.window
+   self.width = 1
+   self.height = 1
+   self.depth_format = nil
+   self.depth_texture = nil
+   self.depth_width = 0
+   self.depth_height = 0
+   self.command_buffer = nil
+   self.pass = nil
+   self.gpu_resources = M.ResourceScope(self.device, "gpu scene resources")
+   if self.adopt ~= nil then
+      self.adopt(self.gpu_resources, release_scope)
+   end
+end
+
+function GpuRenderScene:ensure_depth_texture(width, height)
+   if self.depth_texture ~= nil
+      and self.depth_width == width
+      and self.depth_height == height then
+      return
+   end
+
+   if self.depth_format == nil then
+      self.depth_format = M.choose_depth_format(self.device)
+   end
+
+   self.depth_texture = self.gpu_resources:replace("depth_texture",
+      M.create_depth_texture(self.device, width, height, self.depth_format),
+      function(device, resource)
+         sdl3.ReleaseGPUTexture(device, resource)
+      end)
+   self.depth_width = width
+   self.depth_height = height
+end
+
+function GpuRenderScene:begin_frame(command_buffer, swapchain_texture, width, height)
+   self.width = math.max(1, tonumber(width) or 1)
+   self.height = math.max(1, tonumber(height) or 1)
+   self:ensure_depth_texture(self.width, self.height)
+   self.command_buffer = command_buffer
+
+   local color_target_info = ffi.new("SDL_GPUColorTargetInfo[1]")
+   color_target_info[0].texture = swapchain_texture
+   color_target_info[0].mip_level = 0
+   color_target_info[0].layer_or_depth_plane = 0
+   local r, g, b, a = self.background_color:to_rgbaf()
+   color_target_info[0].clear_color.r = r
+   color_target_info[0].clear_color.g = g
+   color_target_info[0].clear_color.b = b
+   color_target_info[0].clear_color.a = a
+   color_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
+   color_target_info[0].store_op = sdl3.GPU_STOREOP_STORE
+   color_target_info[0].resolve_texture = nil
+   color_target_info[0].resolve_mip_level = 0
+   color_target_info[0].resolve_layer = 0
+   color_target_info[0].cycle = false
+   color_target_info[0].cycle_resolve_texture = false
+
+   local depth_target_info = ffi.new("SDL_GPUDepthStencilTargetInfo[1]")
+   depth_target_info[0].texture = self.depth_texture
+   depth_target_info[0].clear_depth = 1.0
+   depth_target_info[0].load_op = sdl3.GPU_LOADOP_CLEAR
+   depth_target_info[0].store_op = sdl3.GPU_STOREOP_DONT_CARE
+   depth_target_info[0].stencil_load_op = sdl3.GPU_LOADOP_DONT_CARE
+   depth_target_info[0].stencil_store_op = sdl3.GPU_STOREOP_DONT_CARE
+   depth_target_info[0].cycle = false
+   depth_target_info[0].clear_stencil = 0
+   depth_target_info[0].mip_level = 0
+   depth_target_info[0].layer = 0
+
+   self.pass = sdl3.BeginGPURenderPass(
+      command_buffer,
+      color_target_info,
+      1,
+      depth_target_info
+   )
+   if self.pass == nil then
+      rig.raise("failed to begin GPU render pass: " .. M.get_error())
+   end
+end
+
+function GpuRenderScene:end_frame()
+   if self.pass ~= nil then
+      sdl3.EndGPURenderPass(self.pass)
+      self.pass = nil
+   end
+   self.command_buffer = nil
+end
+
+function M.gpu_scene_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.scene.impl", properties = { backend = "gpu" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gpu" } },
+      },
+      create = function()
+         return GpuRenderScene
+      end,
+   })
+end
+
+local function make_gpu_mesh_factory(options)
+   local device = options.device
+   local window = options.window
+   local shader_provider = options.shader_provider
+   local mesh_provider = options.mesh_provider
+   local scope = options.scope
+
+   return {
+      create = function(mesh)
+         local vertex_input = mesh_provider:build_vertex_input(mesh)
+
+         local vertex_stage = shader_provider:create_stage(shader.compile {
+            language = "glsl",
+            stage = "vertex",
+            source_name = "rig.render.mesh.vert.glsl",
+            source = gpu_mesh_vertex_source,
+         })
+         scope:adopt(vertex_stage, function(_, resource)
+            shader_provider:destroy_stage(resource)
+         end)
+
+         local fragment_stage = shader_provider:create_stage(shader.compile {
+            language = "glsl",
+            stage = "fragment",
+            source_name = "rig.render.mesh.frag.glsl",
+            source = gpu_mesh_fragment_source,
+         })
+         scope:adopt(fragment_stage, function(_, resource)
+            shader_provider:destroy_stage(resource)
+         end)
+
+         local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(
+            device,
+            window.ptr
+         )
+         local depth_format = M.choose_depth_format(device)
+
+         local pipeline = scope:create_graphics_pipeline {
+            vertex_shader = vertex_stage,
+            fragment_shader = fragment_stage,
+            vertex_input = vertex_input,
+            primitive_type = sdl3.GPU_PRIMITIVETYPE_TRIANGLELIST,
+            rasterizer_state = {
+               fill_mode = sdl3.GPU_FILLMODE_FILL,
+               cull_mode = sdl3.GPU_CULLMODE_NONE,
+               front_face = sdl3.GPU_FRONTFACE_COUNTER_CLOCKWISE,
+               enable_depth_bias = false,
+               enable_depth_clip = true,
+            },
+            multisample_state = {
+               sample_count = sdl3.GPU_SAMPLECOUNT_1,
+               sample_mask = 0,
+               enable_mask = false,
+               enable_alpha_to_coverage = false,
+            },
+            depth_stencil_state = {
+               compare_op = sdl3.GPU_COMPAREOP_LESS,
+               enable_depth_test = true,
+               enable_depth_write = true,
+               enable_stencil_test = false,
+            },
+            target_info = {
+               color_target_descriptions = {
+                  { format = swapchain_format },
+               },
+               depth_stencil_format = depth_format,
+               has_depth_stencil_target = true,
+            },
+            props = 0,
+         }
+
+         local vertex_buffer = scope:create_gpu_buffer {
+            usage = sdl3.GPU_BUFFERUSAGE_VERTEX,
+            size = #mesh.vertex_blob,
+            props = 0,
+         }
+         M.upload_to_gpu_buffer(device, vertex_buffer, mesh.vertex_blob)
+
+         local binding = ffi.new("SDL_GPUBufferBinding[1]")
+         binding[0].buffer = vertex_buffer
+         binding[0].offset = 0
+
+         return {
+            draw = function(_, surface, mvp)
+               sdl3.PushGPUVertexUniformData(
+                  surface.command_buffer,
+                  0,
+                  mvp,
+                  ffi.sizeof(mvp)
+               )
+               sdl3.BindGPUGraphicsPipeline(surface.pass, pipeline)
+               sdl3.BindGPUVertexBuffers(surface.pass, 0, binding, 1)
+               sdl3.DrawGPUPrimitives(
+                  surface.pass,
+                  mesh.vertex_count,
+                  1,
+                  0,
+                  0
+               )
+            end,
+         }
+      end,
+   }
+end
+
+function M.gpu_mesh_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.mesh", properties = { backend = "gpu" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "gpu" } },
+         { capability = "shader.stage" },
+         { capability = "mesh.vertex_input" },
+      },
+      create = function(context)
+         local graphics = context:capability("graphics.context")
+         local scope = M.ResourceScope(graphics.device, "gpu mesh factory resources")
+         context.adopt(scope, release_scope)
+
+         return make_gpu_mesh_factory {
+            device = graphics.device,
+            window = graphics.window,
+            shader_provider = context:capability("shader.stage"),
+            mesh_provider = context:capability("mesh.vertex_input"),
+            scope = scope,
+         }
+      end,
+   })
+end
+
 --[ convenience bundles ]--
 
 local function merge_window_props(base, override)
@@ -3305,6 +3749,8 @@ function M.bundle_sdl3_gl(builder, options)
    builder:add(M.gl_font_renderer_component(plugin, { name = "font" }))
    builder:add(M.gl_resolver_component(plugin, { name = "gl_resolver" }))
    builder:add(M.gl_shader_stage_component(plugin, { name = "shader" }))
+   builder:add(M.gl_scene_component(plugin, {}))
+   builder:add(M.gl_mesh_component(plugin, {}))
    builder:add(M.frame_component(plugin, {
       name = "frame",
       render = options.render,
@@ -3336,6 +3782,8 @@ function M.bundle_sdl3_gpu(builder, options)
    }))
    builder:add(M.mesh_vertex_input_component(plugin, { name = "mesh" }))
    builder:add(M.gpu_shader_stage_component(plugin, { name = "shader" }))
+   builder:add(M.gpu_scene_component(plugin, {}))
+   builder:add(M.gpu_mesh_component(plugin, {}))
    builder:add(M.frame_component(plugin, {
       name = "frame",
       render = options.render,

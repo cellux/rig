@@ -1005,3 +1005,18 @@ test.case("sdl3x.SceneApp combines animator and owned-resource lifecycles", func
    test.equal(#released, 1)
    test.equal(released[1], "owned")
 end)
+
+test.case("GpuRenderScene keeps the inherited scene interface fields", function()
+   local graphics = { device = {}, window = {} }
+   local gpu_scene = sdl3x.GpuRenderScene {
+      name = "scene",
+      graphics = graphics,
+   }
+
+   test.equal(gpu_scene.graphics, graphics)
+   test.equal(gpu_scene.device, graphics.device)
+   test.equal(gpu_scene.window, graphics.window)
+   test.truthy(gpu_scene.children ~= nil)
+   test.truthy(gpu_scene.local_matrix ~= nil)
+   test.equal(gpu_scene.depth_format, nil)
+end)

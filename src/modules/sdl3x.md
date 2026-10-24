@@ -401,6 +401,44 @@ Each graphics context implements `render_frame(render_fn)`:
 - GPU acquires a command buffer and swapchain texture, calls
   `render_fn(command_buffer, swapchain_texture, width, height)`, then submits.
 
+## Scene Implementation
+
+`sdl3x` owns the backend-specific implementations of the `scene` interface and
+provides the `render.scene.impl` capability:
+
+- `sdl3x.GlRenderScene` — `scene.RenderScene` subclass whose `begin_frame` enables
+  the depth test, sets the OpenGL viewport, and clears the color/depth buffers.
+- `sdl3x.gl_scene_component(plugin, options)` — provides `render.scene.impl` with
+  `properties = { backend = "gl" }` and requires the GL graphics context and
+  `gl.resolver`; its value is `GlRenderScene`.
+- `sdl3x.GpuRenderScene` — `scene.RenderScene` subclass that owns the depth target and
+  the SDL_GPU render pass. `begin_frame(command_buffer, swapchain_texture, width,
+  height)` opens the pass and exposes it (with the command buffer) to its drawables;
+  `end_frame` closes it.
+- `sdl3x.gpu_scene_component(plugin, options)` — provides `render.scene.impl` with
+  `properties = { backend = "gpu" }` and requires the GPU graphics context; its value
+  is `GpuRenderScene`.
+
+The `bundle_sdl3_gl` and `bundle_sdl3_gpu` bundles add the matching implementation, so
+an application using `scene.container_component` gets the right scene shape without
+naming it.
+
+## Mesh Factories
+
+`sdl3x` provides the `render.mesh` factories consumed by `render.entity_component`:
+
+- `sdl3x.gl_mesh_component(plugin, options)` — `properties = { backend = "gl" }`;
+  requires the GL graphics context, `gl.resolver`, and `shader.stage`. Its factory
+  compiles the built-in GLSL colored-mesh shaders into a `glx.Program` and owns a
+  `glx.Buffer`/`glx.VertexArray` pair per mesh.
+- `sdl3x.gpu_mesh_component(plugin, options)` — `properties = { backend = "gpu" }`;
+  requires the GPU graphics context, `shader.stage`, and `mesh.vertex_input`. Its
+  factory compiles the built-in GLSL shaders to SPIR-V, builds a graphics pipeline,
+  and uploads each mesh into a GPU vertex buffer.
+
+Both factories adopt their resources into the runtime ownership graph, so a partially
+created mesh rolls back cleanly.
+
 ## Convenience Bundles
 
 Bundles attach their own plugin and add components explicitly; `:use` alone never
@@ -409,9 +447,11 @@ changes behavior.
 - `sdl3x.bundle_sdl3(builder, options)` — subsystem, window, input, renderer graphics
   context, renderer font provider, frame loop.
 - `sdl3x.bundle_sdl3_gl(builder, options)` — subsystem, OpenGL window, input, GL
-  context, GL font provider, GL resolver, GL shader stage, frame loop.
+  context, GL font provider, GL resolver, GL shader stage, GL scene implementation, GL
+  mesh factory, frame loop.
 - `sdl3x.bundle_sdl3_gpu(builder, options)` — subsystem, window, input, GPU context,
-  GPU mesh provider, GPU shader stage, frame loop.
+  GPU mesh provider, GPU shader stage, GPU scene implementation, GPU mesh factory,
+  frame loop.
 
 Common options: `init_flags`, `window_props`, `render`, `frame_profiler`; GL adds
 `gl_attributes`/`swap_interval`; GPU adds `shader_formats`/`debug_mode`/`backend_name`.

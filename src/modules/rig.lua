@@ -375,4 +375,151 @@ function M.run_script_file(script_path)
    return result
 end
 
+--[ module loading ]--
+
+local function source_from_info(info)
+   if info == nil or type(info.source) ~= "string" then
+      return nil
+   end
+
+   local source = info.source
+   if source:sub(1, 1) == "@" then
+      return source:sub(2)
+   end
+   if source:sub(1, 1) == "=" or source:sub(1, 9) == "[string " then
+      return nil
+   end
+   return source
+end
+
+local function source_directory(source)
+   local prefix = source:match("^(.*[/\\])")
+   if prefix == nil then
+      return ""
+   end
+   return prefix
+end
+
+local relative_extensions = { ".lua", ".fnl" }
+
+local function relative_candidates(directory, name)
+   local candidates = {}
+   local lowered = name:lower()
+   if lowered:sub(-4) == ".lua" or lowered:sub(-4) == ".fnl" then
+      candidates[1] = directory .. name
+      return candidates
+   end
+
+   for i = 1, #relative_extensions do
+      candidates[#candidates + 1] = directory .. name .. relative_extensions[i]
+   end
+   for i = 1, #relative_extensions do
+      candidates[#candidates + 1] =
+         directory .. name .. "/init" .. relative_extensions[i]
+   end
+   return candidates
+end
+
+local function file_exists(path)
+   local file = io.open(path, "rb")
+   if file == nil then
+      return false
+   end
+   file:close()
+   return true
+end
+
+local function read_file(path)
+   local file, open_err = io.open(path, "rb")
+   if file == nil then
+      return nil, open_err
+   end
+
+   local contents, read_err = file:read("*all")
+   file:close()
+   if contents == nil then
+      return nil, read_err
+   end
+   return contents
+end
+
+local relative_modules = {}
+
+-- Loads a module. Names beginning with '.' are resolved against the directory
+-- of the calling script file and loaded through rig.load_script. Relative
+-- modules are cached in a rig-private table keyed by canonical absolute path
+-- (rig.realpath), so equivalent spellings and symlinks share one instance and
+-- the modules never enter -- or conflict with -- the stock Lua require cache.
+-- Lua and Fennel siblings are both supported, and nested relative requires
+-- resolve against their own file.
+function M.require(module_name)
+   if type(module_name) ~= "string" or module_name == "" then
+      raise("rig.require expects a non-empty module name")
+   end
+
+   if module_name:sub(1, 1) ~= "." then
+      return require(module_name)
+   end
+
+   local source = source_from_info(debug.getinfo(2, "S"))
+   if source == nil then
+      raise(
+         "rig.require cannot resolve '%s': the calling chunk has no file path",
+         module_name
+      )
+   end
+
+   local relative = module_name:sub(1, 2) == "./"
+      and module_name:sub(3)
+      or module_name
+   if relative == "" then
+      raise("rig.require expects a module path after './'")
+   end
+
+   local directory = source_directory(source)
+   local candidates = relative_candidates(directory, relative)
+
+   local resolved = nil
+   for i = 1, #candidates do
+      if file_exists(candidates[i]) then
+         resolved = candidates[i]
+         break
+      end
+   end
+
+   if resolved == nil then
+      raise(
+         "rig.require could not find module '%s' relative to '%s'",
+         module_name,
+         source
+      )
+   end
+
+   local key = resolved
+   if type(M.realpath) == "function" then
+      local canonical = M.realpath(resolved)
+      if canonical ~= nil then
+         key = canonical
+      end
+   end
+
+   local loaded = relative_modules[key]
+   if loaded ~= nil then
+      return loaded
+   end
+
+   local contents, read_err = read_file(resolved)
+   if contents == nil then
+      raise("failed to read '%s': %s", resolved, read_err or "unknown error")
+   end
+
+   local value = M.load_script(contents, key)
+   if value == nil then
+      value = true
+   end
+   relative_modules[key] = value
+
+   return value
+end
+
 return M

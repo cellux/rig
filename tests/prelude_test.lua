@@ -134,17 +134,13 @@ test.case("prelude.Class supports is_instance across inheritance", function()
    local Dog = prelude.Class(Animal)
 
    function Dog:speak()
-      return "woof"
+      return "woof:(" .. self:super().speak(self) .. ")"
    end
 
    local Puppy = prelude.Class(Dog)
 
    function Puppy:speak()
-      return "yip"
-   end
-
-   function Animal:parent_speak()
-      return self:super().speak(self)
+      return "yip:(" .. self:super().speak(self) .. ")"
    end
 
    local dog = Dog()
@@ -152,8 +148,30 @@ test.case("prelude.Class supports is_instance across inheritance", function()
 
    test.truthy(Dog:is_instance(dog))
    test.truthy(Animal:is_instance(dog))
-   test.equal(puppy:parent_speak(), "woof")
+   test.equal(dog:speak(), "woof:(...)")
+   test.equal(puppy:speak(), "yip:(woof:(...))")
    test.falsey(Dog:is_instance({}))
+end)
+
+test.case("prelude.Class super cooperates through inherited init", function()
+   local Base = prelude.Class()
+
+   function Base:init(value)
+      self.base = value
+   end
+
+   local Mid = prelude.Class(Base)
+
+   function Mid:init(value)
+      self:super().init(self, value)
+      self.mid = value
+   end
+
+   local Leaf = prelude.Class(Mid) -- inherits Mid:init
+
+   local leaf = Leaf("x")
+   test.equal(leaf.base, "x")
+   test.equal(leaf.mid, "x")
 end)
 
 test.case("prelude.Class supports is_descendant across inheritance", function()

@@ -48,6 +48,12 @@ test.case("sdl3_gl bundle composes the opengl stack", function()
       compiled.plan.bindings.graphics.provides[1].properties.backend,
       "gl"
    )
+   local scene_impl = compiled.plan.providers["render.scene.impl"]
+   test.truthy(scene_impl ~= nil)
+   test.equal(scene_impl[1].entry.properties.backend, "gl")
+   local mesh_factory = compiled.plan.providers["render.mesh"]
+   test.truthy(mesh_factory ~= nil)
+   test.equal(mesh_factory[1].entry.properties.backend, "gl")
 end)
 
 test.case("sdl3_gpu bundle composes the gpu stack", function()
@@ -68,6 +74,12 @@ test.case("sdl3_gpu bundle composes the gpu stack", function()
       compiled.plan.bindings.graphics.provides[1].properties.backend,
       "gpu"
    )
+   local scene_impl = compiled.plan.providers["render.scene.impl"]
+   test.truthy(scene_impl ~= nil)
+   test.equal(scene_impl[1].entry.properties.backend, "gpu")
+   local mesh_factory = compiled.plan.providers["render.mesh"]
+   test.truthy(mesh_factory ~= nil)
+   test.equal(mesh_factory[1].entry.properties.backend, "gpu")
 end)
 
 test.case("uv bundle composes the async stack", function()

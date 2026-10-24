@@ -44,14 +44,58 @@ local function class_of(value)
    return nil
 end
 
+-- Where a method was defined, so super() can skip from the defining class
+-- rather than from the (possibly derived) instance class. Keyed weakly by the
+-- method function.
+local defining_class_of = setmetatable({}, { __mode = "k" })
+
+local function find_defining_class(class_value, fn)
+   local current = class_value
+   while current ~= nil do
+      for _, value in pairs(current) do
+         if value == fn then
+            return current
+         end
+      end
+      current = rawget(current, class_parent_key)
+   end
+   return nil
+end
+
+-- Returns the parent of the class that defines the currently executing method,
+-- so `self:super():method(...)` cooperates correctly through inherited methods
+-- instead of recursing on the instance's own class. When called outside a
+-- method (for example `Dog:super()`), falls back to the parent of the instance's
+-- (or class's) own class.
 function Class:super()
    local class_value = class_of(self)
    if class_value == nil then
       return nil
    end
 
+   local info = debug.getinfo(2, "f")
+   local fn = info ~= nil and info.func or nil
+
+   if fn ~= nil then
+      local defining = defining_class_of[fn]
+      if defining == nil then
+         defining = find_defining_class(class_value, fn)
+         if defining ~= nil then
+            defining_class_of[fn] = defining
+         end
+      end
+
+      if defining ~= nil then
+         local parent = rawget(defining, class_parent_key)
+         if parent == nil or parent == Class then
+            return nil
+         end
+         return parent
+      end
+   end
+
    local parent = rawget(class_value, class_parent_key)
-   if parent == Class then
+   if parent == nil or parent == Class then
       return nil
    end
 
