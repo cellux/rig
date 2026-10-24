@@ -21,6 +21,20 @@ Minimal libuv integration for Rig.
   - Each entry is a table containing:
     - `name`
     - `type`
+- `uv.fs_read(path)`
+  - Suspends the current scheduler-managed coroutine, reads the whole file asynchronously, and resumes with its bytes as a Lua string.
+  - Reads in chunks and reassembles them, so files larger than one read are handled.
+  - Returns `contents` on success, or `nil, err` on failure.
+- `uv.fs_write(path, data)`
+  - Suspends the current scheduler-managed coroutine, truncates/creates `path`, and writes the bytes of the Lua string `data`.
+  - Returns the number of bytes written on success, or `nil, err` on failure.
+- `uv.fs_stat(path)`
+  - Suspends the current scheduler-managed coroutine and resumes with file metadata.
+  - Returns `stat` on success, or `nil, err` on failure. `stat` contains:
+    - `size` (bytes)
+    - `mtime` (epoch seconds, fractional)
+    - `mode`
+    - `is_file` / `is_dir` / `is_symlink`
 - `uv.sleep(seconds)`
   - Suspends the current scheduler-managed coroutine for at least the requested number of seconds on the current uv loop.
 - `uv.now()`
@@ -59,7 +73,9 @@ builder:execute(function(ctx)
 end):compile():start()
 ```
 
-The uv loop component always creates and owns a scheduler.
+The uv loop component requires an existing scheduler; it does not create one. The
+`sketch` facade (`rig.run`) uses `uv.plugin()` + `uv.loop_component()` to layer uv on
+top of the scheduler assembled by the backend bundle, so every sketch has a loop.
 
 ## Runtime Components
 
@@ -72,13 +88,15 @@ instances instead of module globals.
 - `uv.clock_component(plugin, options)`
   - Provides `sched.clock` (`protocol = "sched"`) backed by libuv time.
 - `uv.loop_component(plugin, options)`
-  - Requires `sched.scheduler`; creates a `uv.UvLoop`, installs `uv.spawn` and
-    `uv.scandir` handlers on that scheduler, and contributes a `wait` operation that
-    runs the loop while async work is pending.
+  - Requires `sched.scheduler`; creates a `uv.UvLoop`, installs the `uv.spawn`,
+    `uv.scandir`, `uv.fs_read`, `uv.fs_write`, and `uv.fs_stat` handlers on that
+    scheduler, and contributes a `wait` operation that runs the loop while async work
+    is pending.
   - The created loop is owned by the runtime and released on shutdown.
 - `uv.UvLoop`
-  - Component object exposing `spawn(spec)`, `scandir(path)`, `sleep(seconds)`,
-    `stop()`, `now()`, `monotonic()`, and `release()`.
+  - Component object exposing `spawn(spec)`, `scandir(path)`, `fs_read(path)`,
+    `fs_write(path, data)`, `fs_stat(path)`, `sleep(seconds)`, `stop()`, `now()`,
+    `monotonic()`, and `release()`.
 
 Example:
 

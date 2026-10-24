@@ -11,6 +11,10 @@ delegates to `sketch.run`.
 - `sketch.App`
   - `app:add_entity(options)` — queues an entity spec (`mesh`, `motion`, `name`)
     to be composed into the scene at startup.
+  - `app:on_start(fn)` — registers `fn(app, sched)`, run once as a background
+    coroutine after setup and before the first frame. It may await scheduler
+    operations (for example `sched.sleep` or, later, async asset loads); the frame
+    loop is gated until it returns, and finishing it does not stop the app.
   - `app:on_update(fn)` — registers `fn(app, frame)`, run once per frame before the
     frame is drawn.
   - `app:on_draw(fn)` — registers `fn(app, frame)`, run once per frame after the
@@ -37,16 +41,26 @@ delegates to `sketch.run`.
   - `options.camera`, `options.background`, and `options.title` override defaults.
   - `options.camera_controls` (a spec or list) opts into optional camera controls,
     equivalent to calling `app:add_camera_controls` in `build`.
+  - `options.start`, `options.update`, and `options.draw` are shorthand for
+    `app:on_start` / `app:on_update` / `app:on_draw`; they are applied after
+    `build`, so they take precedence over callbacks registered there.
   - `build(app)` runs before compilation, so `app:add_entity` and the callback
     registrations take effect.
+  - Every sketch runtime assembles the default libuv I/O backend on top of the
+    bundle's scheduler, so `app.ctx.uv` (a `uv.UvLoop`) and
+    `sched.active_scheduler()` are available from within frame callbacks.
+  - `app.runtime` and `app.ctx` are populated once setup completes, so callbacks
+    can reach the live runtime (for example `app.runtime:stop()`).
 
 ## Relationship to the builder
 
 `sketch.run` uses `rig.runtime()`, the `scene` and `render` plugins/components, and
-`sdl3x.App`, exactly as a hand-written assembly does; it only fills in defaults and
-wires the frame callbacks. `rig.run` requires `sketch` lazily, so core `rig` stays
-independent of the graphics backends at load time. Use the builder directly when you
-need components or backends that the facade does not expose.
+`sdl3x.App`, exactly as a hand-written assembly does; it only fills in defaults, adds
+the `uv` loop component (`uv.plugin()` + `uv.loop_component()`), and wires the frame
+callbacks. Use `uv.bundle_uv` or `uv.loop_component` directly when assembling a
+runtime by hand. `rig.run` requires `sketch` lazily, so core `rig` stays independent
+of the graphics backends at load time. Use the builder directly when you need
+components or backends that the facade does not expose.
 
 ## Example
 

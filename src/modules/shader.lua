@@ -12,7 +12,6 @@ local source_artifact_options_schema = schema.record({
    language = schema.enum({ "hlsl", "glsl" }):optional("hlsl"),
    stage = schema.enum({ "vertex", "fragment", "compute" }),
    source = schema.string():optional(),
-   path = non_empty_string_schema:optional(),
    source_name = schema.string():optional(),
    entrypoint = schema.string():optional(),
    extra_args = schema.array(schema.string()):optional(),
@@ -33,39 +32,14 @@ local stage_artifact_spec_schema = schema.record({
    allow_extra = true,
 })
 
-local function read_file(path)
-   local file, open_err = io.open(path, "rb")
-   if file == nil then
-      return nil, ("failed to open '%s': %s"):format(
-         path,
-         open_err or "unknown error"
-      )
-   end
-
-   local contents, read_err = file:read("*all")
-   file:close()
-   if contents == nil then
-      return nil, ("failed to read '%s': %s"):format(
-         path,
-         read_err or "unknown error"
-      )
-   end
-
-   return contents
-end
-
+-- Shader source is provided in memory. File-backed callers read it through the
+-- async asset path first (`asset.text`) and pass the string here, keeping one
+-- implementation of file I/O.
 local function load_source(options)
    if type(options.source) == "string" then
-      return options.source, options.path == nil and options.source_name or options.path
+      return options.source, options.source_name
    end
-   if type(options.path) == "string" then
-      local source, err = read_file(options.path)
-      if source == nil then
-         return nil, err
-      end
-      return source, options.path
-   end
-   return nil, "shader source must be provided via source or path"
+   return nil, "shader source must be provided via source"
 end
 
 local function normalize_source_artifact(options)

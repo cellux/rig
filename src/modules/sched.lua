@@ -4,6 +4,7 @@ local rig = require("rig")
 local _request_handlers = {}
 local _active_scheduler = nil
 local _current_task = nil
+local _block_source = nil
 
 local Request = rig.Class()
 local Task = rig.Class()
@@ -43,7 +44,11 @@ local function finish_async_ticket(ticket)
    end
 
    ticket._done = true
-   end_async(ticket._scheduler)
+   local scheduler = ticket._scheduler
+   if scheduler._tickets ~= nil then
+      scheduler._tickets[ticket] = nil
+   end
+   end_async(scheduler)
 end
 
 local function enqueue_item(queue, item)
@@ -178,6 +183,7 @@ function AsyncTicket:init(scheduler, task)
    self._scheduler = scheduler
    self._task = task
    self._done = false
+   self._cancelled = false
    begin_async(scheduler)
 end
 
@@ -186,13 +192,30 @@ function AsyncTicket:is_done()
 end
 
 function AsyncTicket:wake(...)
+   if self._cancelled then
+      return
+   end
    finish_async_ticket(self)
    self._scheduler:wake_task(self._task, ...)
 end
 
 function AsyncTicket:fail(err)
+   if self._cancelled then
+      return
+   end
    finish_async_ticket(self)
    self._scheduler:_fail_task(self._task, err)
+end
+
+-- Marks the ticket complete without waking its task. Used during shutdown so
+-- late backend callbacks become no-ops instead of waking dead tasks. Unlike a
+-- second wake/fail, this is not an error.
+function AsyncTicket:cancel()
+   if self._done then
+      return
+   end
+   self._cancelled = true
+   finish_async_ticket(self)
 end
 
 M.Scheduler = rig.Class()
@@ -211,6 +234,7 @@ function M.Scheduler:init(label)
    self._active_tasks = 0
    self._pending_async = 0
    self._pending_error = nil
+   self._tickets = {}
 end
 
 function M.Scheduler:_set_pending_error(err)
@@ -324,7 +348,21 @@ end
 function M.Scheduler:start_async(task)
    expect_owned_task(self, task, "scheduler:start_async")
    task:begin_async()
-   return AsyncTicket(self, task)
+   local ticket = AsyncTicket(self, task)
+   self._tickets[ticket] = true
+   return ticket
+end
+
+-- Completes every outstanding async ticket without waking its task. Call during
+-- shutdown before releasing async resources so late callbacks are harmless.
+function M.Scheduler:cancel_async()
+   local tickets = {}
+   for ticket in pairs(self._tickets) do
+      tickets[#tickets + 1] = ticket
+   end
+   for i = 1, #tickets do
+      tickets[i]:cancel()
+   end
 end
 
 function M.Scheduler:wake_task(task, ...)
@@ -479,6 +517,49 @@ function M.spawn(fn, ...)
       rig.raise("sched.spawn requires an active scheduler")
    end
    return scheduler:spawn(fn, ...)
+end
+
+-- The script whose directory should be used for path-relative resolution while
+-- a blocking section runs. `fn` runs in a fresh coroutine, so the caller's frame
+-- is not on that stack; the blocking driver records it here instead.
+function M.block_source()
+   return _block_source
+end
+
+function M._set_block_source(source)
+   local previous = _block_source
+   _block_source = source
+   return previous
+end
+
+function M._restore_block_source(previous)
+   _block_source = previous
+end
+
+-- Runs `fn` to completion on the active scheduler and returns its result. For
+-- synchronous contexts (tools, pre-loop setup) that need the same async path
+-- without being inside a coroutine. Requires a scheduler whose runtime driver
+-- can pump pending I/O and timers.
+function M.block(fn)
+   if type(fn) ~= "function" then
+      rig.raise("sched.block expects a function")
+   end
+   if _current_task ~= nil then
+      rig.raise("sched.block may not be called from a scheduler-managed coroutine")
+   end
+
+   local scheduler = _active_scheduler
+   if scheduler == nil then
+      rig.raise("sched.block requires an active scheduler")
+   end
+
+   local driver = scheduler._block_driver
+   if driver == nil then
+      rig.raise("sched.block requires a scheduler with a blocking driver")
+   end
+
+   local source = rig.source_of(debug.getinfo(2, "S"))
+   return driver:block(fn, source)
 end
 
 function M.join(tasks)

@@ -4,8 +4,10 @@ local color = require("color")
 local render = require("render")
 local rig = require("rig")
 local scene = require("scene")
+local sched = require("sched")
 local sdl3 = require("sdl3")
 local sdl3x = require("sdl3x")
+local uv = require("uv")
 
 -- The code-first sketch facade. It assembles a default runtime composition --
 -- bundle, clock, scene with camera, entities, and frame callbacks -- on top of
@@ -28,6 +30,7 @@ M.App = App
 
 function App:init()
    self.entities = {}
+   self.start = nil
    self.update = nil
    self.draw = nil
    self.overlay = nil
@@ -47,6 +50,14 @@ end
 -- the sketch build callback, before compilation.
 function App:add_entity(options)
    self.entities[#self.entities + 1] = options or {}
+   return self
+end
+
+-- Registers `fn(app, sched)`, run once as a background coroutine after setup
+-- and before the first frame. May await scheduler operations; the frame loop is
+-- gated until it returns. Finishing it does not stop the app.
+function App:on_start(fn)
+   self.start = fn
    return self
 end
 
@@ -148,6 +159,7 @@ end
 --   camera         scene camera table
 --   background     background color value
 --   build          function(app) called before startup
+--   start          function(app, sched) async startup coroutine, gates frame one
 --   update         function(app, frame) per frame
 --   draw           function(app, frame) per frame
 --
@@ -165,6 +177,18 @@ function M.run(first, second)
    app.input = require("input").Input()
    if build ~= nil then
       build(app)
+   end
+
+   -- Top-level callbacks are shorthand for the matching App registrations.
+   -- They are applied after `build`, so they win over registrations made there.
+   if options.start ~= nil then
+      app:on_start(options.start)
+   end
+   if options.update ~= nil then
+      app:on_update(options.update)
+   end
+   if options.draw ~= nil then
+      app:on_draw(options.draw)
    end
 
    if options.camera_controls ~= nil then
@@ -231,6 +255,15 @@ function M.run(first, second)
 
    local builder = rig.runtime()
    bundle(builder, bundle_options)
+
+   -- The product runtime always assembles a uv-backed scheduler. The bundle
+   -- contributes the scheduler, clock, and timer; sketch layers the default
+   -- libuv I/O backend on top of them so every sketch has a loop. Hand-built
+   -- runtimes do the same with `uv.plugin()` + `uv.loop_component()`.
+   local uv_plugin = uv.plugin()
+   builder:use(uv_plugin)
+   builder:add(uv.loop_component(uv_plugin, { name = "uv" }))
+
    builder:use(scene_plugin)
    builder:use(render_plugin)
    builder:add(scene.container_component(scene_plugin, {
@@ -252,6 +285,20 @@ function M.run(first, second)
 
    function RuntimeApp:init(context)
       self:super().init(self, context)
+   end
+
+   -- Expose the live runtime and capability context on the sketch while it is
+   -- running, then start the async startup phase. `app.start` runs as a
+   -- background coroutine; the frame loop is gated until it returns.
+   function RuntimeApp:after_setup(payload)
+      self:super().after_setup(self, payload)
+      app.runtime = payload.runtime
+      app.ctx = payload.ctx
+      if app.start ~= nil then
+         payload.runtime:startup(function()
+            return app.start(app, sched)
+         end)
+      end
    end
 
    function RuntimeApp:on_key(payload)

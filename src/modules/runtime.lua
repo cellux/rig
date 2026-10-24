@@ -960,12 +960,18 @@ function M.ProgressEngine:step(runtime, step)
       if handlers.drain ~= nil then
          handlers.drain(context)
       end
-      if handlers.frame ~= nil then
+      if handlers.frame ~= nil and not runtime:startup_pending() then
          handlers.frame(context)
       end
       if handlers.wait ~= nil then
          handlers.wait(context)
       end
+   end
+
+   if runtime:startup_stalled() then
+      raise(
+         "runtime startup task is waiting but no progress is pending"
+      )
    end
 end
 
@@ -1214,6 +1220,11 @@ function M.Scheduler:init(spec)
    self._background = {}
    self.foreground_count = 0
    self.had_foreground = false
+   self._pump = nil
+
+   -- Lets `sched.block` reach the runtime driver (timer + I/O pump) that owns
+   -- this low-level scheduler.
+   self.inner._block_driver = self
 
    self.inner:set_handler("sched.sleep", function(scheduler, task, seconds)
       local ticket = scheduler:start_async(task)
@@ -1315,6 +1326,69 @@ function M.Scheduler:wait()
    end
 end
 
+-- Registers the I/O pump used by `sched.block` (for example the uv loop's
+-- pending-work runner).
+function M.Scheduler:set_pump(pump)
+   if pump ~= nil and type(pump) ~= "function" then
+      raise("scheduler:set_pump expects a function or nil")
+   end
+   self._pump = pump
+end
+
+-- Runs `fn` on this scheduler to completion and returns its value, advancing
+-- timers and pumping I/O between steps. Intended for synchronous, pre-loop
+-- contexts; it must not be called from a scheduler-managed coroutine.
+function M.Scheduler:block(fn, source)
+   if type(fn) ~= "function" then
+      raise("scheduler:block expects a function")
+   end
+
+   if source == nil then
+      source = rig.source_of(debug.getinfo(2, "S"))
+   end
+
+   local result = nil
+   local failure = nil
+   local done = false
+
+   self:spawn_background(function()
+      local ok, value = pcall(fn)
+      if ok then
+         result = value
+      else
+         failure = value
+      end
+      done = true
+   end)
+
+   local previous = sched._set_block_source(source)
+   local loop_ok, loop_err = pcall(function()
+      while not done do
+         self:step()
+         if self._pump ~= nil then
+            self:_pump()
+         end
+         self:wait()
+
+         if not done
+            and not self.inner:has_ready_work()
+            and self.inner:pending_async() == 0
+            and self.timer:next_deadline() == nil then
+            raise("scheduler:block task is waiting but no progress is pending")
+         end
+      end
+   end)
+   sched._restore_block_source(previous)
+
+   if not loop_ok then
+      error(loop_err, 0)
+   end
+   if failure ~= nil then
+      error(failure, 0)
+   end
+   return result
+end
+
 function M.Scheduler:should_stop()
    self:_reap()
    return self.had_foreground and self.foreground_count == 0
@@ -1332,6 +1406,9 @@ end
 
 function M.Scheduler:shutdown()
    self:cancel_background()
+   -- Complete outstanding I/O tickets before resources (for example the uv loop)
+   -- are released, so late backend callbacks cannot wake already-dead tasks.
+   self.inner:cancel_async()
    local ok, err = pcall(function()
       self.inner:drain()
    end)
@@ -1457,6 +1534,7 @@ function M.Compiled:init(spec)
    self.timer = nil
    self.capability_values = {}
    self._stop_requested = false
+   self._startup_task = nil
 end
 
 function M.Compiled:stop()
@@ -1464,6 +1542,64 @@ function M.Compiled:stop()
       raise("runtime cannot stop in state '%s'", self.state)
    end
    self._stop_requested = true
+end
+
+-- Registers and starts the async startup phase. `fn(ctx)` runs as a background
+-- scheduler task after `core.after_setup`; completing it does not stop the
+-- runtime, and until it finishes the progress engine withholds frames (D9).
+-- Callbacks typically register this from the class `after_setup` hook.
+function M.Compiled:startup(fn)
+   if type(fn) ~= "function" then
+      raise("runtime startup expects a function")
+   end
+   if self._startup_task ~= nil then
+      raise("runtime startup has already been registered")
+   end
+   if self.scheduler == nil then
+      fn(self.ctx)
+      return nil
+   end
+
+   self._startup_task = self.scheduler:spawn_background(function()
+      local ok, value = xpcall(function()
+         return fn(self.ctx)
+      end, debug.traceback)
+      if not ok then
+         -- Re-raise with the originating coroutine stack attached.
+         error(value, 0)
+      end
+      return value
+   end)
+   return self._startup_task
+end
+
+function M.Compiled:startup_pending()
+   local task = self._startup_task
+   return task ~= nil and not task:is_done()
+end
+
+-- True when a startup task is still pending but the scheduler has nothing that
+-- can advance it (no ready work, pending async, or timer). Mirrors the
+-- foreground deadlock check for the gated startup phase.
+function M.Compiled:startup_stalled()
+   if not self:startup_pending() then
+      return false
+   end
+
+   local scheduler = self.scheduler
+   if scheduler == nil then
+      return false
+   end
+   if scheduler.inner:has_ready_work() then
+      return false
+   end
+   if scheduler.inner:pending_async() > 0 then
+      return false
+   end
+   if scheduler.timer:next_deadline() ~= nil then
+      return false
+   end
+   return true
 end
 
 function M.Compiled:_component_context(component, values)

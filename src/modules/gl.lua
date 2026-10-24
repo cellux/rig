@@ -115,11 +115,29 @@ setmetatable(M, {
    end,
 })
 
+-- Resolved GL entry points are context-specific dispatch stubs. Caching them
+-- across a context change (for example a second runtime in the same process)
+-- leaves stale pointers behind, so the cache is dropped whenever the resolver
+-- changes.
+local function clear_bound_functions()
+   local keys = {}
+   for key, value in pairs(M) do
+      if type(value) == "cdata" then
+         keys[#keys + 1] = key
+      end
+   end
+   for i = 1, #keys do
+      rawset(M, keys[i], nil)
+   end
+end
+
 function M.set_resolver(provider)
+   clear_bound_functions()
    rawset(M, "_resolver", provider)
 end
 
 function M.clear_resolver()
+   clear_bound_functions()
    rawset(M, "_resolver", nil)
 end
 

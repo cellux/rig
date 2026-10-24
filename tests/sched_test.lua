@@ -485,3 +485,38 @@ test.case("scheduler reports coroutine errors and completes the task", function(
    test.truthy(task:is_done())
    test.equal(scheduler:has_active_tasks(), false)
 end)
+
+test.case("cancelled async tickets ignore late completion", function()
+   local scheduler = sched.Scheduler("cancelled ticket scheduler")
+   local ticket = nil
+   local task = nil
+
+   scheduler:set_handler("sched_test.pending", function(inner, current)
+      task = current
+      ticket = inner:start_async(current)
+   end)
+
+   scheduler:activate()
+   sched.spawn(function()
+      sched.await("sched_test.pending")
+   end)
+   scheduler:drain()
+
+   test.equal(scheduler:pending_async(), 1)
+
+   -- Shutdown order: complete outstanding tickets, then wake the task with the
+   -- cancellation sentinel and drain it.
+   scheduler:cancel_async()
+   test.equal(scheduler:pending_async(), 0)
+   scheduler:wake_task(task, {})
+   scheduler:drain()
+   scheduler:deactivate()
+
+   local ok, err = pcall(function()
+      ticket:wake("late")
+   end)
+
+   test.truthy(ok, err)
+   test.equal(scheduler:pending_async(), 0)
+   test.truthy(task:is_done())
+end)

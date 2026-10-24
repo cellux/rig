@@ -185,6 +185,9 @@ Atlas objects also expose:
 
 ## Notes
 
+- `font.load_face(path)` opens the face through FreeType's own file I/O and is
+  **synchronous**. It is a setup/startup operation, not an async asset read; font file
+  bytes are not routed through `asset`/`uv.fs_read`.
 - `font.shape(...)` returns positions in pixel units as Lua numbers.
 - `font.rasterize_glyph(...)` copies bitmap bytes into the returned `data` string.
 - `font.get_cached_glyph(...)` caches only the default render path.

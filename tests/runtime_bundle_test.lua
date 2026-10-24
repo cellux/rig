@@ -90,6 +90,18 @@ test.case("uv bundle composes the async stack", function()
    has_bindings(compiled, { "clock", "timer", "scheduler", "uv" })
 end)
 
+test.case("sdl3_gl bundle layers a uv loop over its scheduler", function()
+   local builder = rig.runtime()
+   sdl3x.bundle_sdl3_gl(builder)
+   local uv_plugin = uv.plugin()
+   builder:use(uv_plugin)
+   builder:add(uv.loop_component(uv_plugin, { name = "uv" }))
+   local compiled = builder:execute(function() end):compile()
+
+   test.truthy(compiled.plan.bindings.scheduler ~= nil)
+   test.truthy(compiled.plan.bindings.uv ~= nil)
+end)
+
 test.case("headless bundle composes a scheduler without I/O", function()
    local builder = rig.runtime()
    runtime.headless_bundle(builder)

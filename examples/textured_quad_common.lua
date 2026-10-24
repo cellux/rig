@@ -8,15 +8,10 @@ local M = {}
 
 -- Loads a PNG next to this script and draws a textured quad through the
 -- built-in textured material. The material carries a render.texture value; the
--- backend uploads it and samples it through the mesh's UV attribute.
-local texture = render.texture {
-   image = asset.image("assets/checker.png"),
-   name = "checker",
-   filter = "nearest",
-}
-
+-- backend uploads it and samples it through the mesh's UV attribute. The async
+-- read happens in `start`, before the first frame.
 local quad = mesh.make_quad { size = 3.0 }
-local checker = render.material { name = "checker", texture = texture }
+local checker = nil
 
 -- options:
 --   title          window title
@@ -35,6 +30,14 @@ function M.run(options)
             mathx.mat4_rotation_y(rotation, frame.time * 0.7)
             frame.surface:draw_mesh(quad, rotation, checker)
          end)
+      end,
+      start = function()
+         local texture = render.texture {
+            image = asset.image("assets/checker.png"),
+            name = "checker",
+            filter = "nearest",
+         }
+         checker = render.material { name = "checker", texture = texture }
       end,
    }
 end

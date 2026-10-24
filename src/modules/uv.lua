@@ -21,6 +21,25 @@ typedef void (*rig_uv_scandir_cb)(
    const char *entries_data,
    size_t entries_len
 );
+typedef void (*rig_uv_fs_read_cb)(
+   int status,
+   const char *data,
+   size_t len
+);
+typedef void (*rig_uv_fs_write_cb)(
+   int status,
+   size_t written
+);
+typedef void (*rig_uv_fs_stat_cb)(
+   int status,
+   uint64_t size,
+   int64_t mtime_sec,
+   int32_t mtime_nsec,
+   uint64_t mode,
+   int is_file,
+   int is_dir,
+   int is_symlink
+);
 typedef void (*rig_uv_timer_cb)(void);
 
 rig_uv_loop_t *rig_uv_loop_new(void);
@@ -40,6 +59,23 @@ int rig_uv_scandir(
    rig_uv_loop_t *loop,
    const char *path,
    rig_uv_scandir_cb on_done
+);
+int rig_uv_fs_read(
+   rig_uv_loop_t *loop,
+   const char *path,
+   rig_uv_fs_read_cb on_done
+);
+int rig_uv_fs_write(
+   rig_uv_loop_t *loop,
+   const char *path,
+   const char *data,
+   size_t len,
+   rig_uv_fs_write_cb on_done
+);
+int rig_uv_fs_stat(
+   rig_uv_loop_t *loop,
+   const char *path,
+   rig_uv_fs_stat_cb on_done
 );
 int rig_uv_sleep_once(
    rig_uv_loop_t *loop,
@@ -95,11 +131,22 @@ local function normalize_spawn_spec(spec)
    }
 end
 
-local function normalize_scandir_path(path)
+local function normalize_uv_path(operation, path)
    if type(path) ~= "string" or path == "" then
-      rig.raise("uv.scandir expects path to be a non-empty string")
+      rig.raise("%s expects path to be a non-empty string", operation)
    end
    return path
+end
+
+local function normalize_scandir_path(path)
+   return normalize_uv_path("uv.scandir", path)
+end
+
+local function normalize_write_data(data)
+   if type(data) ~= "string" then
+      rig.raise("uv.fs_write expects data to be a string")
+   end
+   return data
 end
 
 local function parse_scandir_entries(entries_data, entries_len)
@@ -132,6 +179,21 @@ end
 
 function M.scandir(path)
    return sched.await("uv.scandir", normalize_scandir_path(path))
+end
+
+function M.fs_read(path)
+   return sched.await("uv.fs_read", normalize_uv_path("uv.fs_read", path))
+end
+
+function M.fs_write(path, data)
+   return sched.await("uv.fs_write", {
+      path = normalize_uv_path("uv.fs_write", path),
+      data = normalize_write_data(data),
+   })
+end
+
+function M.fs_stat(path)
+   return sched.await("uv.fs_stat", normalize_uv_path("uv.fs_stat", path))
 end
 
 function M.sleep(seconds)
@@ -239,6 +301,21 @@ function UvLoop:scandir(path)
    return sched.await("uv.scandir", normalize_scandir_path(path))
 end
 
+function UvLoop:fs_read(path)
+   return sched.await("uv.fs_read", normalize_uv_path("uv.fs_read", path))
+end
+
+function UvLoop:fs_write(path, data)
+   return sched.await("uv.fs_write", {
+      path = normalize_uv_path("uv.fs_write", path),
+      data = normalize_write_data(data),
+   })
+end
+
+function UvLoop:fs_stat(path)
+   return sched.await("uv.fs_stat", normalize_uv_path("uv.fs_stat", path))
+end
+
 function UvLoop:_spawn(spec, on_done)
    local args = ffi.new("const char *[?]", #spec.args + 1)
    for i = 1, #spec.args do
@@ -311,6 +388,105 @@ function UvLoop:_scandir(path, on_done)
    end
 end
 
+function UvLoop:_fs_read(path, on_done)
+   self.pending = self.pending + 1
+
+   local completion_callback
+   completion_callback = ffi.cast("rig_uv_fs_read_cb", function(status, data, len)
+      self._callbacks[completion_callback] = nil
+
+      if status ~= 0 then
+         on_done(nil, ("uv.fs_read failed for '%s': %s"):format(
+            path,
+            uv_error_string(status)
+         ))
+         return
+      end
+
+      local contents = ""
+      if data ~= nil and data ~= ffi.NULL then
+         contents = ffi.string(data, tonumber(len) or 0)
+      end
+      on_done(contents)
+   end)
+   self._callbacks[completion_callback] = true
+
+   local rc = ffi.C.rig_uv_fs_read(self.handle, path, completion_callback)
+   if rc ~= 0 then
+      self._callbacks[completion_callback] = nil
+      self.pending = self.pending - 1
+      rig.raise("uv.fs_read failed for '%s': %s", path, uv_error_string(rc))
+   end
+end
+
+function UvLoop:_fs_write(path, data, on_done)
+   self.pending = self.pending + 1
+
+   local completion_callback
+   completion_callback = ffi.cast("rig_uv_fs_write_cb", function(status, written)
+      self._callbacks[completion_callback] = nil
+
+      if status ~= 0 then
+         on_done(nil, ("uv.fs_write failed for '%s': %s"):format(
+            path,
+            uv_error_string(status)
+         ))
+         return
+      end
+
+      on_done(tonumber(written) or 0)
+   end)
+   self._callbacks[completion_callback] = true
+
+   local rc = ffi.C.rig_uv_fs_write(
+      self.handle,
+      path,
+      data,
+      #data,
+      completion_callback
+   )
+   if rc ~= 0 then
+      self._callbacks[completion_callback] = nil
+      self.pending = self.pending - 1
+      rig.raise("uv.fs_write failed for '%s': %s", path, uv_error_string(rc))
+   end
+end
+
+function UvLoop:_fs_stat(path, on_done)
+   self.pending = self.pending + 1
+
+   local completion_callback
+   completion_callback = ffi.cast("rig_uv_fs_stat_cb", function(status, size, mtime_sec, mtime_nsec, mode, is_file, is_dir, is_symlink)
+      self._callbacks[completion_callback] = nil
+
+      if status ~= 0 then
+         on_done(nil, ("uv.fs_stat failed for '%s': %s"):format(
+            path,
+            uv_error_string(status)
+         ))
+         return
+      end
+
+      on_done({
+         size = tonumber(size) or 0,
+         mtime = (tonumber(mtime_sec) or 0)
+            + (tonumber(mtime_nsec) or 0) / 1000000000.0,
+         mode = tonumber(mode) or 0,
+         is_file = is_file ~= 0,
+         is_dir = is_dir ~= 0,
+         is_symlink = is_symlink ~= 0,
+      })
+   end)
+   self._callbacks[completion_callback] = true
+
+   local rc = ffi.C.rig_uv_fs_stat(self.handle, path, completion_callback)
+   if rc ~= 0 then
+      self._callbacks[completion_callback] = nil
+      self.pending = self.pending - 1
+      rig.raise("uv.fs_stat failed for '%s': %s", path, uv_error_string(rc))
+   end
+end
+
 function UvLoop:install_handlers(scheduler)
    scheduler.inner:set_handler("uv.spawn", function(inner, task, spec)
       local ticket = inner:start_async(task)
@@ -333,6 +509,45 @@ function UvLoop:install_handlers(scheduler)
          self:stop()
       end)
    end)
+
+   scheduler.inner:set_handler("uv.fs_read", function(inner, task, path)
+      local ticket = inner:start_async(task)
+      self:_fs_read(path, function(contents, err)
+         self.pending = self.pending - 1
+         if err ~= nil then
+            ticket:wake(nil, err)
+         else
+            ticket:wake(contents)
+         end
+         self:stop()
+      end)
+   end)
+
+   scheduler.inner:set_handler("uv.fs_write", function(inner, task, spec)
+      local ticket = inner:start_async(task)
+      self:_fs_write(spec.path, spec.data, function(written, err)
+         self.pending = self.pending - 1
+         if err ~= nil then
+            ticket:wake(nil, err)
+         else
+            ticket:wake(written)
+         end
+         self:stop()
+      end)
+   end)
+
+   scheduler.inner:set_handler("uv.fs_stat", function(inner, task, path)
+      local ticket = inner:start_async(task)
+      self:_fs_stat(path, function(stat, err)
+         self.pending = self.pending - 1
+         if err ~= nil then
+            ticket:wake(nil, err)
+         else
+            ticket:wake(stat)
+         end
+         self:stop()
+      end)
+   end)
 end
 
 function UvLoop:release()
@@ -343,12 +558,16 @@ function UvLoop:release()
    self.released = true
    local handle = self.handle
    self.handle = nil
-   self._callbacks = {}
 
    if handle == nil or handle == ffi.NULL then
+      self._callbacks = {}
       return
    end
 
+   -- Drain in-flight requests while the Lua callback closures are still rooted;
+   -- their tickets have been cancelled by scheduler shutdown, so completing them
+   -- only runs the cleanup path. Dropping the callbacks first could collect a
+   -- closure that libuv is about to invoke.
    while true do
       local rc = ffi.C.rig_uv_run_nowait(handle)
       if rc < 0 then
@@ -359,6 +578,8 @@ function UvLoop:release()
          break
       end
    end
+
+   self._callbacks = {}
 
    local rc = ffi.C.rig_uv_loop_delete(handle)
    if rc ~= 0 then
@@ -378,7 +599,13 @@ function M.loop_component(plugin, options)
       },
       create = function(context)
          local loop = UvLoop()
-         loop:install_handlers(context.runtime.scheduler)
+         local scheduler = context.runtime.scheduler
+         loop:install_handlers(scheduler)
+         scheduler:set_pump(function()
+            if loop.pending > 0 then
+               loop:run()
+            end
+         end)
          return loop
       end,
       release = function(loop)

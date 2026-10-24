@@ -31,13 +31,7 @@ function M.run(options)
 
    local target = render.target { width = 512, height = 512, name = "scene" }
    local cube = mesh.make_cube { size = 1.6, colors = CUBE_COLORS }
-
-   local post = render.material {
-      name = "post",
-      vertex = asset.text(options.post_vertex or "assets/post.vert"),
-      fragment = asset.text(options.post_fragment or "assets/post.frag"),
-      texture = target,
-   }
+   local post = nil
 
    rig.run {
       title = options.title or "Rig Post Process",
@@ -55,6 +49,14 @@ function M.run(options)
             end)
             frame.surface:draw_fullscreen(post)
          end)
+      end,
+      start = function()
+         post = render.material {
+            name = "post",
+            vertex = asset.text(options.post_vertex or "assets/post.vert"),
+            fragment = asset.text(options.post_fragment or "assets/post.frag"),
+            texture = target,
+         }
       end,
    }
 end

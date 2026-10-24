@@ -68,9 +68,11 @@ add_test(
 )
 set_tests_properties(rig-tests PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    # Run the suite against SDL's headless video driver so graphics/frame tests
-    # never flash a real window. The offscreen driver still provides OpenGL here;
-    # tests that cannot get a backend skip themselves. Both hint spellings are set
-    # for SDL2/SDL3 compatibility.
-    ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen;SDL_VIDEODRIVER=offscreen"
+    # Run the suite against SDL's headless video and audio drivers so
+    # graphics/frame tests never flash a real window and audio tests never attach
+    # to a real sound server (a real PipeWire backend races and segfaults when many
+    # test processes initialize it at once). The offscreen driver still provides
+    # OpenGL here; tests that cannot get a backend skip themselves. Both hint
+    # spellings are set for SDL2/SDL3 compatibility.
+    ENVIRONMENT "SDL_VIDEO_DRIVER=offscreen;SDL_VIDEODRIVER=offscreen;SDL_AUDIO_DRIVER=dummy;SDL_AUDIODRIVER=dummy"
 )

@@ -18,6 +18,10 @@ phases.
   - Compiled runtime class returned by `builder:compile()`.
   - Instances expose `state` (`"compiled"`), `plugins`, `descriptors`, `handlers`, and
     `execution`.
+  - `compiled:startup(fn)` registers the async startup phase: `fn(ctx)` is spawned as a
+    background scheduler task and frames are withheld until it completes.
+  - `compiled:startup_pending()` reports whether that task is still running;
+    `compiled:startup_stalled()` reports a pending startup with no progress possible.
 - `runtime.plugin(spec)`
   - Validates and returns a plugin value.
   - `spec.id` is required and must be a non-empty string.
@@ -174,6 +178,17 @@ startup or run error. A failed start re-raises the original error and records it
 start after `stopped`/`failed`) is rejected. `compiled:stop()` is only valid while
 `running` and requests orderly termination.
 
+### Async startup phase
+
+A class may register `compiled:startup(fn)` from its `after_setup` hook. `fn(ctx)` runs
+as a **background** scheduler coroutine, so returning from it does not stop the runtime;
+it may `sched.await`/`sched.sleep` like any other task. While it is pending, the
+progress engine skips `frame` handlers, so the first frame is produced only after
+startup completes. Errors raised inside the startup task surface from `compiled:start()`.
+If a startup task waits with no ready work, pending async, or timer deadline, the runtime
+fails fast (`runtime startup task is waiting but no progress is pending`) instead of
+spinning.
+
 ## Context and component instantiation
 
 At startup the runtime creates `ctx` and instantiates components in `plan.order`
@@ -240,7 +255,9 @@ plugin returned by `runtime.scheduler_plugin()`:
   `cancel`, `next_deadline()`, and `advance(now)`.
 - `runtime.Scheduler(spec)` — cooperative scheduler owning a `sched.Scheduler`, a clock,
   and a timer, with `spawn`, `spawn_background`, `join`, `yield`, `park`, `sleep`,
-  `now`, and `monotonic`.
+  `now`, and `monotonic`. `scheduler:block(fn)` runs `fn` to completion in a
+  synchronous context (advancing timers and pumping I/O); `scheduler:set_pump(fn)`
+  installs the I/O pump it uses (for example the `uv` loop).
 
 Component constructors `runtime.clock_component(plugin, options)`,
 `runtime.timer_component(plugin, options)`, and
@@ -249,14 +266,32 @@ Component constructors `runtime.clock_component(plugin, options)`,
 requires a clock and timer with `protocol = "sched"`, so incompatible implementations
 are rejected at compile time.
 
-Scheduler lifetime rules:
+### Foreground, background, and shutdown
 
-- `spawn` creates a foreground task; `spawn_background` does not keep the runtime alive.
-- Completion of the last foreground task requests shutdown.
-- On shutdown, remaining background tasks are woken with `runtime.CANCELLED` so they can
-  run cleanup before being dropped.
+`should_stop` is `had_foreground and foreground_count == 0`, which drives the rules:
+
+- `spawn` creates a **foreground** task; `spawn_background` creates a task that does not
+  keep the runtime alive.
+- The runtime stays alive while any foreground task is unfinished; completion of the
+  last foreground task requests shutdown.
+- Function `:execute(fn)` runs as the initial foreground task. Class/frame apps have no
+  foreground task and stay alive through the progress engine's own stop conditions
+  (window close, `runtime:stop()`), not through the scheduler.
+- The async **startup task is background**, so finishing `startup` does not stop the app
+  (D7); a foreground keepalive is not needed.
 - A foreground task waiting with no ready work, pending async, or timer deadline is
   reported as a deadlock.
+
+Shutdown order (`compiled:_teardown`): emit `core.before_shutdown`; wake remaining
+background tasks with `runtime.CANCELLED` and drain once so they can clean up; complete
+all outstanding async tickets (`scheduler:cancel_async`) so later backend callbacks are
+no-ops; release resources in reverse order. Releasing the `uv` loop drains in-flight
+requests while their Lua callbacks are still rooted, then closes the loop. `_tickets`
+and late `ticket:wake`/`:fail` calls are guarded so a callback that lands after its task
+has been cancelled or completed cannot wake a dead task.
+
+- `scheduler:block` records the calling script so path-relative helpers (such as
+  `asset`) resolve against it, since the blocking function runs in a fresh coroutine.
 
 ## Notes
 

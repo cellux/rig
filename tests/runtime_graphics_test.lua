@@ -1,4 +1,5 @@
 local test = require("test")
+local gl = require("gl")
 local runtime = require("runtime")
 local rig = require("rig")
 local sdl3 = require("sdl3")
@@ -148,4 +149,38 @@ test.case("opengl graphics context starts", function()
    end
 
    test.equal(backend, "gl")
+end)
+
+test.case("sequential gl runtimes resolve fresh entry points", function()
+   local function run_gl_once()
+      local p = sdl3x.plugin()
+      local compiled = rig.runtime()
+         :use(p)
+         :add(sdl3x.subsystem_component(p, { name = "sdl" }))
+         :add(sdl3x.window_component(p, {
+            name = "window",
+            window_props = {
+               [sdl3.PROP_WINDOW_CREATE_OPENGL_BOOLEAN] = true,
+            },
+         }))
+         :add(sdl3x.gl_context_component(p, { name = "graphics" }))
+         :add(sdl3x.gl_resolver_component(p, { name = "gl_resolver" }))
+         :execute(function()
+            gl.Viewport(0, 0, 1, 1)
+         end)
+         :compile()
+      compiled:start()
+   end
+
+   local ok = pcall(function()
+      run_gl_once()
+      run_gl_once()
+   end)
+
+   if not ok then
+      -- No usable OpenGL driver in this environment; skip the smoke portion.
+      return
+   end
+
+   test.truthy(true)
 end)

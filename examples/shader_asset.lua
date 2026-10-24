@@ -5,14 +5,10 @@ local rig = require("rig")
 local sdl3x = require("sdl3x")
 
 -- Loads GLSL from files next to this script (relative to the script, so it runs
--- from anywhere) and draws a cube with the resulting material.
-local tint = asset.material {
-   name = "tint",
-   vertex = "assets/tint.vert",
-   fragment = "assets/tint.frag",
-}
-
+-- from anywhere) and draws a cube with the resulting material. The async file
+-- read happens in `start`, before the first frame.
 local cube = mesh.make_cube { size = 2.0 }
+local tint = nil
 
 rig.run {
    title = "Rig Shader Asset",
@@ -33,5 +29,12 @@ rig.run {
          mathx.mat4_rotation_y(rotation, frame.time * 0.7)
          frame.surface:draw_mesh(cube, rotation, tint)
       end)
+   end,
+   start = function()
+      tint = asset.material {
+         name = "tint",
+         vertex = "assets/tint.vert",
+         fragment = "assets/tint.frag",
+      }
    end,
 }

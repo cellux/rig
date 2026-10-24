@@ -237,15 +237,21 @@ end
 -- Returns a refcounted `Clip`, or `nil, error` when the file or device is
 -- unavailable. Repeated loads of the same path share one clip.
 function M.load(path)
-   local ok, err = ensure_audio()
-   if not ok then
-      return nil, err
-   end
-
    local resolved, key = resolve_relative(caller_directory(), path)
    local cached = clip_cache[key]
    if cached ~= nil and not cached._freed then
       return cached:retain()
+   end
+
+   -- Do not initialize the audio backend just to discover a bad path; a missing
+   -- file should not attach a real device/sound server.
+   if not rig.file_exists(resolved) then
+      return nil, error_string(("failed to load audio '%s'"):format(resolved))
+   end
+
+   local ok, err = ensure_audio()
+   if not ok then
+      return nil, err
    end
 
    local spec = ffi.new("SDL_AudioSpec[1]")

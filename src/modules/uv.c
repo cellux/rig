@@ -7,6 +7,8 @@
 #include <string.h>
 #include <signal.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include <uv.h>
 #include <lua.h>
@@ -27,6 +29,12 @@ typedef void (*rig_uv_spawn_exit_cb)(int64_t exit_status, int term_signal,
                                      size_t stderr_len);
 typedef void (*rig_uv_scandir_cb)(int status, const char *entries_data,
                                   size_t entries_len);
+typedef void (*rig_uv_fs_read_cb)(int status, const char *data, size_t len);
+typedef void (*rig_uv_fs_write_cb)(int status, size_t written);
+typedef void (*rig_uv_fs_stat_cb)(int status, uint64_t size,
+                                  int64_t mtime_sec, int32_t mtime_nsec,
+                                  uint64_t mode, int is_file, int is_dir,
+                                  int is_symlink);
 typedef void (*rig_uv_timer_cb)(void);
 
 typedef struct rig_uv_process {
@@ -59,6 +67,41 @@ typedef struct rig_uv_scandir {
   size_t entries_capacity;
 } rig_uv_scandir_t;
 
+#define RIG_UV_FS_CHUNK 65536
+
+typedef struct rig_uv_fs_read {
+  uv_fs_t open_req;
+  uv_fs_t read_req;
+  uv_fs_t close_req;
+  uv_loop_t *loop;
+  uv_file file;
+  rig_uv_fs_read_cb on_done;
+  char *data;
+  size_t len;
+  size_t capacity;
+  int64_t offset;
+  int status;
+  char chunk[RIG_UV_FS_CHUNK];
+} rig_uv_fs_read_t;
+
+typedef struct rig_uv_fs_write {
+  uv_fs_t open_req;
+  uv_fs_t write_req;
+  uv_fs_t close_req;
+  uv_loop_t *loop;
+  uv_file file;
+  rig_uv_fs_write_cb on_done;
+  char *data;
+  size_t len;
+  size_t written;
+  int status;
+} rig_uv_fs_write_t;
+
+typedef struct rig_uv_fs_stat {
+  uv_fs_t req;
+  rig_uv_fs_stat_cb on_done;
+} rig_uv_fs_stat_t;
+
 typedef struct rig_uv_timer {
   uv_timer_t timer;
   rig_uv_timer_cb on_done;
@@ -84,6 +127,18 @@ static int (*rig_uv__fs_scandir)(uv_loop_t *loop, uv_fs_t *req,
                                  uv_fs_cb cb) = NULL;
 static int (*rig_uv__fs_scandir_next)(uv_fs_t *req, uv_dirent_t *ent) = NULL;
 static void (*rig_uv__fs_req_cleanup)(uv_fs_t *req) = NULL;
+static int (*rig_uv__fs_open)(uv_loop_t *loop, uv_fs_t *req, const char *path,
+                              int flags, int mode, uv_fs_cb cb) = NULL;
+static int (*rig_uv__fs_read)(uv_loop_t *loop, uv_fs_t *req, uv_file file,
+                              const uv_buf_t bufs[], unsigned int nbufs,
+                              int64_t offset, uv_fs_cb cb) = NULL;
+static int (*rig_uv__fs_write)(uv_loop_t *loop, uv_fs_t *req, uv_file file,
+                               const uv_buf_t bufs[], unsigned int nbufs,
+                               int64_t offset, uv_fs_cb cb) = NULL;
+static int (*rig_uv__fs_close)(uv_loop_t *loop, uv_fs_t *req, uv_file file,
+                               uv_fs_cb cb) = NULL;
+static int (*rig_uv__fs_stat)(uv_loop_t *loop, uv_fs_t *req, const char *path,
+                              uv_fs_cb cb) = NULL;
 static int (*rig_uv__timer_init)(uv_loop_t *loop, uv_timer_t *handle) = NULL;
 static int (*rig_uv__timer_start)(uv_timer_t *handle, uv_timer_cb cb,
                                   uint64_t timeout, uint64_t repeat) = NULL;
@@ -139,6 +194,11 @@ static int rig_uv_ensure_loaded(void) {
       rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir, "uv_fs_scandir") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__fs_scandir_next, "uv_fs_scandir_next") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__fs_req_cleanup, "uv_fs_req_cleanup") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_open, "uv_fs_open") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_read, "uv_fs_read") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_write, "uv_fs_write") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_close, "uv_fs_close") != 0 ||
+      rig_uv_resolve_symbol((void **)&rig_uv__fs_stat, "uv_fs_stat") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__timer_init, "uv_timer_init") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__timer_start, "uv_timer_start") != 0 ||
       rig_uv_resolve_symbol((void **)&rig_uv__clock_gettime, "uv_clock_gettime") != 0 ||
@@ -534,6 +594,357 @@ int rig_uv_scandir(rig_uv_loop_t *loop, const char *path,
 
   int rc = rig_uv__fs_scandir(&loop->loop, &request->req, path, 0,
                               rig_uv_on_scandir);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->req);
+    free(request);
+    return rc;
+  }
+
+  return 0;
+}
+
+static uv_buf_t rig_uv_buf(char *base, size_t len) {
+  uv_buf_t buf;
+  buf.base = base;
+  buf.len = len;
+  return buf;
+}
+
+static int rig_uv_fs_ensure_capacity(char **data, size_t *capacity,
+                                     size_t required) {
+  if (required <= *capacity) {
+    return 0;
+  }
+
+  size_t new_capacity = *capacity == 0 ? 4096 : *capacity;
+  while (required > new_capacity) {
+    new_capacity *= 2;
+  }
+
+  char *new_data = realloc(*data, new_capacity);
+  if (new_data == NULL) {
+    return UV_ENOMEM;
+  }
+
+  *data = new_data;
+  *capacity = new_capacity;
+  return 0;
+}
+
+/*[ fs_read ]*/
+
+static void rig_uv_fs_read_finish(rig_uv_fs_read_t *request, int status) {
+  if (request->on_done != NULL) {
+    request->on_done(status, request->data, request->len);
+  }
+  free(request->data);
+  free(request);
+}
+
+static void rig_uv_on_fs_read_close(uv_fs_t *req) {
+  rig_uv_fs_read_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+  rig_uv__fs_req_cleanup(req);
+  rig_uv_fs_read_finish(request, request->status);
+}
+
+static void rig_uv_fs_read_close(rig_uv_fs_read_t *request, int status) {
+  request->status = status;
+  request->close_req.data = request;
+  int rc = rig_uv__fs_close(request->loop, &request->close_req, request->file,
+                            rig_uv_on_fs_read_close);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->close_req);
+    rig_uv_fs_read_finish(request, status);
+  }
+}
+
+static void rig_uv_on_fs_read(uv_fs_t *req) {
+  rig_uv_fs_read_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+
+  ssize_t nread = req->result;
+  rig_uv__fs_req_cleanup(req);
+
+  if (nread < 0) {
+    rig_uv_fs_read_close(request, (int)nread);
+    return;
+  }
+
+  if (nread > 0) {
+    if (rig_uv_fs_ensure_capacity(&request->data, &request->capacity,
+                                  request->len + (size_t)nread) != 0) {
+      rig_uv_fs_read_close(request, UV_ENOMEM);
+      return;
+    }
+    memcpy(request->data + request->len, request->chunk, (size_t)nread);
+    request->len += (size_t)nread;
+    request->offset += (int64_t)nread;
+  }
+
+  if (nread == 0) {
+    rig_uv_fs_read_close(request, 0);
+    return;
+  }
+
+  uv_buf_t buf = rig_uv_buf(request->chunk, RIG_UV_FS_CHUNK);
+  request->read_req.data = request;
+  int rc = rig_uv__fs_read(request->loop, &request->read_req, request->file,
+                           &buf, 1, request->offset, rig_uv_on_fs_read);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->read_req);
+    rig_uv_fs_read_close(request, rc);
+  }
+}
+
+static void rig_uv_on_fs_read_open(uv_fs_t *req) {
+  rig_uv_fs_read_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+
+  ssize_t result = req->result;
+  rig_uv__fs_req_cleanup(req);
+
+  if (result < 0) {
+    rig_uv_fs_read_finish(request, (int)result);
+    return;
+  }
+
+  request->file = (uv_file)result;
+  request->offset = 0;
+  uv_buf_t buf = rig_uv_buf(request->chunk, RIG_UV_FS_CHUNK);
+  request->read_req.data = request;
+  int rc = rig_uv__fs_read(request->loop, &request->read_req, request->file,
+                           &buf, 1, 0, rig_uv_on_fs_read);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->read_req);
+    rig_uv_fs_read_close(request, rc);
+  }
+}
+
+int rig_uv_fs_read(rig_uv_loop_t *loop, const char *path,
+                   rig_uv_fs_read_cb on_done) {
+  if (loop == NULL || path == NULL || on_done == NULL) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  rig_uv_fs_read_t *request = calloc(1, sizeof(rig_uv_fs_read_t));
+  if (request == NULL) {
+    return UV_ENOMEM;
+  }
+
+  request->loop = &loop->loop;
+  request->on_done = on_done;
+  request->open_req.data = request;
+
+  int rc = rig_uv__fs_open(request->loop, &request->open_req, path, O_RDONLY, 0,
+                           rig_uv_on_fs_read_open);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->open_req);
+    free(request);
+    return rc;
+  }
+
+  return 0;
+}
+
+/*[ fs_write ]*/
+
+static void rig_uv_fs_write_finish(rig_uv_fs_write_t *request, int status) {
+  if (request->on_done != NULL) {
+    request->on_done(status, request->written);
+  }
+  free(request->data);
+  free(request);
+}
+
+static void rig_uv_on_fs_write_close(uv_fs_t *req) {
+  rig_uv_fs_write_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+  rig_uv__fs_req_cleanup(req);
+  rig_uv_fs_write_finish(request, request->status);
+}
+
+static void rig_uv_fs_write_close(rig_uv_fs_write_t *request, int status) {
+  request->status = status;
+  request->close_req.data = request;
+  int rc = rig_uv__fs_close(request->loop, &request->close_req, request->file,
+                            rig_uv_on_fs_write_close);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->close_req);
+    rig_uv_fs_write_finish(request, status);
+  }
+}
+
+static void rig_uv_on_fs_write(uv_fs_t *req) {
+  rig_uv_fs_write_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+
+  ssize_t nwritten = req->result;
+  rig_uv__fs_req_cleanup(req);
+
+  if (nwritten < 0) {
+    rig_uv_fs_write_close(request, (int)nwritten);
+    return;
+  }
+
+  request->written += (size_t)nwritten;
+
+  if (request->written < request->len) {
+    uv_buf_t buf = rig_uv_buf(request->data + request->written,
+                              request->len - request->written);
+    request->write_req.data = request;
+    int rc = rig_uv__fs_write(request->loop, &request->write_req, request->file,
+                              &buf, 1, (int64_t)request->written,
+                              rig_uv_on_fs_write);
+    if (rc != 0) {
+      rig_uv__fs_req_cleanup(&request->write_req);
+      rig_uv_fs_write_close(request, rc);
+    }
+    return;
+  }
+
+  rig_uv_fs_write_close(request, 0);
+}
+
+static void rig_uv_on_fs_write_open(uv_fs_t *req) {
+  rig_uv_fs_write_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+
+  ssize_t result = req->result;
+  rig_uv__fs_req_cleanup(req);
+
+  if (result < 0) {
+    rig_uv_fs_write_finish(request, (int)result);
+    return;
+  }
+
+  request->file = (uv_file)result;
+
+  if (request->len == 0) {
+    rig_uv_fs_write_close(request, 0);
+    return;
+  }
+
+  uv_buf_t buf = rig_uv_buf(request->data, request->len);
+  request->write_req.data = request;
+  int rc = rig_uv__fs_write(request->loop, &request->write_req, request->file,
+                            &buf, 1, 0, rig_uv_on_fs_write);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->write_req);
+    rig_uv_fs_write_close(request, rc);
+  }
+}
+
+int rig_uv_fs_write(rig_uv_loop_t *loop, const char *path, const char *data,
+                    size_t len, rig_uv_fs_write_cb on_done) {
+  if (loop == NULL || path == NULL || on_done == NULL ||
+      (data == NULL && len > 0)) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  rig_uv_fs_write_t *request = calloc(1, sizeof(rig_uv_fs_write_t));
+  if (request == NULL) {
+    return UV_ENOMEM;
+  }
+
+  if (len > 0) {
+    request->data = malloc(len);
+    if (request->data == NULL) {
+      free(request);
+      return UV_ENOMEM;
+    }
+    memcpy(request->data, data, len);
+  }
+  request->len = len;
+  request->loop = &loop->loop;
+  request->on_done = on_done;
+  request->open_req.data = request;
+
+  int rc = rig_uv__fs_open(request->loop, &request->open_req, path,
+                           O_WRONLY | O_CREAT | O_TRUNC, 0644,
+                           rig_uv_on_fs_write_open);
+  if (rc != 0) {
+    rig_uv__fs_req_cleanup(&request->open_req);
+    free(request->data);
+    free(request);
+    return rc;
+  }
+
+  return 0;
+}
+
+/*[ fs_stat ]*/
+
+static void rig_uv_on_fs_stat(uv_fs_t *req) {
+  rig_uv_fs_stat_t *request = req->data;
+  if (request == NULL) {
+    return;
+  }
+
+  ssize_t result = req->result;
+
+  if (result < 0) {
+    rig_uv__fs_req_cleanup(req);
+    if (request->on_done != NULL) {
+      request->on_done((int)result, 0, 0, 0, 0, 0, 0, 0);
+    }
+    free(request);
+    return;
+  }
+
+  uv_stat_t *statbuf = &req->statbuf;
+  uint64_t mode = statbuf->st_mode;
+  int is_file = S_ISREG((mode_t)mode) ? 1 : 0;
+  int is_dir = S_ISDIR((mode_t)mode) ? 1 : 0;
+  int is_symlink = S_ISLNK((mode_t)mode) ? 1 : 0;
+
+  if (request->on_done != NULL) {
+    request->on_done(0, statbuf->st_size, (int64_t)statbuf->st_mtim.tv_sec,
+                     (int32_t)statbuf->st_mtim.tv_nsec, mode, is_file, is_dir,
+                     is_symlink);
+  }
+
+  rig_uv__fs_req_cleanup(req);
+  free(request);
+}
+
+int rig_uv_fs_stat(rig_uv_loop_t *loop, const char *path,
+                   rig_uv_fs_stat_cb on_done) {
+  if (loop == NULL || path == NULL || on_done == NULL) {
+    return UV_EINVAL;
+  }
+  if (rig_uv_ensure_loaded() != 0) {
+    return UV_ENOSYS;
+  }
+
+  rig_uv_fs_stat_t *request = calloc(1, sizeof(rig_uv_fs_stat_t));
+  if (request == NULL) {
+    return UV_ENOMEM;
+  }
+
+  request->on_done = on_done;
+  request->req.data = request;
+
+  int rc = rig_uv__fs_stat(&loop->loop, &request->req, path,
+                           rig_uv_on_fs_stat);
   if (rc != 0) {
     rig_uv__fs_req_cleanup(&request->req);
     free(request);

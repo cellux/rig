@@ -1,4 +1,5 @@
 local test = require("test")
+local sched = require("sched")
 local runtime = require("runtime")
 local rig = require("rig")
 
@@ -221,4 +222,47 @@ test.case("manual clock advances explicitly", function()
    compiled:start()
 
    test.equal(clock:monotonic(), 6)
+end)
+
+test.case("a runtime scheduler blocks on a scheduler operation", function()
+   local clock = runtime.ManualClock(0)
+   local scheduler = runtime.Scheduler {
+      clock = clock,
+      timer = runtime.Timer(),
+      label = "block test",
+   }
+
+   local result = scheduler:block(function()
+      sched.sleep(0.25)
+      return "done"
+   end)
+
+   test.equal(result, "done")
+   test.truthy(clock:monotonic() >= 0.25)
+end)
+
+test.case("a runtime scheduler block surfaces task errors", function()
+   local scheduler = runtime.Scheduler {
+      clock = runtime.ManualClock(0),
+      timer = runtime.Timer(),
+      label = "block failure",
+   }
+
+   local ok, err = pcall(function()
+      scheduler:block(function()
+         rig.raise("block boom")
+      end)
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "block boom")
+end)
+
+test.case("sched.block rejects calls from a scheduler coroutine", function()
+   local ok, err = pcall(function()
+      sched.block(function() end)
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "may not be called from a scheduler%-managed coroutine")
 end)

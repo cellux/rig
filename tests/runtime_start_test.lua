@@ -1,6 +1,7 @@
 local test = require("test")
 local runtime = require("runtime")
 local rig = require("rig")
+local sched = require("sched")
 
 local function plugin(id, spec)
    spec = spec or {}
@@ -326,4 +327,117 @@ test.case("execution failure transitions the runtime to failed", function()
    test.falsey(ok)
    test.match(tostring(err), "run boom")
    test.equal(compiled.state, "failed")
+end)
+
+local function build_startup_runtime(app_class)
+   local builder = rig.runtime()
+   runtime.headless_bundle(builder)
+   return builder:execute(app_class):compile()
+end
+
+test.case("startup gates frames until the background task completes", function()
+   local events = {}
+
+   local App = rig.Class()
+   function App:after_setup(payload)
+      payload.runtime:startup(function()
+         events[#events + 1] = "start-begin"
+         sched.yield()
+         events[#events + 1] = "start-end"
+      end)
+   end
+
+   local frame_plugin = runtime.plugin { id = "startup.frame" }
+   local builder = rig.runtime()
+   runtime.headless_bundle(builder)
+   builder:use(frame_plugin)
+   builder:add(runtime.descriptor(frame_plugin, {
+      name = "frame",
+      progress = {
+         frame = function(context)
+            events[#events + 1] = "frame"
+            context.runtime:stop()
+         end,
+      },
+   }))
+
+   builder:execute(App):compile():start()
+
+   test.equal(events[1], "start-begin")
+   test.equal(events[2], "start-end")
+   test.equal(events[3], "frame")
+   test.equal(#events, 3)
+end)
+
+test.case("startup may sleep and still gate frames", function()
+   local events = {}
+
+   local App = rig.Class()
+   function App:after_setup(payload)
+      payload.runtime:startup(function()
+         events[#events + 1] = "start-begin"
+         sched.sleep(0.5)
+         events[#events + 1] = "start-end"
+      end)
+   end
+
+   local frame_plugin = runtime.plugin { id = "startup.sleep.frame" }
+   local builder = rig.runtime()
+   runtime.headless_bundle(builder, { clock = runtime.ManualClock(0) })
+   builder:use(frame_plugin)
+   builder:add(runtime.descriptor(frame_plugin, {
+      name = "frame",
+      progress = {
+         frame = function(context)
+            events[#events + 1] = "frame"
+            context.runtime:stop()
+         end,
+      },
+   }))
+
+   builder:execute(App):compile():start()
+
+   test.equal(events[1], "start-begin")
+   test.equal(events[2], "start-end")
+   test.equal(events[3], "frame")
+   test.equal(#events, 3)
+end)
+
+test.case("startup errors surface from the runtime start", function()
+   local App = rig.Class()
+   function App:after_setup(payload)
+      payload.runtime:startup(function()
+         sched.yield()
+         rig.raise("startup boom")
+      end)
+   end
+
+   local compiled = build_startup_runtime(App)
+
+   local ok, err = pcall(function()
+      compiled:start()
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "startup boom")
+   test.match(tostring(err), "stack traceback")
+   test.equal(compiled.state, "failed")
+end)
+
+test.case("a startup task that parks with no progress fails fast", function()
+   local App = rig.Class()
+   function App:after_setup(payload)
+      payload.runtime:startup(function()
+         sched.park()
+      end)
+   end
+
+   local compiled = build_startup_runtime(App)
+
+   local ok, err = pcall(function()
+      compiled:start()
+   end)
+
+   test.falsey(ok)
+   test.match(tostring(err), "no progress is pending")
 end)

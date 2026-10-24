@@ -32,11 +32,23 @@ test.case("gl resolves entry points through an installed resolver", function()
    gl.clear_resolver()
 end)
 
+test.case("changing the gl resolver drops cached entry points", function()
+   gl.set_resolver({
+      get_gl_proc_address = function()
+         return ffi.cast("void *", fake_viewport)
+      end,
+   })
+
+   -- Normal indexing resolves and caches the entry point.
+   test.truthy(gl.Viewport ~= nil)
+   test.truthy(rawget(gl, "Viewport") ~= nil)
+
+   gl.clear_resolver()
+   test.equal(rawget(gl, "Viewport"), nil)
+end)
+
 test.case("gl reports a missing resolver", function()
    gl.clear_resolver()
-
-   -- Force a fresh lookup so no cached entry point hides the resolver.
-   rawset(gl, "ClearColor", nil)
 
    local ok, err = pcall(function()
       gl.ClearColor(0, 0, 0, 1)
