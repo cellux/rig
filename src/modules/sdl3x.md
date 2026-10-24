@@ -17,7 +17,7 @@ Unlike `sdl3`, this module owns Rig-specific runtime integration and Lua-side co
 - SDL error/string helpers
 - SDL renderer and window convenience accessors
 - SDL GPU builders and resource scopes
-- SDL/OpenGL/GPU font renderer providers
+- SDL/OpenGL/GPU font renderer and 2D draw providers
 - SDL GPU and OpenGL runtime support helpers
 
 Requiring `sdl3x` makes its components and bundles available.
@@ -448,13 +448,14 @@ Bundles attach their own plugin and add components explicitly; `:use` alone neve
 changes behavior.
 
 - `sdl3x.bundle_sdl3(builder, options)` — subsystem, window, input, renderer graphics
-  context, renderer font provider, frame loop.
+  context, renderer scene implementation, renderer font provider, renderer draw
+  provider, frame loop.
 - `sdl3x.bundle_sdl3_gl(builder, options)` — subsystem, OpenGL window, input, GL
-  context, GL font provider, GL resolver, GL shader stage, GL scene implementation, GL
-  texture factory, GL target factory, GL mesh factory, frame loop.
+  context, GL font provider, GL draw provider, GL resolver, GL shader stage, GL scene
+  implementation, GL texture factory, GL target factory, GL mesh factory, frame loop.
 - `sdl3x.bundle_sdl3_gpu(builder, options)` — subsystem, window, input, GPU context,
-  GPU mesh provider, GPU shader stage, GPU font provider, GPU scene implementation, GPU
-  texture factory, GPU target factory, GPU mesh factory, frame loop.
+  GPU mesh provider, GPU shader stage, GPU font provider, GPU draw provider, GPU scene
+  implementation, GPU texture factory, GPU target factory, GPU mesh factory, frame loop.
 
 Common options: `init_flags`, `window_props`, `render`, `frame_profiler`; GL adds
 `gl_attributes`/`swap_interval`; GPU adds `shader_formats`/`debug_mode`/`backend_name`.

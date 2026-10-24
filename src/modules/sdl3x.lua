@@ -2,6 +2,7 @@ local M = ... or {}
 local app = require("app")
 local bit = bit
 local color = require("color")
+local draw = require("draw")
 local font = require("font")
 local ffi = require("ffi")
 local glx = require("glx")
@@ -1805,6 +1806,236 @@ local function make_sdl3_gl_font_provider(context)
    }
 end
 
+--[ 2D draw backends ]--
+
+local draw_rect_sdl3 = ffi.new("SDL_FRect[1]")
+
+local function make_renderer_draw_provider(context)
+   local renderer = context:capability("graphics.context").renderer
+
+   local function set_color(draw_color)
+      if not sdl3.SetRenderDrawColor(
+         renderer,
+         draw_color.r,
+         draw_color.g,
+         draw_color.b,
+         draw_color.a
+      ) then
+         rig.raise("failed to set draw color: " .. get_error_string())
+      end
+   end
+
+   local function draw_rect(canvas, x, y, width, height, draw_color)
+      set_color(draw_color)
+      draw_rect_sdl3[0].x = x
+      draw_rect_sdl3[0].y = y
+      draw_rect_sdl3[0].w = width
+      draw_rect_sdl3[0].h = height
+      if not sdl3.RenderFillRect(renderer, draw_rect_sdl3) then
+         rig.raise("failed to fill draw rectangle: " .. get_error_string())
+      end
+   end
+
+   local function draw_line(canvas, x1, y1, x2, y2, draw_color)
+      set_color(draw_color)
+      if not sdl3.RenderLine(renderer, x1, y1, x2, y2) then
+         rig.raise("failed to draw line: " .. get_error_string())
+      end
+   end
+
+   return {
+      draw_rect = draw_rect,
+      draw_line = draw_line,
+   }
+end
+
+function M.draw_renderer_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "draw.renderer",
+      backend = "renderer",
+      make = make_renderer_draw_provider,
+      bind = draw.bind,
+   })
+end
+
+-- The OpenGL 2D pipeline generates an axis-aligned quad from `gl_VertexID` and
+-- two basis vectors uploaded as uniforms, so rectangles and lines share one draw
+-- path with no vertex buffer.
+local gl_draw_vertex_source = [[
+#version 330 core
+
+uniform vec4 u_geometry;
+uniform vec4 u_geometry2;
+uniform vec4 u_color;
+uniform vec2 u_view;
+
+out vec4 out_color;
+
+void main()
+{
+   vec2 corners[6] = vec2[6](
+      vec2(0.0, 0.0),
+      vec2(1.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 1.0)
+   );
+
+   vec2 corner = corners[gl_VertexID];
+   vec2 position = u_geometry.xy
+      + corner.x * u_geometry.zw
+      + corner.y * u_geometry2.xy;
+   vec2 clip = vec2(
+      position.x / u_view.x * 2.0 - 1.0,
+      1.0 - position.y / u_view.y * 2.0
+   );
+
+   gl_Position = vec4(clip, 0.0, 1.0);
+   out_color = u_color;
+}
+]]
+
+local gl_draw_fragment_source = [[
+#version 330 core
+
+in vec4 out_color;
+out vec4 frag_color;
+
+void main()
+{
+   frag_color = out_color;
+}
+]]
+
+local gl_draw_backend_state = nil
+
+local function destroy_gl_draw_backend_state()
+   local state = gl_draw_backend_state
+   if state == nil then
+      return
+   end
+
+   if state.vao ~= nil then
+      state.vao:release()
+   end
+   if state.program ~= nil then
+      state.program:release()
+   end
+
+   gl_draw_backend_state = nil
+end
+
+local function ensure_gl_draw_backend_state()
+   if gl_draw_backend_state ~= nil then
+      return gl_draw_backend_state
+   end
+
+   local program = glx.Program {
+      vertex_source = gl_draw_vertex_source,
+      fragment_source = gl_draw_fragment_source,
+   }
+   local vao = glx.VertexArray()
+
+   local geometry_location = program:uniform_location("u_geometry")
+   local geometry2_location = program:uniform_location("u_geometry2")
+   local color_location = program:uniform_location("u_color")
+   local view_location = program:uniform_location("u_view")
+   if geometry_location < 0
+      or geometry2_location < 0
+      or color_location < 0
+      or view_location < 0 then
+      vao:release()
+      program:release()
+      rig.raise("failed to locate OpenGL draw shader uniforms")
+   end
+
+   program:use()
+   gl_draw_backend_state = {
+      gl = require("gl"),
+      program = program,
+      vao = vao,
+   }
+
+   return gl_draw_backend_state
+end
+
+local function make_sdl3_gl_draw_provider(context)
+   local window = context:capability("graphics.context").window
+
+   local function draw_quad(origin_x, origin_y, edge1_x, edge1_y, edge2_x, edge2_y, draw_color)
+      local state = ensure_gl_draw_backend_state()
+      local gl = state.gl
+      local width, height = window:get_size_in_pixels()
+      if width <= 0 or height <= 0 then
+         return
+      end
+
+      gl.Enable(gl.BLEND)
+      gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+      state.program:use()
+      state.program:set_uniform4f("u_geometry", origin_x, origin_y, edge1_x, edge1_y)
+      state.program:set_uniform4f("u_geometry2", edge2_x, edge2_y, 0.0, 0.0)
+      state.program:set_uniform4f(
+         "u_color",
+         draw_color.r / 255.0,
+         draw_color.g / 255.0,
+         draw_color.b / 255.0,
+         draw_color.a / 255.0
+      )
+      state.program:set_uniform2f("u_view", width, height)
+      state.vao:bind()
+      gl.DrawArrays(gl.TRIANGLES, 0, 6)
+   end
+
+   local function draw_rect(canvas, x, y, width, height, draw_color)
+      draw_quad(x, y, width, 0.0, 0.0, height, draw_color)
+   end
+
+   local function draw_line(canvas, x1, y1, x2, y2, draw_color)
+      local dx = x2 - x1
+      local dy = y2 - y1
+      local length = math.sqrt(dx * dx + dy * dy)
+      if length <= 0.0 then
+         return
+      end
+
+      local half_nx = -dy / length * 0.5
+      local half_ny = dx / length * 0.5
+      draw_quad(
+         x1 - half_nx,
+         y1 - half_ny,
+         dx,
+         dy,
+         half_nx * 2.0,
+         half_ny * 2.0,
+         draw_color
+      )
+   end
+
+   return {
+      draw_rect = draw_rect,
+      draw_line = draw_line,
+   }
+end
+
+function M.gl_draw_renderer_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "draw.renderer",
+      backend = "gl",
+      make = make_sdl3_gl_draw_provider,
+      bind = draw.bind,
+      requires = {
+         { capability = "gl.resolver" },
+      },
+      release = function()
+         destroy_gl_draw_backend_state()
+      end,
+   })
+end
+
 --[ GPU and rendering utilities ]--
 
 function M.upload_to_gpu_buffer(device, buffer, data)
@@ -2133,6 +2364,7 @@ function M.plugin(spec)
          ["sdl3.window"] = {},
          ["sdl3.input"] = {},
          ["font.renderer"] = {},
+         ["draw.renderer"] = {},
          ["shader.stage"] = {},
          ["mesh.vertex_input"] = {},
          ["gl.resolver"] = {},
@@ -2719,6 +2951,33 @@ function M.gl_resolver_component(plugin, options)
 end
 
 --[ render scene implementations ]--
+
+-- The SDL_Renderer scene implementation. It is a 2D scene: it clears through the
+-- renderer and leaves 3D mesh drawing to the optional `render.mesh` capability it
+-- does not provide. Overlays and `frame.surface` still work, so sketches run on the
+-- renderer backend with the same scene machinery as the GL/GPU backends.
+local RendererRenderScene = rig.Class(scene.RenderScene)
+M.RendererRenderScene = RendererRenderScene
+
+function RendererRenderScene:begin_frame()
+   local r, g, b, a = self.background_color:to_rgbaf()
+   self.graphics:clear(r, g, b, a)
+end
+
+function M.renderer_scene_component(plugin, options)
+   options = options or {}
+   return runtime.descriptor(plugin, {
+      provides = {
+         { capability = "render.scene.impl", properties = { backend = "renderer" } },
+      },
+      requires = {
+         { capability = "graphics.context", properties = { backend = "renderer" } },
+      },
+      create = function()
+         return RendererRenderScene
+      end,
+   })
+end
 
 -- The OpenGL scene implementation lives in `glx` (see `glx.RenderScene`). This
 -- component selects it for the GL graphics context.
@@ -3753,24 +4012,21 @@ void main()
 }
 ]]
 
-local function make_sdl3_gpu_font_provider(context)
-   local graphics = context:capability("graphics.context")
-   local device = graphics.device
-   local window = graphics.window
-   local scene = context:capability("render.scene")
-   local shader_provider = context:capability("shader.stage")
-
-   local scope = M.ResourceScope(device, "gpu font resources")
-   context.adopt(scope, release_scope)
-
-   local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
-   local depth_format = M.choose_depth_format(device)
+-- Shared GPU pipeline for the screen-space 2D backends (font and draw). It is
+-- attribute-less (the shaders build their quad from `gl_VertexIndex`), alpha
+-- blended, depth-test disabled, and matches the scene's swapchain/offscreen
+-- color and depth formats.
+local function create_gpu_screen_pipeline(options)
+   local scope = options.scope
+   local device = options.device
+   local window = options.window
+   local shader_provider = options.shader_provider
 
    local vertex_stage = shader_provider:create_stage(shader.compile {
       language = "glsl",
       stage = "vertex",
-      source_name = "font.vert.glsl",
-      source = gpu_font_vertex_source,
+      source_name = options.vertex_name,
+      source = options.vertex_source,
    })
    scope:adopt(vertex_stage, function(_, resource)
       shader_provider:destroy_stage(resource)
@@ -3779,14 +4035,14 @@ local function make_sdl3_gpu_font_provider(context)
    local fragment_stage = shader_provider:create_stage(shader.compile {
       language = "glsl",
       stage = "fragment",
-      source_name = "font.frag.glsl",
-      source = gpu_font_fragment_source,
+      source_name = options.fragment_name,
+      source = options.fragment_source,
    })
    scope:adopt(fragment_stage, function(_, resource)
       shader_provider:destroy_stage(resource)
    end)
 
-   local pipeline = scope:create_graphics_pipeline {
+   return scope:create_graphics_pipeline {
       vertex_shader = vertex_stage,
       fragment_shader = fragment_stage,
       vertex_input = M.build_vertex_input_state { buffers = {} },
@@ -3813,7 +4069,7 @@ local function make_sdl3_gpu_font_provider(context)
       target_info = {
          color_target_descriptions = {
             {
-               format = swapchain_format,
+               format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr),
                blend_state = {
                   src_color_blendfactor = sdl3.GPU_BLENDFACTOR_SRC_ALPHA,
                   dst_color_blendfactor = sdl3.GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
@@ -3827,10 +4083,32 @@ local function make_sdl3_gpu_font_provider(context)
                },
             },
          },
-         depth_stencil_format = depth_format,
+         depth_stencil_format = M.choose_depth_format(device),
          has_depth_stencil_target = true,
       },
       props = 0,
+   }
+end
+
+local function make_sdl3_gpu_font_provider(context)
+   local graphics = context:capability("graphics.context")
+   local device = graphics.device
+   local window = graphics.window
+   local scene = context:capability("render.scene")
+   local shader_provider = context:capability("shader.stage")
+
+   local scope = M.ResourceScope(device, "gpu font resources")
+   context.adopt(scope, release_scope)
+
+   local pipeline = create_gpu_screen_pipeline {
+      scope = scope,
+      device = device,
+      window = window,
+      shader_provider = shader_provider,
+      vertex_name = "font.vert.glsl",
+      vertex_source = gpu_font_vertex_source,
+      fragment_name = "font.frag.glsl",
+      fragment_source = gpu_font_fragment_source,
    }
 
    local sampler = create_gpu_sampler(device, scope, "linear", "clamp")
@@ -3937,6 +4215,170 @@ function M.gpu_font_renderer_component(plugin, options)
          { capability = "shader.stage" },
          -- Optional: text draws into the GPU render scene's active pass. Apps
          -- without a scene compile, but drawing text raises a clear error.
+         { capability = "render.scene", optional = true },
+      },
+   })
+end
+
+--[ GPU draw backend ]--
+
+-- The SDL_GPU 2D pipeline. Like the font backend it uses the shared screen
+-- pipeline and draws into the active GPU render scene pass, generating the quad
+-- from `gl_VertexIndex` with the geometry basis and color pushed as a uniform.
+local gpu_draw_vertex_source = [[
+#version 450
+
+layout(std140, set = 1, binding = 0) uniform Draw2D {
+   vec4 geometry;
+   vec4 geometry2;
+   vec4 color;
+   vec4 view;
+} draw;
+
+layout(location = 0) out vec4 out_color;
+
+void main()
+{
+   vec2 corners[6] = vec2[6](
+      vec2(0.0, 0.0),
+      vec2(1.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 0.0),
+      vec2(1.0, 1.0),
+      vec2(0.0, 1.0)
+   );
+
+   vec2 corner = corners[gl_VertexIndex];
+   vec2 position = draw.geometry.xy
+      + corner.x * draw.geometry.zw
+      + corner.y * draw.geometry2.xy;
+   vec2 clip = vec2(
+      position.x / draw.view.x * 2.0 - 1.0,
+      1.0 - position.y / draw.view.y * 2.0
+   );
+
+   gl_Position = vec4(clip, 0.0, 1.0);
+   out_color = draw.color;
+}
+]]
+
+local gpu_draw_fragment_source = [[
+#version 450
+
+layout(location = 0) in vec4 in_color;
+layout(location = 0) out vec4 out_color;
+
+void main()
+{
+   out_color = in_color;
+}
+]]
+
+local function make_sdl3_gpu_draw_provider(context)
+   local graphics = context:capability("graphics.context")
+   local device = graphics.device
+   local window = graphics.window
+   local scene = context:capability("render.scene")
+   local shader_provider = context:capability("shader.stage")
+
+   local scope = M.ResourceScope(device, "gpu draw resources")
+   context.adopt(scope, release_scope)
+
+   local pipeline = create_gpu_screen_pipeline {
+      scope = scope,
+      device = device,
+      window = window,
+      shader_provider = shader_provider,
+      vertex_name = "draw.vert.glsl",
+      vertex_source = gpu_draw_vertex_source,
+      fragment_name = "draw.frag.glsl",
+      fragment_source = gpu_draw_fragment_source,
+   }
+
+   local draw_data = ffi.new("float[16]")
+
+   local function draw_quad(origin_x, origin_y, edge1_x, edge1_y, edge2_x, edge2_y, draw_color)
+      local pass = scene ~= nil and scene.pass or nil
+      local command_buffer = scene ~= nil and scene.command_buffer or nil
+      if pass == nil or command_buffer == nil then
+         rig.raise(
+            "GPU 2D draws need an active render pass; draw from the scene's on_overlay or a node draw"
+         )
+      end
+
+      local width = scene.width or 1
+      local height = scene.height or 1
+      if width <= 0 or height <= 0 then
+         return
+      end
+
+      draw_data[0] = origin_x
+      draw_data[1] = origin_y
+      draw_data[2] = edge1_x
+      draw_data[3] = edge1_y
+      draw_data[4] = edge2_x
+      draw_data[5] = edge2_y
+      draw_data[6] = 0.0
+      draw_data[7] = 0.0
+      draw_data[8] = draw_color.r / 255.0
+      draw_data[9] = draw_color.g / 255.0
+      draw_data[10] = draw_color.b / 255.0
+      draw_data[11] = draw_color.a / 255.0
+      draw_data[12] = width
+      draw_data[13] = height
+      draw_data[14] = 0.0
+      draw_data[15] = 0.0
+
+      sdl3.PushGPUVertexUniformData(
+         command_buffer,
+         0,
+         draw_data,
+         ffi.sizeof(draw_data)
+      )
+      sdl3.BindGPUGraphicsPipeline(pass, pipeline)
+      sdl3.DrawGPUPrimitives(pass, 6, 1, 0, 0)
+   end
+
+   local function draw_rect(canvas, x, y, width, height, draw_color)
+      draw_quad(x, y, width, 0.0, 0.0, height, draw_color)
+   end
+
+   local function draw_line(canvas, x1, y1, x2, y2, draw_color)
+      local dx = x2 - x1
+      local dy = y2 - y1
+      local length = math.sqrt(dx * dx + dy * dy)
+      if length <= 0.0 then
+         return
+      end
+
+      local half_nx = -dy / length * 0.5
+      local half_ny = dx / length * 0.5
+      draw_quad(
+         x1 - half_nx,
+         y1 - half_ny,
+         dx,
+         dy,
+         half_nx * 2.0,
+         half_ny * 2.0,
+         draw_color
+      )
+   end
+
+   return {
+      draw_rect = draw_rect,
+      draw_line = draw_line,
+   }
+end
+
+function M.gpu_draw_renderer_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "draw.renderer",
+      backend = "gpu",
+      make = make_sdl3_gpu_draw_provider,
+      bind = draw.bind,
+      requires = {
+         { capability = "shader.stage" },
          { capability = "render.scene", optional = true },
       },
    })
@@ -4071,7 +4513,9 @@ function M.bundle_sdl3(builder, options)
       name = "graphics",
       create_renderer = options.create_renderer,
    }))
+   builder:add(M.renderer_scene_component(plugin, {}))
    builder:add(M.font_renderer_component(plugin, { name = "font" }))
+   builder:add(M.draw_renderer_component(plugin, { name = "draw" }))
    builder:add(graphics.frame_component(plugin, {
       name = "frame",
       render = options.render,
@@ -4105,6 +4549,7 @@ function M.bundle_sdl3_gl(builder, options)
       swap_interval = options.swap_interval,
    }))
    builder:add(M.gl_font_renderer_component(plugin, { name = "font" }))
+   builder:add(M.gl_draw_renderer_component(plugin, { name = "draw" }))
    builder:add(M.gl_resolver_component(plugin, { name = "gl_resolver" }))
    builder:add(M.gl_shader_stage_component(plugin, { name = "shader" }))
    builder:add(M.gl_scene_component(plugin, {}))
@@ -4144,6 +4589,7 @@ function M.bundle_sdl3_gpu(builder, options)
    builder:add(M.mesh_vertex_input_component(plugin, { name = "mesh" }))
    builder:add(M.gpu_shader_stage_component(plugin, { name = "shader" }))
    builder:add(M.gpu_font_renderer_component(plugin, { name = "font" }))
+   builder:add(M.gpu_draw_renderer_component(plugin, { name = "draw" }))
    builder:add(M.gpu_scene_component(plugin, {}))
    builder:add(M.gpu_texture_component(plugin, {}))
    builder:add(M.gpu_target_component(plugin, {}))

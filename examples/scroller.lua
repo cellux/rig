@@ -2,6 +2,7 @@ local sdl3 = require("sdl3")
 local sdl3x = require("sdl3x")
 local scenegraph = require("scenegraph")
 local animator = require("animator")
+local asset = require("asset")
 local font = require("font")
 local mathx = require("mathx")
 local color = require("color")
@@ -602,6 +603,7 @@ end
 
 find_font_path = function()
    local candidates = {
+      asset.path("../assets/DejaVuSans.ttf"),
       "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
       "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",

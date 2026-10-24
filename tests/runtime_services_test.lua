@@ -1,4 +1,5 @@
 local test = require("test")
+local draw = require("draw")
 local graphics = require("graphics")
 local runtime = require("runtime")
 local rig = require("rig")
@@ -102,6 +103,37 @@ test.case("font component exposes the font.renderer capability", function()
 
    test.equal(type(facade.create_style), "function")
    test.equal(type(facade.create_text_renderer), "function")
+end)
+
+test.case("draw component exposes the draw.renderer capability", function()
+   local dp = draw.plugin()
+   local provider = runtime.descriptor(dp, {
+      name = "provider",
+      provides = {
+         { capability = "draw.renderer" },
+      },
+      create = function()
+         return {
+            draw_rect = function() end,
+            draw_line = function() end,
+         }
+      end,
+   })
+
+   local canvas = nil
+   local compiled = rig.runtime()
+      :use(dp)
+      :add(provider)
+      :add(draw.component(dp, { name = "draw" }))
+      :execute(function(ctx)
+         canvas = ctx.draw
+      end)
+      :compile()
+
+   compiled:start()
+
+   test.equal(type(canvas.rect), "function")
+   test.equal(type(canvas.line), "function")
 end)
 
 test.case("gl component installs and clears the resolver capability", function()

@@ -1,4 +1,5 @@
 local animator = require("animator")
+local asset = require("asset")
 local color = require("color")
 local font = require("font")
 local profiler = require("profiler")
@@ -40,6 +41,7 @@ end
 
 find_font_path = function()
    local candidates = {
+      asset.path("../../assets/DejaVuSans.ttf"),
       "/usr/share/fonts/TTF/DejaVuSans.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
       "/usr/share/fonts/dejavu/DejaVuSans.ttf",

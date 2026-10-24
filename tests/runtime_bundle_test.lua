@@ -21,12 +21,16 @@ test.case("sdl3 bundle composes the renderer stack", function()
       "input",
       "graphics",
       "font",
+      "draw",
       "frame",
    })
    test.equal(
       compiled.plan.bindings.graphics.provides[1].properties.backend,
       "renderer"
    )
+   local scene_impl = compiled.plan.providers["render.scene.impl"]
+   test.truthy(scene_impl ~= nil)
+   test.equal(scene_impl[1].entry.properties.backend, "renderer")
 end)
 
 test.case("sdl3_gl bundle composes the opengl stack", function()
@@ -40,6 +44,7 @@ test.case("sdl3_gl bundle composes the opengl stack", function()
       "input",
       "graphics",
       "font",
+      "draw",
       "gl_resolver",
       "shader",
       "frame",
@@ -69,6 +74,7 @@ test.case("sdl3_gpu bundle composes the gpu stack", function()
       "mesh",
       "shader",
       "font",
+      "draw",
       "frame",
    })
    test.equal(

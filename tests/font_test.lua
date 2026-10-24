@@ -1,10 +1,12 @@
 local test = require("test")
+local asset = require("asset")
 local color = require("color")
 local font = require("font")
 local freetype = require("freetype")
 
 local function find_font_path()
    local candidates = {
+      asset.path("../assets/DejaVuSans.ttf"),
       "/usr/share/fonts/TTF/DejaVuSans.ttf",
       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
       "/usr/share/fonts/dejavu/DejaVuSans.ttf",
