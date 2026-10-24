@@ -387,7 +387,8 @@ so a partially initialized context never leaks.
   3. presents through the graphics context (`graphics:render_frame(render)`);
   4. emits `core.after_frame`.
 - `options.render` is an optional render callback. When omitted, class execution uses
-  `instance:render(...)`.
+  `instance:render(...)`; if that is also absent, the runtime uses the component
+  providing `render.scene` (see the `scene` module) as the render callback.
 - `options.frame_profiler` may be `true` or a `profiler.FrameProfiler` options table;
   the frame profiler wraps the whole frame and the render call.
 

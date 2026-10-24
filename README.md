@@ -50,6 +50,7 @@ Notes:
 
 - The built executable is `build/rig`.
 - `make test` currently assumes the runtime-loadable libraries needed by the exercised modules are installed on the host.
+- Graphics and frame tests run against SDL's headless `offscreen` video driver (set by `ctest` through the test `ENVIRONMENT`), so they do not open a visible window. Export `SDL_VIDEO_DRIVER` to force a different driver for a manual run.
 
 ## How to use
 

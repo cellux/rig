@@ -15,6 +15,7 @@ harfbuzz
 font
 sched
 scenegraph
+scene
 uv
 test
 sdl3

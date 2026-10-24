@@ -1,6 +1,7 @@
 local test = require("test")
 local runtime = require("runtime")
 local rig = require("rig")
+local scene = require("scene")
 local sdl3x = require("sdl3x")
 
 test.case("frame component requires a graphics context", function()
@@ -85,6 +86,49 @@ test.case("frame component renders and dispatches lifecycle phases", function()
    test.equal(observed.render, 3)
    test.equal(observed.before, 3)
    test.equal(observed.after, 3)
+end)
+
+test.case("frame component renders the resolved render.scene", function()
+   local p = sdl3x.plugin()
+   local sp = scene.plugin()
+   local frames = 0
+
+   local RecordingScene = rig.Class(scene.RenderScene)
+   function RecordingScene:begin_frame()
+      frames = frames + 1
+   end
+
+   local compiled = rig.runtime()
+      :use(p)
+      :use(sp)
+      :add(sdl3x.subsystem_component(p, { name = "sdl" }))
+      :add(sdl3x.window_component(p, { name = "window" }))
+      :add(sdl3x.renderer_context_component(p, { name = "graphics" }))
+      :add(sdl3x.frame_component(p, { name = "frame" }))
+      :add(scene.container_component(sp, {
+         name = "scene",
+         scene_class = RecordingScene,
+      }))
+      :add(runtime.descriptor(p, {
+         name = "stop",
+         progress = {
+            should_stop = function(context)
+               return context.step >= 2
+            end,
+         },
+      }))
+      :execute(rig.Class())
+      :compile()
+
+   local ok = pcall(function()
+      compiled:start()
+   end)
+
+   if not ok then
+      return
+   end
+
+   test.truthy(frames >= 1)
 end)
 
 test.case("gpu graphics context renders a frame", function()

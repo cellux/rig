@@ -2535,6 +2535,7 @@ function M.plugin(spec)
          ["shader.stage"] = {},
          ["mesh.vertex_input"] = {},
          ["gl.resolver"] = {},
+         ["render.scene"] = {},
       },
       extension_points = {
          ["sdl3.key"] = { method = "on_key" },
@@ -3042,6 +3043,7 @@ function M.frame_component(plugin, options)
       name = options.name,
       requires = {
          { capability = "graphics.context" },
+         { capability = "render.scene", optional = true },
       },
       create = function()
          return {
@@ -3074,6 +3076,14 @@ function M.frame_component(plugin, options)
                and type(rt.instance.render) == "function" then
                render = function(...)
                   return rt.instance:render(...)
+               end
+            end
+            if render == nil then
+               local scene = rt.capability_values["render.scene"]
+               if scene ~= nil then
+                  render = function(...)
+                     return scene:render(...)
+                  end
                end
             end
 
