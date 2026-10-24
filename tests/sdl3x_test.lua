@@ -1,12 +1,8 @@
-local animator = require("animator")
 local color = require("color")
 local ffi = require("ffi")
-local scenegraph = require("scenegraph")
 local sdl3 = require("sdl3")
 local sdl3x = require("sdl3x")
 local test = require("test")
-
-local Object = scenegraph.Object
 
 local function list_contains(list, expected)
    for i = 1, #list do
@@ -952,59 +948,6 @@ test.case("sdl3x.App owns loaded font faces and releases them on shutdown", func
 
    app:before_shutdown()
    test.equal(app:get_font_face("body"), nil)
-end)
-
-test.case("sdl3x.SceneApp combines animator and owned-resource lifecycles", function()
-   local released = {}
-   local root = nil
-   local scene_animator = nil
-   local TestRoot = rig.Class(Object)
-   local TestApp = rig.Class(sdl3x.SceneApp)
-
-   function TestRoot:init()
-      self:super().init(self)
-      self.released = false
-   end
-
-   function TestRoot:release()
-      self.released = true
-   end
-
-   function TestApp:init()
-      self:super().init(self, {
-         options = {
-            animator = {
-               start = false,
-            },
-         },
-      })
-   end
-
-   function TestApp:create_root()
-      root = TestRoot()
-      return root
-   end
-
-   function TestApp:create_scene_animator(created_root)
-      scene_animator = animator.Animator(created_root, self.animator_options)
-      return scene_animator
-   end
-
-   local app = TestApp()
-   app:own("owned", function(_, resource)
-      table.insert(released, resource)
-   end)
-
-   app:after_setup()
-   test.equal(app.root, root)
-   test.equal(app.animator, scene_animator)
-
-   app:before_shutdown()
-   test.truthy(root.released)
-   test.equal(app.root, nil)
-   test.equal(app.animator, nil)
-   test.equal(#released, 1)
-   test.equal(released[1], "owned")
 end)
 
 test.case("GpuRenderScene keeps the inherited scene interface fields", function()

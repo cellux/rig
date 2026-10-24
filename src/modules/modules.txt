@@ -15,7 +15,6 @@ harfbuzz
 font
 draw
 sched
-scenegraph
 scene
 uv
 test
@@ -28,7 +27,6 @@ dxc
 spirvcross
 shader
 time
-animator
 profiler
 app
 graphics

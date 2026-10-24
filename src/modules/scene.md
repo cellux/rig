@@ -5,9 +5,9 @@
 the scene interface are selected by the runtime, so user code names only the
 interface.
 
-It is intentionally separate from the legacy `scenegraph` module: `scenegraph` is a
-retained-object tree with its own activation and resource lifecycle, while `scene` is
-a lightweight per-frame transform tree that backend modules specialize.
+`scene` is a lightweight per-frame transform tree that backend modules specialize;
+resource ownership lives at the application level (`app.App:own` and
+`rig.ResourceScope`).
 
 ## Exports
 
@@ -105,17 +105,6 @@ a lightweight per-frame transform tree that backend modules specialize.
     implementation resolution.
   - `options.backend` optionally constrains both `graphics.context` and
     `render.scene.impl` to the given backend when several are composed.
-
-- `scene.SceneApp`
-  - Scene-oriented application execution base. It extends `app.App` and composes
-    the scene animation lifecycle from `animator.App` (calling its methods
-    directly so the single-inheritance chain stays rooted at `app.App`).
-  - Adds `root`, `animator`, `animator_options`, and `start` (from
-    `animator.App`) to the `app.App` conveniences.
-  - Subclasses override `create_root()` and `create_scene_animator(root)` to
-    control the scene root and animator.
-  - `before_frame` ticks the animator and then starts the frame profiler;
-    `after_setup` starts the animator and applies the presentation toggles.
 
 ## Implementation selection
 

@@ -60,7 +60,6 @@ Requiring `sdl3x` makes its components and bundles available.
 - `sdl3x.build_graphics_pipeline_create_info(spec)`
 - `sdl3x.create_gpu_shader(device, compiled[, props])`
 - `sdl3x.App`
-- `sdl3x.SceneApp`
 
 ## Runtime Integration
 
@@ -260,28 +259,6 @@ window/graphics context. It is instantiated as a runtime execution class, so
 `init(context)` receives the runtime context and `context.window` /
 `context.graphics`. All conveniences (`set_vsync`, `set_fullscreen`, owned
 resources, font faces, frame profiler, `invoke_render`, ...) come from `app.App`.
-
-## `sdl3x.SceneApp`
-
-`sdl3x.SceneApp` is a thin subclass of `scene.SceneApp` (see `scene.md`) with the
-same SDL window/render binding as `sdl3x.App`.
-
-Typical usage:
-
-```lua
-local sdl3x = require("sdl3x")
-
-local App = rig.Class(sdl3x.SceneApp)
-
-function App:render()
-   if self.root ~= nil then
-      self.root:draw_tree({
-         renderer = self.ctx.graphics.renderer,
-         graphics = self.ctx.graphics,
-      })
-   end
-end
-```
 
 ## Runtime Components
 

@@ -2551,15 +2551,11 @@ local gl_resolver_service_sdl3_gl = {
 
 -- SDL binds the generic application base to the SDL window/graphics context.
 local App = rig.Class(app.App)
-local SceneApp = rig.Class(scene.SceneApp)
 
 App.app_name = "sdl3x"
 App.config_namespace = "sdl3x"
-SceneApp.app_name = "sdl3x"
-SceneApp.config_namespace = "sdl3x"
 
 M.App = App
-M.SceneApp = SceneApp
 
 --[ compositional runtime components ]--
 

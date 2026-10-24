@@ -6,8 +6,7 @@ The `app` module owns the lifecycle conveniences shared by executable applicatio
 the frame profiler, app-owned resources, font faces, render invocation, presentation
 toggles, and resize bookkeeping. Backends provide the actual window and graphics
 context; `app` drives them through their duck-typed interfaces. SDL-specific
-applications come from `sdl3x.App` / `sdl3x.SceneApp`; scene applications from
-`scene.SceneApp`.
+applications come from `sdl3x.App`.
 
 ## `app.App`
 
@@ -60,4 +59,3 @@ Subclasses may override `app_name` (used in error messages), `config_namespace`
 ## Notes
 
 - `app` contains no SDL- or GL-specific behavior; `runtime` stays core-platform only.
-- `scene.SceneApp` reuses `app.App` for the scene application base.
