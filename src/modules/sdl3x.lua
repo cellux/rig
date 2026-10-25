@@ -12,7 +12,7 @@ local runtime = require("runtime")
 local scene = require("scene")
 local schema = require("schema")
 local sdl3 = require("sdl3")
-require("gl")
+local gl = require("gl")
 local mesh = require("mesh")
 local render = require("render")
 local shader = require("shader")
@@ -337,6 +337,42 @@ function Window:set_fullscreen(enabled)
    end
 
    return enabled
+end
+
+function Window:set_relative_mouse_mode(enabled)
+   ensure_window(self)
+   if type(enabled) ~= "boolean" then
+      rig.raise("sdl3x.Window:set_relative_mouse_mode expects enabled to be a boolean")
+   end
+
+   if not sdl3.SetWindowRelativeMouseMode(self.ptr, enabled) then
+      rig.raise("failed to set relative mouse mode: " .. M.get_error())
+   end
+
+   return enabled
+end
+
+function Window:get_relative_mouse_mode()
+   ensure_window(self)
+   return sdl3.GetWindowRelativeMouseMode(self.ptr) and true or false
+end
+
+function Window:set_mouse_grab(enabled)
+   ensure_window(self)
+   if type(enabled) ~= "boolean" then
+      rig.raise("sdl3x.Window:set_mouse_grab expects enabled to be a boolean")
+   end
+
+   if not sdl3.SetWindowMouseGrab(self.ptr, enabled) then
+      rig.raise("failed to set mouse grab: " .. M.get_error())
+   end
+
+   return enabled
+end
+
+function Window:get_mouse_grab()
+   ensure_window(self)
+   return sdl3.GetWindowMouseGrab(self.ptr) and true or false
 end
 
 function Window:sync()
@@ -2443,41 +2479,31 @@ end
 --[ Runtime services ]--
 
 local sdl3_gpu_mesh_service = {
-   build_vertex_input = function(mesh)
-      if type(mesh) ~= "table" then
+   build_vertex_input = function(value)
+      if type(value) ~= "table" then
          rig.raise("mesh.vertex_input provider expects a mesh table")
       end
 
-      local attributes = {
-         {
-            location = 0,
-            format = "FLOAT3",
-            offset = mesh.attribute_offsets.position,
-         },
-         {
-            location = 1,
-            format = "FLOAT3",
-            offset = mesh.attribute_offsets.color,
-         },
-      }
+      local layout = mesh.layouts[value.layout]
+      if layout == nil then
+         rig.raise("unsupported mesh layout '%s'", tostring(value.layout))
+      end
 
-      if mesh.layout == "position_color_f32" then
-         -- no additional attributes
-      elseif mesh.layout == "position_color_uv_f32" then
+      local attributes = {}
+      for _, role in ipairs(layout.order) do
+         local attribute = layout.attributes[role]
          attributes[#attributes + 1] = {
-            location = 2,
-            format = "FLOAT2",
-            offset = mesh.attribute_offsets.uv,
+            location = attribute.location,
+            format = "FLOAT" .. tostring(attribute.size),
+            offset = attribute.offset,
          }
-      else
-         rig.raise("unsupported mesh layout '%s'", mesh.layout)
       end
 
       return M.build_vertex_input_state {
          buffers = {
             {
                slot = 0,
-               pitch = mesh.vertex_stride,
+               pitch = value.vertex_stride,
                input_rate = "vertex",
                attributes = attributes,
             },
@@ -2580,6 +2606,7 @@ function M.plugin(spec)
          ["render.mesh"] = {},
          ["render.texture"] = {},
          ["render.target"] = {},
+         ["screenshot.capture"] = {},
       },
       extension_points = {
          ["sdl3.key"] = { method = "on_key" },
@@ -2969,15 +2996,33 @@ local function create_gpu_context(options, context)
       rig.raise("failed to claim SDL window for GPU device: " .. get_error_string())
    end
 
+   local swapchain_format = sdl3.GetGPUSwapchainTextureFormat(device, window.ptr)
+
    return {
       backend = "gpu",
       window = window,
       device = device,
+      swapchain_format = swapchain_format,
+      command_buffer = nil,
+      submitted = false,
+      -- Submits the current frame's command buffer at most once. Screenshot
+      -- capture may submit early when it must wait for a GPU readback; the
+      -- frame loop then skips its own submit.
+      submit_frame = function(self)
+         if self.command_buffer ~= nil and not self.submitted then
+            if not sdl3.SubmitGPUCommandBuffer(self.command_buffer) then
+               rig.raise("failed to submit GPU command buffer: " .. get_error_string())
+            end
+            self.submitted = true
+         end
+      end,
       render_frame = function(self, render_fn)
          local command_buffer = sdl3.AcquireGPUCommandBuffer(device)
          if command_buffer == nil then
             rig.raise("failed to acquire GPU command buffer: " .. get_error_string())
          end
+         self.command_buffer = command_buffer
+         self.submitted = false
 
          local swapchain_texture_out = ffi.new("SDL_GPUTexture *[1]")
          local width_out = ffi.new("Uint32[1]")
@@ -3002,9 +3047,9 @@ local function create_gpu_context(options, context)
             )
          end
 
-         if not sdl3.SubmitGPUCommandBuffer(command_buffer) then
-            rig.raise("failed to submit GPU command buffer: " .. get_error_string())
-         end
+         self:submit_frame()
+         self.command_buffer = nil
+         self.submitted = false
 
          return swapchain_texture ~= nil
       end,
@@ -3348,6 +3393,204 @@ void main()
 }
 ]]
 
+-- Built-in lit material. It consumes the Phase 2 roles at locations 0-4 and a
+-- documented set of plain uniforms. Existing unlit/textured shaders are kept
+-- separate so their attribute requirements and uniform footprint do not change.
+local gl_mesh_lit_vertex_source = [[
+#version 330 core
+
+layout(location = 0) in vec3 in_position;
+layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec2 in_uv;
+layout(location = 3) in vec3 in_normal;
+layout(location = 4) in vec4 in_tangent;
+
+out vec3 v_world_position;
+out vec3 v_color;
+out vec2 v_uv;
+out vec3 v_normal;
+out vec4 v_tangent;
+
+uniform mat4 u_mvp;
+uniform mat4 u_model;
+
+void main()
+{
+   vec4 world = u_model * vec4(in_position, 1.0);
+   gl_Position = u_mvp * vec4(in_position, 1.0);
+   v_world_position = world.xyz;
+   v_color = in_color;
+   v_uv = in_uv;
+   v_normal = mat3(transpose(inverse(u_model))) * in_normal;
+   v_tangent = vec4(mat3(u_model) * in_tangent.xyz, in_tangent.w);
+}
+]]
+
+local gl_mesh_lit_fragment_source = [[
+#version 330 core
+
+in vec3 v_world_position;
+in vec3 v_color;
+in vec2 v_uv;
+in vec3 v_normal;
+in vec4 v_tangent;
+
+out vec4 frag_color;
+
+uniform sampler2D u_texture;
+uniform sampler2D u_normal_texture;
+uniform sampler2D u_reflection_texture;
+uniform int u_has_texture;
+uniform int u_has_normal_texture;
+uniform int u_has_reflection_texture;
+uniform vec2 u_texture_scale;
+uniform vec2 u_view_size;
+
+uniform vec4 u_base_color;
+uniform vec4 u_emissive;
+uniform float u_roughness;
+uniform float u_specular;
+uniform float u_alpha_cutoff;
+
+uniform vec4 u_ambient;
+uniform vec4 u_light_direction;
+uniform vec4 u_light_color;
+uniform int u_local_light_count;
+uniform vec4 u_local_light_position[4];
+uniform vec4 u_local_light_color[4];
+uniform vec4 u_camera_position;
+uniform float u_exposure;
+uniform float u_reflection_strength;
+uniform float u_environment_strength;
+
+vec3 light_contribution(
+   vec3 albedo,
+   vec3 normal,
+   vec3 view_dir,
+   vec3 light_dir,
+   vec3 light_color,
+   float shininess
+)
+{
+   float ndl = max(dot(normal, light_dir), 0.0);
+   if (ndl <= 0.0) {
+      return vec3(0.0);
+   }
+   vec3 half_dir = normalize(light_dir + view_dir);
+   float spec = pow(max(dot(normal, half_dir), 0.0), shininess);
+   return (albedo + vec3(spec * u_specular)) * light_color * ndl;
+}
+
+void main()
+{
+   vec2 texture_uv = v_uv * u_texture_scale;
+   vec4 base = u_base_color;
+   if (u_has_texture != 0) {
+      base *= texture(u_texture, texture_uv);
+   }
+   base.rgb *= v_color;
+
+   if (u_alpha_cutoff > 0.0 && base.a < u_alpha_cutoff) {
+      discard;
+   }
+
+   vec3 normal = normalize(v_normal);
+   if (u_has_normal_texture != 0) {
+      vec3 tangent = normalize(v_tangent.xyz - normal * dot(normal, v_tangent.xyz));
+      vec3 bitangent = cross(normal, tangent) * v_tangent.w;
+      vec3 map_normal = texture(u_normal_texture, texture_uv).xyz * 2.0 - 1.0;
+      normal = normalize(mat3(tangent, bitangent, normal) * map_normal);
+   }
+
+   vec3 view_dir = normalize(u_camera_position.xyz - v_world_position);
+   float shininess = mix(128.0, 4.0, clamp(u_roughness, 0.0, 1.0));
+   vec3 color = base.rgb * u_ambient.rgb;
+
+   vec3 sun_dir = normalize(u_light_direction.xyz);
+   color += light_contribution(
+      base.rgb,
+      normal,
+      view_dir,
+      sun_dir,
+      u_light_color.rgb * u_light_color.a,
+      shininess
+   );
+
+   for (int i = 0; i < 4; ++i) {
+      if (i >= u_local_light_count) {
+         break;
+      }
+      vec4 light_position = u_local_light_position[i];
+      vec4 light_color = u_local_light_color[i];
+      vec3 to_light = light_position.xyz - v_world_position;
+      float distance_to_light = length(to_light);
+      if (distance_to_light <= 0.0) {
+         continue;
+      }
+      float attenuation = clamp(
+         1.0 - distance_to_light / light_position.w,
+         0.0,
+         1.0
+      );
+      attenuation *= attenuation;
+      if (attenuation <= 0.0) {
+         continue;
+      }
+      vec3 light_dir = to_light / distance_to_light;
+      color += light_contribution(
+         base.rgb,
+         normal,
+         view_dir,
+         light_dir,
+         light_color.rgb * light_color.a * attenuation,
+         shininess
+      );
+   }
+
+   color += u_emissive.rgb;
+   vec3 mapped = color * u_exposure;
+   mapped = mapped / (mapped + vec3(1.0));
+
+   float facing = clamp(dot(normal, view_dir), 0.0, 1.0);
+   float fresnel = pow(1.0 - facing, 3.0);
+
+   // Cheap probe-like environment response for polished stone and metal. It is
+   // intentionally analytic so it remains available when reflection targets
+   // are disabled.
+   if (u_environment_strength > 0.0) {
+      vec3 reflected = reflect(-view_dir, normal);
+      float up = smoothstep(-0.35, 0.75, reflected.y);
+      vec3 environment = mix(
+         vec3(0.10, 0.075, 0.060),
+         vec3(0.50, 0.45, 0.38),
+         up
+      );
+      float amount = clamp(
+         u_environment_strength * (0.35 + 0.65 * fresnel),
+         0.0,
+         1.0
+      );
+      mapped = mix(mapped, environment, amount);
+   }
+
+   // Planar reflection targets are rendered in screen space and are already
+   // display-referred, so they are composited after the exposure curve.
+   if (u_has_reflection_texture != 0 && u_reflection_strength > 0.0) {
+      vec2 screen_uv = gl_FragCoord.xy / u_view_size;
+      screen_uv.y = 1.0 - screen_uv.y;
+      vec3 reflected = texture(u_reflection_texture, screen_uv).rgb;
+      float amount = clamp(
+         u_reflection_strength * (0.20 + 0.80 * fresnel),
+         0.0,
+         1.0
+      );
+      mapped = mix(mapped, reflected, amount);
+   }
+
+   frag_color = vec4(mapped, base.a);
+}
+]]
+
 local gl_builtin_material = {
    unlit = {
       vertex = gl_mesh_vertex_source,
@@ -3356,6 +3599,10 @@ local gl_builtin_material = {
    textured = {
       vertex = gl_mesh_textured_vertex_source,
       fragment = gl_mesh_textured_fragment_source,
+   },
+   lit = {
+      vertex = gl_mesh_lit_vertex_source,
+      fragment = gl_mesh_lit_fragment_source,
    },
 }
 
@@ -3528,13 +3775,71 @@ local function make_gl_target_factory(scope)
    }
 end
 
+local function apply_gl_material_state(gl, material)
+   local cull_mode = material and material.cull_mode or "none"
+   if cull_mode == "none" then
+      gl.Disable(gl.CULL_FACE)
+   else
+      gl.Enable(gl.CULL_FACE)
+      if cull_mode == "back" then
+         gl.CullFace(gl.BACK)
+      elseif cull_mode == "front" then
+         gl.CullFace(gl.FRONT)
+      else
+         gl.CullFace(gl.FRONT_AND_BACK)
+      end
+   end
+
+   if material ~= nil and material.depth_test == false then
+      gl.Disable(gl.DEPTH_TEST)
+   else
+      gl.Enable(gl.DEPTH_TEST)
+   end
+   gl.DepthMask(
+      material ~= nil and material.depth_write == false and gl.FALSE or gl.TRUE
+   )
+
+   local alpha_mode = material and material.alpha_mode or "opaque"
+   local opacity = material and material.opacity or 1.0
+   if alpha_mode == "blend" or opacity < 1.0 then
+      gl.Enable(gl.BLEND)
+      gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+   else
+      gl.Disable(gl.BLEND)
+   end
+end
+
+local function gl_color_components(value, fallback_r, fallback_g, fallback_b)
+   if value == nil then
+      return fallback_r, fallback_g, fallback_b
+   end
+   return value:to_rgbf()
+end
+
 local function make_gl_mesh_factory(shader_provider, scope, texture_factory, target_factory)
    return {
       create = function(mesh, material)
          local gl = require("gl")
+         local is_lit = material ~= nil
+            and material.shading == "lit"
+            and material.vertex == nil
 
          local texture_handle =
             render.resolve_material_texture(material, texture_factory, target_factory)
+         local normal_texture_handle = nil
+         local reflection_texture_handle = nil
+         if is_lit then
+            normal_texture_handle = render.resolve_material_normal_texture(
+               material,
+               texture_factory,
+               target_factory
+            )
+            reflection_texture_handle = render.resolve_material_reflection_texture(
+               material,
+               texture_factory,
+               target_factory
+            )
+         end
 
          local vertex_source, fragment_source, label = render.material_sources(
             mesh,
@@ -3573,51 +3878,220 @@ local function make_gl_mesh_factory(shader_provider, scope, texture_factory, tar
             resource:release()
          end)
 
+         local layout = require("mesh").layout(mesh.layout)
          vao:bind()
          vbo:set_data(mesh.vertex_blob, gl.STATIC_DRAW)
-         vao:attribute(
-            0,
-            3,
-            gl.FLOAT,
-            gl.FALSE,
-            mesh.vertex_stride,
-            mesh.attribute_offsets.position
-         )
-         vao:attribute(
-            1,
-            3,
-            gl.FLOAT,
-            gl.FALSE,
-            mesh.vertex_stride,
-            mesh.attribute_offsets.color
-         )
-         if mesh.attribute_offsets.uv ~= nil then
+         for _, role in ipairs(layout.order) do
+            local attribute = layout.attributes[role]
             vao:attribute(
-               2,
-               2,
+               attribute.location,
+               attribute.size,
                gl.FLOAT,
                gl.FALSE,
                mesh.vertex_stride,
-               mesh.attribute_offsets.uv
+               attribute.offset
             )
          end
 
+         local ebo = nil
+         local index_gl_type = nil
+         if mesh.index_blob ~= nil then
+            ebo = glx.Buffer { target = gl.ELEMENT_ARRAY_BUFFER }
+            scope:adopt(ebo, function(_, resource)
+               resource:release()
+            end)
+            vao:element_buffer(ebo)
+            ebo:set_data(mesh.index_blob, gl.STATIC_DRAW)
+            local index_type = mesh.index_type or "uint32"
+            if index_type == "uint32" then
+               index_gl_type = gl.UNSIGNED_INT
+            elseif index_type == "uint16" then
+               index_gl_type = gl.UNSIGNED_SHORT
+            else
+               rig.raise("unsupported mesh index type '%s'", index_type)
+            end
+         end
+
          local primitive = gl_primitive(gl, mesh.topology)
-         local has_texture_uniform = texture_handle ~= nil
-            and program:uniform_location("u_texture") >= 0
+         local has_texture_uniform = program:uniform_location("u_texture") >= 0
+
+         local local_light_positions = nil
+         local local_light_colors = nil
+         if is_lit then
+            local_light_positions = ffi.new("float[16]")
+            local_light_colors = ffi.new("float[16]")
+         end
 
          return {
-            draw = function(_, surface, mvp)
+            draw = function(_, surface, mvp, world)
+               apply_gl_material_state(gl, material)
                program:use()
                program:set_uniform_matrix4fv("u_mvp", mvp)
+
+               if is_lit then
+                  local world_matrix = world or surface:current_transform()
+                  program:set_uniform_matrix4fv("u_model", world_matrix)
+
+                  local eye = surface.camera and surface.camera.eye or { 0, 0, 0 }
+                  program:set_uniform4f(
+                     "u_camera_position",
+                     eye[1] or 0.0,
+                     eye[2] or 0.0,
+                     eye[3] or 0.0,
+                     1.0
+                  )
+
+                  local albedo = material.albedo
+                  local ar, ag, ab = albedo:to_rgbf()
+                  program:set_uniform4f(
+                     "u_base_color",
+                     ar,
+                     ag,
+                     ab,
+                     material.opacity
+                  )
+
+                  local er, eg, eb = material.emissive:to_rgbf()
+                  program:set_uniform4f("u_emissive", er, eg, eb, 1.0)
+                  program:set_uniform1f("u_roughness", material.roughness)
+                  program:set_uniform1f("u_specular", material.specular)
+                  program:set_uniform1f(
+                     "u_alpha_cutoff",
+                     material.alpha_mode == "cutout" and material.alpha_cutoff or 0.0
+                  )
+
+                  local lighting = surface.lighting or render.default_lighting
+                  local directional = lighting.directional
+                     or render.default_lighting.directional
+                  local ambient = lighting.ambient or render.default_lighting.ambient
+                  local ar2, ag2, ab2 = gl_color_components(ambient, 0.16, 0.17, 0.19)
+                  program:set_uniform4f("u_ambient", ar2, ag2, ab2, 1.0)
+
+                  local direction = directional.direction or { 0.35, 0.8, -0.45 }
+                  program:set_uniform4f(
+                     "u_light_direction",
+                     direction[1] or 0.0,
+                     direction[2] or 0.0,
+                     direction[3] or 0.0,
+                     0.0
+                  )
+                  local lr, lg, lb = gl_color_components(
+                     directional.color,
+                     1.0,
+                     0.94,
+                     0.84
+                  )
+                  program:set_uniform4f(
+                     "u_light_color",
+                     lr,
+                     lg,
+                     lb,
+                     directional.intensity or 1.0
+                  )
+                  program:set_uniform1f("u_exposure", lighting.exposure or 1.0)
+                  local texture_scale = material.texture_scale or { 1.0, 1.0 }
+                  program:set_uniform2f(
+                     "u_texture_scale",
+                     texture_scale[1] or 1.0,
+                     texture_scale[2] or 1.0
+                  )
+                  program:set_uniform2f(
+                     "u_view_size",
+                     surface.width or 1,
+                     surface.height or 1
+                  )
+                  program:set_uniform1f(
+                     "u_reflection_strength",
+                     material.reflection_strength or 0.0
+                  )
+                  program:set_uniform1f(
+                     "u_environment_strength",
+                     material.environment_strength or 0.0
+                  )
+
+                  local local_lights = lighting.local_lights or {}
+                  local count = math.min(#local_lights, render.MAX_LOCAL_LIGHTS)
+                  for i = 0, 3 do
+                     local light = local_lights[i + 1]
+                     local base = i * 4
+                     if light ~= nil then
+                        local position = light.position
+                        local cr, cg, cb = gl_color_components(
+                           light.color,
+                           1.0,
+                           1.0,
+                           1.0
+                        )
+                        local_light_positions[base] = position[1] or 0.0
+                        local_light_positions[base + 1] = position[2] or 0.0
+                        local_light_positions[base + 2] = position[3] or 0.0
+                        local_light_positions[base + 3] = light.range or 8.0
+                        local_light_colors[base] = cr
+                        local_light_colors[base + 1] = cg
+                        local_light_colors[base + 2] = cb
+                        local_light_colors[base + 3] = light.intensity or 1.0
+                     else
+                        local_light_positions[base] = 0.0
+                        local_light_positions[base + 1] = 0.0
+                        local_light_positions[base + 2] = 0.0
+                        local_light_positions[base + 3] = 1.0
+                        local_light_colors[base] = 0.0
+                        local_light_colors[base + 1] = 0.0
+                        local_light_colors[base + 2] = 0.0
+                        local_light_colors[base + 3] = 0.0
+                     end
+                  end
+                  program:set_uniform4fv(
+                     "u_local_light_position",
+                     local_light_positions,
+                     4
+                  )
+                  program:set_uniform4fv(
+                     "u_local_light_color",
+                     local_light_colors,
+                     4
+                  )
+                  program:set_uniform1i("u_local_light_count", count)
+                  program:set_uniform1i(
+                     "u_has_texture",
+                     texture_handle ~= nil and 1 or 0
+                  )
+                  program:set_uniform1i(
+                     "u_has_normal_texture",
+                     normal_texture_handle ~= nil and 1 or 0
+                  )
+                  program:set_uniform1i(
+                     "u_has_reflection_texture",
+                     reflection_texture_handle ~= nil and 1 or 0
+                  )
+               end
+
                if texture_handle ~= nil then
                   texture_handle:bind(0)
                   if has_texture_uniform then
                      program:set_uniform1i("u_texture", 0)
                   end
                end
+               if normal_texture_handle ~= nil then
+                  normal_texture_handle:bind(1)
+                  program:set_uniform1i("u_normal_texture", 1)
+               end
+               if reflection_texture_handle ~= nil then
+                  reflection_texture_handle:bind(2)
+                  program:set_uniform1i("u_reflection_texture", 2)
+               end
+
                vao:bind()
-               gl.DrawArrays(primitive, 0, mesh.vertex_count)
+               if ebo ~= nil then
+                  gl.DrawElements(
+                     primitive,
+                     mesh.index_count,
+                     index_gl_type,
+                     ffi.NULL
+                  )
+               else
+                  gl.DrawArrays(primitive, 0, mesh.vertex_count)
+               end
             end,
          }
       end,
@@ -4062,6 +4536,12 @@ local function make_gpu_mesh_factory(options)
 
    return {
       create = function(mesh, material)
+         if material ~= nil
+            and material.shading == "lit"
+            and material.vertex == nil then
+            rig.raise("lit materials are only implemented for the OpenGL backend")
+         end
+
          local vertex_input = mesh_provider:build_vertex_input(mesh)
 
          local texture_handle =
@@ -4145,6 +4625,30 @@ local function make_gpu_mesh_factory(options)
          binding[0].buffer = vertex_buffer
          binding[0].offset = 0
 
+         local index_buffer = nil
+         local index_binding = nil
+         local index_element_size = nil
+         if mesh.index_blob ~= nil then
+            index_buffer = scope:create_gpu_buffer {
+               usage = sdl3.GPU_BUFFERUSAGE_INDEX,
+               size = #mesh.index_blob,
+               props = 0,
+            }
+            M.upload_to_gpu_buffer(device, index_buffer, mesh.index_blob)
+            index_binding = ffi.new("SDL_GPUBufferBinding[1]")
+            index_binding[0].buffer = index_buffer
+            index_binding[0].offset = 0
+
+            local index_type = mesh.index_type or "uint32"
+            if index_type == "uint32" then
+               index_element_size = sdl3.GPU_INDEXELEMENTSIZE_32BIT
+            elseif index_type == "uint16" then
+               index_element_size = sdl3.GPU_INDEXELEMENTSIZE_16BIT
+            else
+               rig.raise("unsupported mesh index type '%s'", index_type)
+            end
+         end
+
          return {
             draw = function(_, surface, mvp)
                sdl3.PushGPUVertexUniformData(
@@ -4158,13 +4662,29 @@ local function make_gpu_mesh_factory(options)
                if texture_handle ~= nil then
                   texture_handle:bind(surface.pass, 0)
                end
-               sdl3.DrawGPUPrimitives(
-                  surface.pass,
-                  mesh.vertex_count,
-                  1,
-                  0,
-                  0
-               )
+               if index_buffer ~= nil then
+                  sdl3.BindGPUIndexBuffer(
+                     surface.pass,
+                     index_binding,
+                     index_element_size
+                  )
+                  sdl3.DrawGPUIndexedPrimitives(
+                     surface.pass,
+                     mesh.index_count,
+                     1,
+                     0,
+                     0,
+                     0
+                  )
+               else
+                  sdl3.DrawGPUPrimitives(
+                     surface.pass,
+                     mesh.vertex_count,
+                     1,
+                     0,
+                     0
+                  )
+               end
             end,
          }
       end,
@@ -4859,6 +5379,288 @@ local function merge_window_props(base, override)
    return merged
 end
 
+--[ screenshot providers ]--
+
+local function flip_rgba_rows(bytes, width, height)
+   local size = width * height * 4
+   local row_size = width * 4
+   local flipped = ffi.new("unsigned char[?]", size)
+   local source = ffi.cast("const char *", bytes)
+   for row = 0, height - 1 do
+      ffi.copy(
+         flipped + row * row_size,
+         source + (height - 1 - row) * row_size,
+         row_size
+      )
+   end
+   return ffi.string(flipped, size)
+end
+
+local gl_screenshot_service = {
+   capture = function(surface, options)
+      options = options or {}
+      local width = math.floor(tonumber(options.width) or surface.width or 0)
+      local height = math.floor(tonumber(options.height) or surface.height or 0)
+      if width <= 0 or height <= 0 then
+         rig.raise("gl screenshot requires a positive width and height")
+      end
+      local x = math.floor(tonumber(options.x) or 0)
+      local y = math.floor(tonumber(options.y) or 0)
+      local size = width * height * 4
+      local pixels = ffi.new("unsigned char[?]", size)
+
+      gl.PixelStorei(gl.PACK_ALIGNMENT, 1)
+      gl.ReadPixels(
+         x,
+         y,
+         width,
+         height,
+         gl.RGBA,
+         gl.UNSIGNED_BYTE,
+         ffi.cast("void *", pixels)
+      )
+
+      local bytes = ffi.string(pixels, size)
+      if options.flip_y ~= false then
+         bytes = flip_rgba_rows(bytes, width, height)
+      end
+      return {
+         width = width,
+         height = height,
+         channels = 4,
+         pixels = bytes,
+      }
+   end,
+}
+
+local renderer_screenshot_service = {
+   capture = function(surface, options)
+      options = options or {}
+      local graphics = surface.graphics
+      local renderer = graphics and graphics.renderer
+      if renderer == nil then
+         rig.raise("renderer screenshot requires an active SDL renderer")
+      end
+
+      local x = math.floor(tonumber(options.x) or 0)
+      local y = math.floor(tonumber(options.y) or 0)
+      local width = math.floor(
+         tonumber(options.width) or (surface.width or 0) - x
+      )
+      local height = math.floor(
+         tonumber(options.height) or (surface.height or 0) - y
+      )
+      if width <= 0 or height <= 0 then
+         rig.raise("renderer screenshot requires a positive width and height")
+      end
+
+      local rect = nil
+      if x ~= 0 or y ~= 0
+         or width ~= (surface.width or width)
+         or height ~= (surface.height or height) then
+         rect = ffi.new("SDL_Rect[1]")
+         rect[0].x = x
+         rect[0].y = y
+         rect[0].w = width
+         rect[0].h = height
+      end
+
+      -- SDL3 returns an SDL_Surface owned by the caller. Convert it to the
+      -- native RGBA32 layout so the rest of Rig always sees RGBA byte order.
+      local read = sdl3.RenderReadPixels(renderer, rect)
+      if read == nil then
+         rig.raise("SDL_RenderReadPixels failed: " .. get_error_string())
+      end
+
+      local converted = sdl3.ConvertSurface(read, sdl3.PIXELFORMAT_RGBA32)
+      sdl3.DestroySurface(read)
+      if converted == nil then
+         rig.raise("failed to convert renderer screenshot to RGBA32: "
+            .. get_error_string())
+      end
+
+      local data = converted[0]
+      local surface_width = tonumber(data.w) or width
+      local surface_height = tonumber(data.h) or height
+      local pitch = tonumber(data.pitch) or (surface_width * 4)
+      local row_size = surface_width * 4
+      local size = row_size * surface_height
+      local pixels = ffi.new("unsigned char[?]", size)
+      local source = ffi.cast("const unsigned char *", data.pixels)
+      for row = 0, surface_height - 1 do
+         ffi.copy(pixels + row * row_size, source + row * pitch, row_size)
+      end
+      sdl3.DestroySurface(converted)
+
+      return {
+         width = surface_width,
+         height = surface_height,
+         channels = 4,
+         pixels = ffi.string(pixels, size),
+      }
+   end,
+}
+
+local gpu_screenshot_cache = {
+   command_buffer = nil,
+   image = nil,
+}
+
+local gpu_screenshot_service = {
+   capture = function(surface, options)
+      options = options or {}
+      local graphics = surface.graphics
+      local device = surface.device
+      local command_buffer = graphics and graphics.command_buffer
+      local swapchain_texture = surface.swapchain_texture
+
+      if device == nil or command_buffer == nil or swapchain_texture == nil then
+         rig.raise("gpu screenshot must run during a frame before presentation")
+      end
+
+      local width = math.floor(tonumber(options.width) or surface.width or 0)
+      local height = math.floor(tonumber(options.height) or surface.height or 0)
+      if width <= 0 or height <= 0 then
+         rig.raise("gpu screenshot requires a positive width and height")
+      end
+      local x = math.floor(tonumber(options.x) or 0)
+      local y = math.floor(tonumber(options.y) or 0)
+      local size = width * height * 4
+
+      -- Multiple requests in one frame share one readback. `submitted` is true
+      -- only after this frame's capture has submitted the command buffer, so a
+      -- recycled command-buffer pointer on a later frame cannot reuse stale
+      -- pixels. A second, differently cropped request cannot be served after
+      -- presentation, so reject it instead of returning the wrong pixels.
+      if graphics.submitted
+         and gpu_screenshot_cache.command_buffer == command_buffer then
+         local cached = gpu_screenshot_cache
+         if cached.image ~= nil
+            and cached.x == x
+            and cached.y == y
+            and cached.width == width
+            and cached.height == height then
+            return cached.image
+         end
+         rig.raise("gpu screenshot supports one capture configuration per frame")
+      end
+
+      -- The scene's pass is still open when the screenshot flush runs. End it
+      -- here; no more draws are allowed after the overlay phase. The frame loop
+      -- skips its own submit because capture submits the command buffer.
+      if surface.pass ~= nil then
+         sdl3.EndGPURenderPass(surface.pass)
+         surface.pass = nil
+      end
+
+      local create_info = ffi.new("SDL_GPUTransferBufferCreateInfo[1]")
+      create_info[0].usage = sdl3.GPU_TRANSFERBUFFERUSAGE_DOWNLOAD
+      create_info[0].size = size
+      create_info[0].props = 0
+      local transfer = sdl3.CreateGPUTransferBuffer(device, create_info)
+      if transfer == nil then
+         rig.raise("failed to create GPU screenshot transfer buffer: "
+            .. get_error_string())
+      end
+
+      local source = ffi.new("SDL_GPUTextureRegion[1]")
+      source[0].texture = swapchain_texture
+      source[0].mip_level = 0
+      source[0].layer = 0
+      source[0].x = x
+      source[0].y = y
+      source[0].z = 0
+      source[0].w = width
+      source[0].h = height
+      source[0].d = 1
+
+      local destination = ffi.new("SDL_GPUTextureTransferInfo[1]")
+      destination[0].transfer_buffer = transfer
+      destination[0].offset = 0
+      destination[0].pixels_per_row = width
+      destination[0].rows_per_layer = height
+
+      local copy_pass = sdl3.BeginGPUCopyPass(command_buffer)
+      if copy_pass == nil then
+         sdl3.ReleaseGPUTransferBuffer(device, transfer)
+         rig.raise("failed to begin GPU screenshot copy pass: " .. get_error_string())
+      end
+      sdl3.DownloadFromGPUTexture(copy_pass, source, destination)
+      sdl3.EndGPUCopyPass(copy_pass)
+
+      graphics:submit_frame()
+      sdl3.WaitForGPUIdle(device)
+
+      local mapped = sdl3.MapGPUTransferBuffer(device, transfer, false)
+      if mapped == nil then
+         sdl3.ReleaseGPUTransferBuffer(device, transfer)
+         rig.raise("failed to map GPU screenshot transfer buffer: " .. get_error_string())
+      end
+      local bytes = ffi.string(ffi.cast("const char *", mapped), size)
+      sdl3.UnmapGPUTransferBuffer(device, transfer)
+      sdl3.ReleaseGPUTransferBuffer(device, transfer)
+
+      local format = graphics.swapchain_format
+      if format == sdl3.GPU_TEXTUREFORMAT_B8G8R8A8_UNORM
+         or format == sdl3.GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB then
+         local swapped = ffi.new("unsigned char[?]", size)
+         local input = ffi.cast("const unsigned char *", bytes)
+         for pixel = 0, width * height - 1 do
+            local offset = pixel * 4
+            swapped[offset + 0] = input[offset + 2]
+            swapped[offset + 1] = input[offset + 1]
+            swapped[offset + 2] = input[offset + 0]
+            swapped[offset + 3] = input[offset + 3]
+         end
+         bytes = ffi.string(swapped, size)
+      end
+
+      local image = {
+         width = width,
+         height = height,
+         channels = 4,
+         pixels = bytes,
+      }
+      gpu_screenshot_cache.command_buffer = command_buffer
+      gpu_screenshot_cache.x = x
+      gpu_screenshot_cache.y = y
+      gpu_screenshot_cache.width = width
+      gpu_screenshot_cache.height = height
+      gpu_screenshot_cache.image = image
+      return image
+   end,
+}
+
+function M.gl_screenshot_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "screenshot.capture",
+      backend = "gl",
+      provider = gl_screenshot_service,
+      requires = {
+         { capability = "gl.resolver" },
+      },
+   })
+end
+
+function M.renderer_screenshot_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "screenshot.capture",
+      backend = "renderer",
+      provider = renderer_screenshot_service,
+   })
+end
+
+function M.gpu_screenshot_component(plugin, options)
+   options = options or {}
+   return graphics.provider_component(plugin, options, {
+      capability = "screenshot.capture",
+      backend = "gpu",
+      provider = gpu_screenshot_service,
+   })
+end
+
 local function add_core_components(builder, options)
    local clock = runtime.Clock {
       now = function()
@@ -4896,6 +5698,7 @@ function M.bundle_sdl3(builder, options)
       create_renderer = options.create_renderer,
    }))
    builder:add(M.renderer_scene_component(plugin, {}))
+   builder:add(M.renderer_screenshot_component(plugin, { name = "screenshot_provider" }))
    builder:add(M.font_renderer_component(plugin, { name = "font" }))
    builder:add(M.draw_renderer_component(plugin, { name = "draw" }))
    builder:add(graphics.frame_component(plugin, {
@@ -4935,6 +5738,7 @@ function M.bundle_sdl3_gl(builder, options)
    builder:add(M.gl_resolver_component(plugin, { name = "gl_resolver" }))
    builder:add(M.gl_shader_stage_component(plugin, { name = "shader" }))
    builder:add(M.gl_scene_component(plugin, {}))
+   builder:add(M.gl_screenshot_component(plugin, { name = "screenshot_provider" }))
    builder:add(M.gl_texture_component(plugin, {}))
    builder:add(M.gl_target_component(plugin, {}))
    builder:add(M.gl_mesh_component(plugin, {}))
@@ -4973,6 +5777,7 @@ function M.bundle_sdl3_gpu(builder, options)
    builder:add(M.gpu_font_renderer_component(plugin, { name = "font" }))
    builder:add(M.gpu_draw_renderer_component(plugin, { name = "draw" }))
    builder:add(M.gpu_scene_component(plugin, {}))
+   builder:add(M.gpu_screenshot_component(plugin, { name = "screenshot_provider" }))
    builder:add(M.gpu_texture_component(plugin, {}))
    builder:add(M.gpu_target_component(plugin, {}))
    builder:add(M.gpu_mesh_component(plugin, {}))

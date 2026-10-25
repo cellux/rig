@@ -25,6 +25,17 @@ typedef uint16_t SDL_Keymod;
 typedef uint32_t SDL_PropertiesID;
 typedef int SDL_GLAttr;
 typedef Uint32 SDL_PixelFormat;
+typedef Uint32 SDL_SurfaceFlags;
+typedef struct SDL_Surface {
+   SDL_SurfaceFlags flags;
+   SDL_PixelFormat format;
+   int w;
+   int h;
+   int pitch;
+   void *pixels;
+   int refcount;
+   void *reserved;
+} SDL_Surface;
 typedef Uint32 SDL_TextureAccess;
 typedef Uint32 SDL_BlendMode;
 typedef struct SDL_KeyboardEvent {
@@ -106,6 +117,9 @@ SDL_DisplayID SDL_GetPrimaryDisplay(void);
 bool SDL_GetDisplayUsableBounds(SDL_DisplayID displayID, SDL_Rect *rect);
 bool SDL_SetRenderVSync(SDL_Renderer *renderer, int vsync);
 bool SDL_RenderPresent(SDL_Renderer *renderer);
+SDL_Surface *SDL_RenderReadPixels(SDL_Renderer *renderer, const SDL_Rect *rect);
+SDL_Surface *SDL_ConvertSurface(SDL_Surface *surface, SDL_PixelFormat format);
+void SDL_DestroySurface(SDL_Surface *surface);
 void SDL_DestroyRenderer(SDL_Renderer *renderer);
 void SDL_DestroyWindow(SDL_Window *window);
 bool SDL_Init(Uint32 flags);
@@ -126,6 +140,10 @@ Uint32 SDL_GetMouseState(float *x, float *y);
 bool SDL_GetWindowSize(SDL_Window *window, int *w, int *h);
 bool SDL_GetWindowSizeInPixels(SDL_Window *window, int *w, int *h);
 bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen);
+bool SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled);
+bool SDL_GetWindowRelativeMouseMode(SDL_Window *window);
+bool SDL_SetWindowMouseGrab(SDL_Window *window, bool grabbed);
+bool SDL_GetWindowMouseGrab(SDL_Window *window);
 bool SDL_SyncWindow(SDL_Window *window);
 bool SDL_SetCurrentThreadPriority(int priority);
 const char *SDL_GetError(void);
@@ -441,6 +459,7 @@ void SDL_PushGPUFragmentUniformData(SDL_GPUCommandBuffer *command_buffer, Uint32
 SDL_GPUCopyPass *SDL_BeginGPUCopyPass(SDL_GPUCommandBuffer *command_buffer);
 void SDL_UploadToGPUBuffer(SDL_GPUCopyPass *copy_pass, const SDL_GPUTransferBufferLocation *source, const SDL_GPUBufferRegion *destination, bool cycle);
 void SDL_UploadToGPUTexture(SDL_GPUCopyPass *copy_pass, const SDL_GPUTextureTransferInfo *source, const SDL_GPUTextureRegion *destination, bool cycle);
+void SDL_DownloadFromGPUTexture(SDL_GPUCopyPass *copy_pass, const SDL_GPUTextureRegion *source, const SDL_GPUTextureTransferInfo *destination);
 void SDL_EndGPUCopyPass(SDL_GPUCopyPass *copy_pass);
 bool SDL_WaitAndAcquireGPUSwapchainTexture(SDL_GPUCommandBuffer *command_buffer, SDL_Window *window, SDL_GPUTexture **swapchain_texture, Uint32 *swapchain_texture_width, Uint32 *swapchain_texture_height);
 SDL_GPURenderPass *SDL_BeginGPURenderPass(SDL_GPUCommandBuffer *command_buffer, const SDL_GPUColorTargetInfo *color_target_infos, Uint32 num_color_targets, const SDL_GPUDepthStencilTargetInfo *depth_stencil_target_info);
@@ -510,6 +529,9 @@ export_sdl_function("GetPrimaryDisplay")
 export_sdl_function("GetDisplayUsableBounds")
 export_sdl_function("SetRenderVSync")
 export_sdl_function("RenderPresent")
+export_sdl_function("RenderReadPixels")
+export_sdl_function("ConvertSurface")
+export_sdl_function("DestroySurface")
 export_sdl_function("DestroyRenderer")
 export_sdl_function("DestroyWindow")
 export_sdl_function("Init")
@@ -530,6 +552,10 @@ export_sdl_function("GetMouseState")
 export_sdl_function("GetWindowSize")
 export_sdl_function("GetWindowSizeInPixels")
 export_sdl_function("SetWindowFullscreen")
+export_sdl_function("SetWindowRelativeMouseMode")
+export_sdl_function("GetWindowRelativeMouseMode")
+export_sdl_function("SetWindowMouseGrab")
+export_sdl_function("GetWindowMouseGrab")
 export_sdl_function("SyncWindow")
 export_sdl_function("SetCurrentThreadPriority")
 export_sdl_function("GetError")
@@ -590,6 +616,7 @@ export_sdl_function("PushGPUFragmentUniformData")
 export_sdl_function("BeginGPUCopyPass")
 export_sdl_function("UploadToGPUBuffer")
 export_sdl_function("UploadToGPUTexture")
+export_sdl_function("DownloadFromGPUTexture")
 export_sdl_function("EndGPUCopyPass")
 export_sdl_function("WaitAndAcquireGPUSwapchainTexture")
 export_sdl_function("BeginGPURenderPass")

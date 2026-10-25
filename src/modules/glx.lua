@@ -407,6 +407,23 @@ function Program:set_uniform1i(name, value)
    return self
 end
 
+function Program:set_uniform1f(name, value)
+   ensure_program_live(self)
+
+   local location = self:uniform_location(name)
+   if location < 0 then
+      rig.raise("failed to locate OpenGL uniform '%s'", name)
+   end
+
+   local resolved_value = tonumber(value)
+   if resolved_value == nil then
+      rig.raise("glx.Program:set_uniform1f expects value to be numeric")
+   end
+
+   gl.Uniform1f(location, resolved_value)
+   return self
+end
+
 function Program:set_uniform2f(name, x, y)
    ensure_program_live(self)
 
@@ -442,6 +459,24 @@ function Program:set_uniform4f(name, x, y, z, w)
    end
 
    gl.Uniform4f(location, resolved_x, resolved_y, resolved_z, resolved_w)
+   return self
+end
+
+function Program:set_uniform4fv(name, value, count)
+   ensure_program_live(self)
+
+   local location = self:uniform_location(name)
+   if location < 0 then
+      rig.raise("failed to locate OpenGL uniform '%s'", name)
+   end
+   if value == nil then
+      rig.raise("glx.Program:set_uniform4fv expects value")
+   end
+
+   local resolved_count = count == nil
+      and 1
+      or normalize_size("OpenGL uniform vector count", count)
+   gl.Uniform4fv(location, resolved_count, value)
    return self
 end
 
@@ -597,6 +632,14 @@ function VertexArray:attribute(index, size, value_type, normalized, stride, poin
       resolved_stride,
       resolved_pointer
    )
+   return self
+end
+
+function VertexArray:element_buffer(buffer)
+   ensure_vertex_array(self)
+   ensure_buffer(buffer)
+   self:bind()
+   buffer:bind()
    return self
 end
 

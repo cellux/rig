@@ -177,6 +177,7 @@ function RenderScene:init(options)
 
    self.width = 1
    self.height = 1
+   self.lighting = options.lighting
    self:set_camera(options.camera)
 
    self._view = mathx.mat4()
@@ -230,6 +231,14 @@ function RenderScene:frame()
       time = self.time,
       dt = self.dt,
    }
+end
+
+function RenderScene:set_lighting(lighting)
+   if lighting ~= nil and type(lighting) ~= "table" then
+      rig.raise("RenderScene:set_lighting expects a lighting table or nil")
+   end
+   self.lighting = lighting
+   return self.lighting
 end
 
 function RenderScene:set_camera(camera)
@@ -337,7 +346,7 @@ function RenderScene:draw_mesh(mesh, transform, material)
       world = self._draw_world
    end
    mathx.mat4_multiply(self._draw_mvp, world, self:view_projection())
-   drawable:draw(self, self._draw_mvp)
+   drawable:draw(self, self._draw_mvp, world)
    return self
 end
 
@@ -364,7 +373,7 @@ function RenderScene:draw_fullscreen(material)
 
    local drawable = self:mesh_drawable(self._fullscreen_quad, material)
    mathx.mat4_identity(self._draw_mvp)
-   drawable:draw(self, self._draw_mvp)
+   drawable:draw(self, self._draw_mvp, self.transform_stack[1])
    return self
 end
 
@@ -388,20 +397,29 @@ end
 function RenderScene:draw_screen(mesh, x, y, width, height, material)
    local drawable = self:mesh_drawable(mesh, material)
    build_screen_matrix(self._draw_mvp, x, y, width, height, self.width, self.height)
-   drawable:draw(self, self._draw_mvp)
+   drawable:draw(self, self._draw_mvp, nil)
    return self
 end
 
 -- Renders `draw(frame)` into `target` (a `render.target` value) as an offscreen
--- pass, then restores the window target and camera. The target's texture is
--- sampled afterwards, for example by `draw_fullscreen`. Backend scenes override
--- `enter_target`/`leave_target` to switch surfaces.
-function RenderScene:render_to(target, draw)
+-- pass, then restores the window target and camera. `options.camera` temporarily
+-- replaces the scene camera for the pass, which is the primitive planar
+-- reflection and mirror passes build on. The target's texture is sampled
+-- afterwards, for example by `draw_fullscreen` or a material's
+-- `reflection_texture`. Backend scenes override `enter_target`/`leave_target` to
+-- switch surfaces.
+function RenderScene:render_to(target, draw, options)
    if self.target_factory == nil then
       rig.raise("RenderScene:render_to requires a render.target factory")
    end
    if type(draw) ~= "function" then
       rig.raise("RenderScene:render_to expects a draw function")
+   end
+   options = options or {}
+
+   local previous_camera = self.camera
+   if options.camera ~= nil then
+      self:set_camera(options.camera)
    end
 
    local handle = self.target_factory.create(target)
@@ -419,6 +437,9 @@ function RenderScene:render_to(target, draw)
 
    self.width = previous_width
    self.height = previous_height
+   if options.camera ~= nil then
+      self:set_camera(previous_camera)
+   end
    self:update_view_projection()
    self:leave_target(handle)
 
@@ -538,6 +559,7 @@ M.container_component = function(plugin, options)
             graphics = context:capability("graphics.context"),
             background_color = options.background_color,
             camera = options.camera,
+            lighting = options.lighting,
             clock = context:capability("sched.clock"),
             mesh_factory = context:capability("render.mesh"),
             target_factory = context:capability("render.target"),

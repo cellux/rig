@@ -55,19 +55,52 @@ backend through the bundle it attaches.
     omitted means no animation. See `motion.md`.
   - Configuration is validated through a schema at compile time.
 - `render.material(options)`
-  - Describes the shader used to draw a mesh. Passing no material selects the
-    backend's built-in unlit position/color material.
+  - Describes the shader and surface response used to draw a mesh. Passing no
+    material selects the backend's built-in unlit position/color material.
   - `options.vertex` and `options.fragment` (optional, but together) are GLSL source
-    strings that consume the same `u_mvp`/camera uniform contract as the built-in
-    material.
-  - `options.texture` is an optional `render.texture`, `render.target`, already-
-    created backend texture handle, or a decoded image (which is wrapped
-    automatically). When present, the backend binds it to texture/sampler slot 0.
-    The built-in textured material samples it through a `u_texture` uniform using
-    the mesh's UV attribute; custom shaders receive the same binding contract.
-  - A material needs either shader sources or a texture.
-  - `options.name` labels the material (used in shader source names);
-    `options.language` defaults to `"glsl"`.
+    strings that take precedence over built-in shading and consume the same
+    `u_mvp`/camera contract.
+  - `options.shading` is `"unlit"` (default) or `"lit"`. A lit material requires a
+    mesh with normals; a normal-mapped lit material additionally requires tangents.
+  - Material fields:
+    - `albedo` — `Color`, default white.
+    - `roughness` — `0..1`, default `0.7`.
+    - `specular` — `0..1`, default `0.1`.
+    - `emissive` — `Color`, default black.
+    - `opacity` — `0..1`, default `1`.
+    - `alpha_mode` — `"opaque"`, `"blend"`, or `"cutout"`; defaults to `"blend"`
+      when `opacity < 1`, otherwise `"opaque"`.
+    - `alpha_cutoff` — cutoff for `"cutout"`, default `0.5`.
+    - `depth_test` / `depth_write` — booleans, both default `true`.
+    - `cull_mode` — `"none"` (default), `"back"`, `"front"`, or
+      `"front_and_back"`.
+    - `texture_scale` — positive number or `{ u, v }` pair, default `1`. Multiplies
+      the base/normal-map UVs, so a shared tiling texture can be reused at different
+      world scales.
+    - `reflection_strength` — `0..1`, default `0.25` when `reflection_texture` is
+      present, otherwise `0`. Controls screen-space planar reflection compositing.
+    - `environment_strength` — `0..1`, default `0`. Adds a cheap analytic
+      sky/ground environment response for polished stone and metal when planar
+      reflection is unavailable.
+  - `options.texture` is the optional base-colour map; `options.normal_texture` is
+    the optional tangent-space normal/detail map; `options.reflection_texture` is an
+    optional screen-space planar reflection map. Each accepts a `render.texture`, a
+    `render.target`, an already-created backend texture handle, or a decoded image.
+    The base map binds to texture/sampler slot 0, the normal map to slot 1, and the
+    reflection map to slot 2 on the GL lit path.
+  - A material needs shader sources, a texture, or `shading = "lit"`.
+  - `options.name` labels the material; `options.language` defaults to `"glsl"`.
+- `render.lighting(options)`
+  - Backend-neutral scene lighting for the built-in lit material. Store it with
+    `surface:set_lighting(...)` or `options.lighting` in `rig.run` /
+    `scene.container_component`.
+  - `ambient` — `Color`, default dark neutral.
+  - `directional` — `{ direction = { x, y, z }, color = Color, intensity = number }`.
+    `direction` points from the surface toward the light and is normalized.
+  - `local_lights` — up to `render.MAX_LOCAL_LIGHTS` (`4`) point lights:
+    `{ position = { x, y, z }, color = Color, intensity = number, range = number }`.
+  - `exposure` — positive multiplier, default `1.0`.
+  - `render.default_lighting` is the fallback used when a scene has no lighting.
 
 ## Backend factories
 
@@ -78,7 +111,7 @@ A `render.mesh` provider is a table with `create(mesh, material) -> drawable`:
    create = function(mesh, material)
       -- material is nil for the built-in unlit material, or a `render.material`.
       return {
-         draw = function(self, surface, mvp)
+         draw = function(self, surface, mvp, world, frame)
             -- issue the backend draw call
          end,
       }
@@ -86,10 +119,19 @@ A `render.mesh` provider is a table with `create(mesh, material) -> drawable`:
 }
 ```
 
+`world` is the object's world matrix (the same matrix that produced `mvp`); lit
+materials use it for world-space normals and view direction. It may be `nil` for
+screen-space passes.
+
 The factory's capability `properties` record its backend (`{ backend = "gl" }`,
 `"gpu"`, ...), and the factory creates and owns its resources through a runtime
 resource scope. `sdl3x` ships the GL and SDL_GPU factories and bundles them beside
 the matching graphics context.
+
+A mesh with `index_blob`/`index_count`/`index_type` is drawn with indexed
+primitives (`glDrawElements` or `SDL_DrawGPUIndexedPrimitives`); meshes without
+index data keep using array draws. `material_ranges` are carried as metadata but
+the current unlit material draws the whole mesh in one call.
 
 Mesh factories share two backend-neutral helpers from `render`:
 
@@ -99,9 +141,15 @@ Mesh factories share two backend-neutral helpers from `render`:
     has no texture.
 - `render.material_sources(mesh, material, has_texture, builtin)`
   - Returns `vertex_source, fragment_source, label` for the drawable. A custom
-    material supplies its own sources; otherwise `builtin.unlit` or
-    `builtin.textured` (`{ vertex = ..., fragment = ... }`) is selected. A built-in
-    textured material raises when the mesh has no UVs.
+    material supplies its own sources; otherwise `shading = "lit"` selects
+    `builtin.lit`, and the unlit path selects `builtin.textured` or
+    `builtin.unlit`. A built-in textured material raises when the mesh has no UVs;
+    a lit material raises when normals are missing, and a normal-mapped lit material
+    raises when tangents or UVs are missing.
+- `render.resolve_material_normal_texture(material, texture_factory, target_factory)`
+  - Resolves `material.normal_texture` the same way as the base texture.
+- `render.resolve_material_reflection_texture(material, texture_factory, target_factory)`
+  - Resolves `material.reflection_texture`, normally a `render.target`, the same way.
 
 A `render.texture` provider is a table with `create(texture) -> handle`, where the
 handle exposes `:bind(unit)` (GL) or `:bind(pass, slot)` (GPU), plus `width` and
@@ -114,6 +162,49 @@ and needs a clip-space Y flip when rendering into it), `texture` (a texture hand
 and backend render fields. `scene.RenderScene:render_to` and the mesh factories both
 resolve the same handle, so the surface a pass renders into is the texture a later
 material samples.
+
+## Built-in lit uniform contract
+
+The OpenGL built-in lit material uses the following plain uniforms. Córdoba may
+add scene-specific uniforms by using a custom material template with the same role
+and light conventions rather than forking the backend shader.
+
+Vertex:
+
+- `u_mvp` — model * view * projection.
+- `u_model` — world matrix, used for world position and normals.
+
+Fragment:
+
+- `u_texture`, `u_has_texture` — base map and enable flag (slot 0).
+- `u_normal_texture`, `u_has_normal_texture` — normal/detail map and enable flag
+  (slot 1).
+- `u_reflection_texture`, `u_has_reflection_texture` — screen-space planar
+  reflection map and enable flag (slot 2).
+- `u_texture_scale` — `vec2` UV multiplier for base/normal maps.
+- `u_reflection_strength` — strength of the planar reflection composite.
+- `u_environment_strength` — strength of the analytic environment response.
+- `u_view_size` — `vec2` viewport size used to derive screen-space reflection UVs.
+- `u_base_color` — `vec4` albedo RGB with opacity in alpha.
+- `u_emissive` — `vec4` emissive RGB.
+- `u_roughness`, `u_specular`, `u_alpha_cutoff`.
+- `u_camera_position` — `vec4` world-space camera position.
+- `u_ambient`, `u_light_direction`, `u_light_color` — `vec4`; directional RGB in
+  `.rgb`, intensity in `.a`.
+- `u_local_light_count`, `u_local_light_position[4]`,
+  `u_local_light_color[4]` — point lights; position `.w` is range, color `.a` is
+  intensity.
+- `u_exposure`.
+
+The shader applies Lambert diffuse, Blinn-Phong-style specular response driven by
+`roughness`, bounded local-light attenuation, exposure, and a Reinhard display
+curve. Opacity, alpha mode/cutoff, normal mapping, UV scaling, planar reflection,
+and the analytic environment response are implemented by the built-in lit
+material; depth and culling state apply to all GL materials. Planar reflections are
+sampled in screen space after tone mapping, so the offscreen pass should be rendered
+with the same viewport aspect and commonly at a reduced resolution. The SDL GPU
+backend currently rejects built-in lit materials with a clear error. Unlit and
+textured materials remain available on both backends.
 
 ## Trees
 

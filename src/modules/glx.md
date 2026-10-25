@@ -25,8 +25,10 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
   - Methods:
     - `program:uniform_location(name)`
     - `program:set_uniform1i(name, value)`
+    - `program:set_uniform1f(name, value)`
     - `program:set_uniform2f(name, x, y)`
     - `program:set_uniform4f(name, x, y, z, w)`
+    - `program:set_uniform4fv(name, value, count?)`
     - `program:set_uniform_matrix4fv(name, value, count?, transpose?)`
     - `program:use()`
     - `program:release()`
@@ -46,6 +48,8 @@ High-level OpenGL helpers layered on top of the raw `gl` module.
   - Methods:
     - `vao:bind()`
     - `vao:attribute(index, size, type, normalized?, stride?, pointer?)`
+    - `vao:element_buffer(buffer)` — binds an `ELEMENT_ARRAY_BUFFER` while the VAO
+      is bound, so later element draws use it.
     - `vao:release()`
 - `glx.Texture2D()`
   - Creates a 2D texture object.

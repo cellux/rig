@@ -32,12 +32,18 @@ Examples:
 - `sdl3.WasInit(...)`
 - `sdl3.GetError()`
 - `sdl3.CreateWindowWithProperties(...)`
+- `sdl3.SetWindowRelativeMouseMode(...)` / `sdl3.GetWindowRelativeMouseMode(...)`
+- `sdl3.SetWindowMouseGrab(...)` / `sdl3.GetWindowMouseGrab(...)`
 - `sdl3.CreateRenderer(...)`
 - `sdl3.RenderPresent(...)`
+- `sdl3.RenderReadPixels(...)` (returns an owned `SDL_Surface`)
+- `sdl3.ConvertSurface(...)`
+- `sdl3.DestroySurface(...)`
 - `sdl3.GL_CreateContext(...)`
 - `sdl3.CreateGPUDevice(...)`
 - `sdl3.CreateGPUShader(...)`
 - `sdl3.CreateGPUGraphicsPipeline(...)`
+- `sdl3.DownloadFromGPUTexture(...)`
 
 This module also exposes the raw SDL property setters and lifecycle functions:
 

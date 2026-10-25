@@ -35,6 +35,7 @@ mathx
 motion
 camera
 mesh
+collision
 render
 sketch
 input
@@ -44,3 +45,4 @@ audio
 png
 jpeg
 asset
+screenshot

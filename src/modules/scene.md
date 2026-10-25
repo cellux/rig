@@ -33,8 +33,8 @@ resource ownership lives at the application level (`app.App:own` and
     node's `world_matrix` as their parent.
 - `scene.RenderScene`
   - A `scene.Node` and the root of the transform tree. Instances expose `graphics`,
-    `background_color`, `camera`, `width`, `height`, `name`, `clock`, `time`, `dt`,
-    `on_update`, and `on_draw`.
+    `background_color`, `camera`, `lighting`, `width`, `height`, `name`, `clock`,
+    `time`, `dt`, `on_update`, and `on_draw`.
   - The scene is the single source of frame time: `clock` is an optional object with
     `:monotonic()`, and `advance_time()` accumulates `time`/`dt` from it. Without a
     clock the scene stays frozen at time 0 (useful for stills and tests).
@@ -43,6 +43,9 @@ resource ownership lives at the application level (`app.App:own` and
   - `surface:set_camera(camera)` — installs `{ eye, target, up, fov_degrees, near,
     far }` (defaults to a left-handed camera at `(0, 0, -4.5)` looking at the
     origin).
+  - `surface:set_lighting(lighting)` — installs or clears a `render.lighting` value
+    used by the built-in lit material. The scene does not interpret the table; the
+    backend material does.
   - `surface:update_view_projection()` — recomputes the shared view*projection for
     the current viewport; called once per frame.
   - `surface:view_projection()` — the view*projection matrix drawables combine with
@@ -64,12 +67,15 @@ resource ownership lives at the application level (`app.App:own` and
     `mesh` (typically a unit-sized `mesh.make_quad`) into a screen-space pixel
     rectangle with a top-left origin, for overlays and HUDs. It lands at clip z = 0,
     so drawing it last passes the depth test.
-  - `surface:render_to(target, draw)` — renders `draw(frame)` into a `render.target`
-    value as an offscreen pass, sizing the view/projection to the target, then
-    restores the window target and camera. Returns the target handle whose
-    `.texture` can be sampled afterwards. Backend scenes override
-    `enter_target(handle)` / `leave_target(handle)` to switch surfaces; the base
-    scene has no offscreen surface.
+  - `surface:render_to(target, draw, options?)` — renders `draw(frame)` into a
+    `render.target` value as an offscreen pass, sizing the view/projection to the
+    target, then restores the window target and camera. `options.camera` temporarily
+    replaces the scene camera for the pass, which supports planar/mirror passes such
+    as `render_to(reflection_target, draw, { camera = mirrored_camera })`; the
+    camera is restored afterwards. Returns the target handle whose `.texture` can be
+    sampled afterwards. Backend scenes override `enter_target(handle)` /
+    `leave_target(handle)` to switch surfaces; the base scene has no offscreen
+    surface.
   - `surface:render(...)` — advances time, calls `on_update(frame)`, calls
     `begin_frame(...)`, updates the view/projection, calls `on_draw(frame)`, renders
     its children, calls `on_overlay(frame)`, then `end_frame(...)`. Backend frame
@@ -92,6 +98,8 @@ resource ownership lives at the application level (`app.App:own` and
   - `options.name` binds the scene into `ctx`.
   - `options.background_color` is stored on the instance for implementations to use.
   - `options.camera` is the scene camera (viewed by every entity).
+  - `options.lighting` is an optional `render.lighting` value for the built-in lit
+    material.
   - `options.clock` (or the resolved `sched.clock` capability) drives `time`/`dt`.
   - The composition's `render.mesh` factory is resolved into `mesh_factory` so the
     scene can draw meshes immediately; it is optional.

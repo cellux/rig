@@ -351,6 +351,49 @@ test.case("RenderScene renders a pass into a target and restores its size", func
    test.equal(table.concat(events, ","), "enter:true,draw,leave:true")
 end)
 
+test.case("render_to can use and restore a temporary camera", function()
+   local handle = {
+      width = 32,
+      height = 16,
+      flip_v = false,
+      texture = { bind = function() end },
+   }
+   local surface = scene.RenderScene {
+      target_factory = { create = function() return handle end },
+      camera = {
+         eye = { 0.0, 1.0, -2.0 },
+         target = { 0.0, 1.0, 0.0 },
+         up = { 0.0, 1.0, 0.0 },
+      },
+   }
+   local inside = nil
+   surface:render_to(
+      { kind = "render.target" },
+      function()
+         inside = {
+            eye = { surface.camera.eye[1], surface.camera.eye[2], surface.camera.eye[3] },
+            target = {
+               surface.camera.target[1],
+               surface.camera.target[2],
+               surface.camera.target[3],
+            },
+         }
+      end,
+      {
+         camera = {
+            eye = { 0.0, -1.0, -2.0 },
+            target = { 0.0, -1.0, 0.0 },
+            up = { 0.0, -1.0, 0.0 },
+         },
+      }
+   )
+
+   test.equal(inside.eye[2], -1.0)
+   test.equal(inside.target[2], -1.0)
+   test.equal(surface.camera.eye[2], 1.0)
+   test.equal(surface.camera.target[2], 1.0)
+end)
+
 test.case("render_to flips clip-space Y for bottom-up targets", function()
    local handle = {
       width = 8,
@@ -443,4 +486,20 @@ test.case("RenderScene runs on_overlay after its children", function()
 
    surface:render()
    test.equal(table.concat(order, ","), "draw,overlay")
+end)
+
+test.case("RenderScene stores and validates scene lighting", function()
+   local lighting = { kind = "render.lighting", exposure = 1.0 }
+   local surface = scene.RenderScene { lighting = lighting }
+
+   test.equal(surface.lighting, lighting)
+
+   local replacement = { kind = "render.lighting", exposure = 2.0 }
+   test.equal(surface:set_lighting(replacement), replacement)
+   test.equal(surface.lighting, replacement)
+   test.equal(surface:set_lighting(nil), nil)
+
+   test.falsey(pcall(function()
+      surface:set_lighting("daylight")
+   end))
 end)

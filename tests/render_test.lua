@@ -226,6 +226,42 @@ test.case("render.material accepts a texture without shader sources", function()
    test.equal(material.vertex, nil)
 end)
 
+test.case("render.material exposes tiling, reflection, and environment fields", function()
+   local image = { width = 1, height = 1, channels = 4, pixels = "\0\0\0\0" }
+   local reflection = render.target { width = 64, height = 32, name = "reflection" }
+   local material = render.material {
+      name = "polished",
+      shading = "lit",
+      texture = render.texture { image = image },
+      texture_scale = { 0.5, 2.0 },
+      reflection_texture = reflection,
+      reflection_strength = 0.3,
+      environment_strength = 0.2,
+   }
+
+   test.equal(material.texture_scale[1], 0.5)
+   test.equal(material.texture_scale[2], 2.0)
+   test.equal(material.reflection_texture, reflection)
+   test.equal(material.reflection_strength, 0.3)
+   test.equal(material.environment_strength, 0.2)
+
+   test.equal(render.material { shading = "lit" }.reflection_strength, 0.0)
+   test.equal(
+      render.material { shading = "lit", reflection_texture = reflection }.reflection_strength,
+      0.25
+   )
+
+   test.falsey(pcall(function()
+      render.material { shading = "lit", texture_scale = 0.0 }
+   end))
+   test.falsey(pcall(function()
+      render.material { shading = "lit", environment_strength = 1.1 }
+   end))
+   test.falsey(pcall(function()
+      render.material { shading = "lit", reflection_strength = -0.1 }
+   end))
+end)
+
 test.case("render.material wraps a raw image into a texture", function()
    local image = { width = 1, height = 1, channels = 4, pixels = "\0\0\0\0" }
    local material = render.material {
@@ -329,4 +365,151 @@ test.case("entity component forwards a material to the mesh factory", function()
    compiled:start()
 
    test.equal(seen_material, material)
+end)
+
+test.case("render.material exposes lit shading defaults and validation", function()
+   local material = render.material { shading = "lit" }
+
+   test.equal(material.shading, "lit")
+   test.equal(material.roughness, 0.7)
+   test.equal(material.specular, 0.1)
+   test.equal(material.opacity, 1.0)
+   test.equal(material.alpha_mode, "opaque")
+   test.equal(material.alpha_cutoff, 0.5)
+   test.equal(material.depth_test, true)
+   test.equal(material.depth_write, true)
+   test.equal(material.cull_mode, "none")
+   test.truthy(color.is(material.albedo))
+   test.truthy(color.is(material.emissive))
+
+   local blended = render.material { shading = "lit", opacity = 0.4 }
+   test.equal(blended.alpha_mode, "blend")
+
+   local cutout = render.material { shading = "lit", alpha_mode = "cutout" }
+   test.equal(cutout.alpha_mode, "cutout")
+
+   test.falsey(pcall(function()
+      render.material { shading = "glossy" }
+   end))
+   test.falsey(pcall(function()
+      render.material { shading = "lit", roughness = 2.0 }
+   end))
+   test.falsey(pcall(function()
+      render.material { shading = "lit", cull_mode = "both" }
+   end))
+   test.falsey(pcall(function()
+      render.material { shading = "lit", alpha_mode = "mask" }
+   end))
+end)
+
+test.case("render.material accepts base and normal textures", function()
+   local image = { width = 1, height = 1, channels = 4, pixels = "\255\255\255\255" }
+   local material = render.material {
+      shading = "lit",
+      texture = image,
+      normal_texture = render.texture { image = image },
+   }
+
+   test.equal(material.texture.kind, "render.texture")
+   test.equal(material.normal_texture.kind, "render.texture")
+end)
+
+test.case("render.material_sources selects and validates the lit path", function()
+   local builtin = {
+      unlit = { vertex = "unlit-v", fragment = "unlit-f" },
+      textured = { vertex = "textured-v", fragment = "textured-f" },
+      lit = { vertex = "lit-v", fragment = "lit-f" },
+   }
+   local lit = render.material { shading = "lit" }
+
+   local vertex, fragment, label = render.material_sources(
+      mesh.make_box {},
+      lit,
+      false,
+      builtin
+   )
+   test.equal(vertex, "lit-v")
+   test.equal(fragment, "lit-f")
+   test.equal(label, "rig.render.mesh.lit")
+
+   local ok, err = pcall(function()
+      render.material_sources(mesh.make_quad {}, lit, false, builtin)
+   end)
+   test.falsey(ok)
+   test.match(tostring(err), "requires a mesh with normals")
+
+   local normal_mapped = render.material {
+      shading = "lit",
+      normal_texture = {
+         width = 1,
+         height = 1,
+         bind = function() end,
+      },
+   }
+   ok, err = pcall(function()
+      render.material_sources(mesh.make_box {}, normal_mapped, false, builtin)
+   end)
+   test.falsey(ok)
+   test.match(tostring(err), "requires a mesh with tangents")
+
+   local tangent_box = mesh.builder { tangents = true }
+      :add(mesh.make_box {})
+      :build()
+   assert(render.material_sources(tangent_box, normal_mapped, false, builtin))
+
+   local no_lit = {
+      unlit = builtin.unlit,
+      textured = builtin.textured,
+   }
+   ok, err = pcall(function()
+      render.material_sources(mesh.make_box {}, lit, false, no_lit)
+   end)
+   test.falsey(ok)
+   test.match(tostring(err), "not implemented for this render backend")
+end)
+
+test.case("render.lighting normalizes daylight and validates local lights", function()
+   local lighting = render.lighting {
+      ambient = color.rgb(40, 44, 52),
+      directional = {
+         direction = { 0.0, 2.0, 0.0 },
+         color = color.rgb(255, 240, 210),
+         intensity = 1.5,
+      },
+      local_lights = {
+         {
+            position = { 1.0, 2.0, 3.0 },
+            color = color.rgb(255, 160, 90),
+            intensity = 2.0,
+            range = 6.0,
+         },
+      },
+      exposure = 1.2,
+   }
+
+   test.equal(lighting.kind, "render.lighting")
+   test.equal(lighting.exposure, 1.2)
+   test.equal(lighting.directional.intensity, 1.5)
+   test.truthy(math.abs(lighting.directional.direction[1]) < 1e-6)
+   test.truthy(math.abs(lighting.directional.direction[2] - 1.0) < 1e-6)
+   test.equal(#lighting.local_lights, 1)
+   test.equal(lighting.local_lights[1].range, 6.0)
+
+   test.equal(render.MAX_LOCAL_LIGHTS, 4)
+   test.falsey(pcall(function()
+      render.lighting {
+         directional = { direction = { 0.0, 0.0, 0.0 } },
+      }
+   end))
+   test.falsey(pcall(function()
+      render.lighting {
+         local_lights = {
+            { position = { 0, 0, 0 } },
+            { position = { 0, 0, 0 } },
+            { position = { 0, 0, 0 } },
+            { position = { 0, 0, 0 } },
+            { position = { 0, 0, 0 } },
+         },
+      }
+   end))
 end)

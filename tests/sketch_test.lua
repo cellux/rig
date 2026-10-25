@@ -15,6 +15,7 @@ test.case("sketch.App records entities and frame callbacks", function()
    app:add_entity { mesh = {} }
    app:on_update(update)
    app:on_draw(draw)
+   app:on_focus(function() end)
 
    test.equal(#app.entities, 1)
    test.equal(app.update, update)
@@ -32,6 +33,10 @@ test.case("sketch.App registers optional camera controllers", function()
 
    app:add_camera_controls { kind = "fly" }
    test.equal(#app.camera_controllers, 2)
+
+   local walk = app:add_camera_controls { kind = "walk" }
+   test.truthy(walk.position ~= nil)
+   test.equal(#app.camera_controllers, 3)
 
    local ok = pcall(function()
       app:add_camera_controls { kind = "bogus" }

@@ -23,11 +23,20 @@ delegates to `sketch.run`.
     scene's children, for screen-space overlays and HUDs.
   - `app:add_overlay(value)` — registers an overlay value (see `overlay.md`); its
     `:update(input, scene)` and `:draw(scene)` run each frame. Returns the overlay.
-  - `app:on_key(fn)` / `app:on_mouse(fn)` / `app:on_resize(fn)` — register input
-    callbacks receiving the raw `sdl3.key` / `sdl3.mouse` / `sdl3.resize` payloads.
+  - `app:on_key(fn)` / `app:on_mouse(fn)` / `app:on_resize(fn)` / `app:on_focus(fn)`
+    — register input callbacks receiving the raw `sdl3.key` / `sdl3.mouse` /
+    `sdl3.resize` / `sdl3.focus` payloads.
+  - Focus events are forwarded to every camera controller's optional
+    `on_focus(info)` method before the sketch focus callback.
+  - `app:screenshot(path?, options?)` — queues a PNG capture for the end of the
+    current frame. Requires `RIG_ENABLE_SCREENSHOTS` and a backend
+    `screenshot.capture` provider; see `screenshot.md`.
   - `app:add_camera_controls(options)` — opts into a `camera` controller
-    (`options.kind` is `"orbit"` or `"fly"`); returns the controller. Never added
-    automatically.
+    (`options.kind` is `"orbit"`, `"fly"`, or `"walk"`); returns the controller.
+  - `app:can_mouse_grab()` / `app:set_mouse_grab(enabled)` /
+    `app:toggle_mouse_grab()` / `app:mouse_grab_enabled()` — relative mouse mode
+    conveniences forwarded to the running runtime.
+    Never added automatically.
   - Fields: `app.entities`, `app.camera_controllers`, `app.overlays`, `app.input`,
     `app.scene`, `app.surface`, `app.runtime`, `app.ctx`.
   - Every frame context also carries `frame.input`, the shared `input.Input` state
@@ -38,9 +47,16 @@ delegates to `sketch.run`.
   - `options.bundle` is the backend bundle, defaulting to
     `sdl3x.bundle_sdl3_gl`.
   - `options.bundle_options` is forwarded to the bundle.
-  - `options.camera`, `options.background`, and `options.title` override defaults.
+  - `options.camera`, `options.background`, `options.lighting`, and `options.title`
+    override defaults.
   - `options.camera_controls` (a spec or list) opts into optional camera controls,
     equivalent to calling `app:add_camera_controls` in `build`.
+  - `options.mouse_grab` — `true` to request relative mouse mode, `false` to
+    disable it. When omitted, the sketch grabs if any controller has
+    `mouse_grab = true` (walk and fly do by default).
+  - `options.mouse_grab_key` — key name that toggles mouse grab, default `"G"`.
+    Set to `false` to disable the shortcut. The key is consumed before camera
+    controllers and `app.key`.
   - `options.start`, `options.update`, and `options.draw` are shorthand for
     `app:on_start` / `app:on_update` / `app:on_draw`; they are applied after
     `build`, so they take precedence over callbacks registered there.

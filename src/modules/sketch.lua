@@ -5,6 +5,7 @@ local render = require("render")
 local rig = require("rig")
 local scene = require("scene")
 local sched = require("sched")
+local screenshot = require("screenshot")
 local sdl3 = require("sdl3")
 local sdl3x = require("sdl3x")
 local uv = require("uv")
@@ -37,13 +38,17 @@ function App:init()
    self.key = nil
    self.mouse = nil
    self.resize = nil
+   self.focus = nil
    self.camera_controllers = {}
    self.overlays = {}
+   self.mouse_grab_default = false
+   self.mouse_grab_key = "G"
    self.input = nil
    self.scene = nil
    self.surface = nil
    self.ctx = nil
    self.runtime = nil
+   self.runtime_app = nil
 end
 
 -- Queues an entity spec to be composed into the scene at startup. Called from
@@ -109,8 +114,47 @@ function App:on_resize(fn)
    return self
 end
 
+-- Registers `fn(app, focus_info)`, run for every window focus event.
+function App:on_focus(fn)
+   self.focus = fn
+   return self
+end
+
 -- Opts the sketch into a camera controller. `options.kind` is `"orbit"` (the
--- default) or `"fly"`. Controllers are optional and never added automatically.
+-- default), `"fly"`, or `"walk"`. Controllers are optional and never added
+-- automatically.
+-- Queues a PNG capture for the end of the current frame. Requires
+-- RIG_ENABLE_SCREENSHOTS. `path` defaults to `screenshot-NNNN.png`.
+function App:screenshot(path, options)
+   return screenshot.request(path, options)
+end
+
+-- Mouse-grab conveniences. They forward to the running runtime, which owns the
+-- actual window. `set_mouse_grab` hides/locks the cursor for first-person look;
+-- `mouse_grab_enabled()` reports the actual state after focus changes.
+function App:can_mouse_grab()
+   return self.runtime_app ~= nil and self.runtime_app:can_mouse_grab()
+end
+
+function App:set_mouse_grab(enabled)
+   if self.runtime_app == nil then
+      rig.raise("sketch.App:set_mouse_grab requires a running runtime")
+   end
+   return self.runtime_app:set_mouse_grab(enabled)
+end
+
+function App:toggle_mouse_grab()
+   if self.runtime_app == nil then
+      rig.raise("sketch.App:toggle_mouse_grab requires a running runtime")
+   end
+   return self.runtime_app:toggle_mouse_grab()
+end
+
+function App:mouse_grab_enabled()
+   return self.runtime_app ~= nil
+      and self.runtime_app.mouse_grab_enabled == true
+end
+
 function App:add_camera_controls(options)
    local camera = require("camera")
    options = options or {}
@@ -121,8 +165,10 @@ function App:add_camera_controls(options)
       controller = camera.orbit(options)
    elseif kind == "fly" then
       controller = camera.fly(options)
+   elseif kind == "walk" then
+      controller = camera.walk(options)
    else
-      rig.raise("sketch camera controls kind must be 'orbit' or 'fly'")
+      rig.raise("sketch camera controls kind must be 'orbit', 'fly', or 'walk'")
    end
 
    self.camera_controllers[#self.camera_controllers + 1] = controller
@@ -174,6 +220,7 @@ function M.run(first, second)
    end
 
    local app = App()
+   local screenshots_enabled = screenshot.enabled()
    app.input = require("input").Input()
    if build ~= nil then
       build(app)
@@ -200,6 +247,22 @@ function M.run(first, second)
       else
          app:add_camera_controls(spec)
       end
+   end
+
+   local mouse_grab = options.mouse_grab
+   if mouse_grab == nil then
+      mouse_grab = false
+      for i = 1, #app.camera_controllers do
+         if app.camera_controllers[i].mouse_grab then
+            mouse_grab = true
+            break
+         end
+      end
+   end
+   app.mouse_grab_default = mouse_grab and true or false
+   app.mouse_grab_key = options.mouse_grab_key
+   if app.mouse_grab_key == nil then
+      app.mouse_grab_key = "G"
    end
 
    local bundle_options = {}
@@ -250,6 +313,9 @@ function M.run(first, second)
       if app.overlay ~= nil then
          app.overlay(app, frame)
       end
+      if screenshots_enabled then
+         screenshot.flush(app, frame)
+      end
       app.input:begin_frame()
    end
 
@@ -264,12 +330,19 @@ function M.run(first, second)
    builder:use(uv_plugin)
    builder:add(uv.loop_component(uv_plugin, { name = "uv" }))
 
+   if screenshots_enabled then
+      local screenshot_plugin = screenshot.plugin()
+      builder:use(screenshot_plugin)
+      builder:add(screenshot.component(screenshot_plugin, { name = "screenshot" }))
+   end
+
    builder:use(scene_plugin)
    builder:use(render_plugin)
    builder:add(scene.container_component(scene_plugin, {
       name = "scene",
       background_color = options.background or DEFAULT_BACKGROUND,
       camera = options.camera or DEFAULT_CAMERA,
+      lighting = options.lighting,
       on_update = on_update,
       on_draw = on_draw,
       on_overlay = on_overlay,
@@ -293,7 +366,11 @@ function M.run(first, second)
    function RuntimeApp:after_setup(payload)
       self:super().after_setup(self, payload)
       app.runtime = payload.runtime
+      app.runtime_app = self
       app.ctx = payload.ctx
+      if app.mouse_grab_default and self:can_mouse_grab() then
+         self:set_mouse_grab(true)
+      end
       if app.start ~= nil then
          payload.runtime:startup(function()
             return app.start(app, sched)
@@ -303,6 +380,15 @@ function M.run(first, second)
 
    function RuntimeApp:on_key(payload)
       app.input:on_key(payload)
+      local grab_key = app.mouse_grab_key
+      if grab_key
+         and payload.action == "down"
+         and not payload["repeat"]
+         and string.upper(payload.key or "") == string.upper(grab_key)
+      then
+         self:toggle_mouse_grab()
+         return
+      end
       for i = 1, #app.camera_controllers do
          app.camera_controllers[i]:on_key(payload)
       end
@@ -325,6 +411,20 @@ function M.run(first, second)
       sdl3x.App.on_resize(self, payload)
       if app.resize ~= nil then
          app.resize(app, payload)
+      end
+   end
+
+   function RuntimeApp:on_focus(payload)
+      self.focused = payload == nil or payload.focused ~= false
+      self:apply_mouse_grab()
+      for i = 1, #app.camera_controllers do
+         local controller = app.camera_controllers[i]
+         if type(controller.on_focus) == "function" then
+            controller:on_focus(payload)
+         end
+      end
+      if app.focus ~= nil then
+         app.focus(app, payload)
       end
    end
 

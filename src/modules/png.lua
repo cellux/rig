@@ -11,6 +11,7 @@ local rig = require("rig")
 ffi.cdef[[
 typedef unsigned int png_uint_32;
 typedef int png_int_32;
+typedef size_t png_alloc_size_t;
 typedef struct png_control *png_controlp;
 
 typedef struct png_image {
@@ -32,6 +33,15 @@ int png_image_finish_read(
    void *buffer,
    png_int_32 row_stride,
    void *colormap
+);
+int png_image_write_to_memory(
+   png_image *image,
+   void *buffer,
+   png_alloc_size_t *memory,
+   int convert_to_8bit,
+   const void *pixels,
+   png_int_32 row_stride,
+   const void *colormap
 );
 void png_image_free(png_image *image);
 ]]
@@ -103,6 +113,58 @@ function M.decode(bytes, label)
       channels = 4,
       pixels = ffi.string(pixels, size),
    }
+end
+
+-- Encodes top-down RGBA8 pixels as a PNG byte string. Returns `nil, message`
+-- when libpng rejects the image. `label` names the image in error messages.
+function M.encode(image, label)
+   if type(image) ~= "table"
+      or type(image.width) ~= "number"
+      or type(image.height) ~= "number"
+      or image.pixels == nil
+   then
+      rig.raise("png.encode expects an image with width, height, and pixels")
+   end
+
+   label = label or "image"
+   local width = math.floor(image.width)
+   local height = math.floor(image.height)
+   if width <= 0 or height <= 0 then
+      rig.raise("png.encode image dimensions must be positive")
+   end
+
+   local lib = load_png_library()
+   local png_image = ffi.new("png_image[1]")
+   png_image[0].opaque = nil
+   png_image[0].version = PNG_IMAGE_VERSION
+   png_image[0].width = width
+   png_image[0].height = height
+   png_image[0].format = PNG_FORMAT_RGBA
+   png_image[0].flags = 0
+   png_image[0].colormap_entries = 0
+
+   local size = ffi.new("png_alloc_size_t[1]", 0)
+   if lib.png_image_write_to_memory(png_image, nil, size, 0, image.pixels, 0, nil) == 0 then
+      local message = message_of(png_image)
+      lib.png_image_free(png_image)
+      return nil, ("png: failed to size %s: %s"):format(label, message)
+   end
+
+   local capacity = tonumber(size[0]) or 0
+   if capacity == 0 then
+      lib.png_image_free(png_image)
+      return nil, ("png: encoder returned zero size for %s"):format(label)
+   end
+
+   local buffer = ffi.new("unsigned char[?]", capacity)
+   if lib.png_image_write_to_memory(png_image, buffer, size, 0, image.pixels, 0, nil) == 0 then
+      local message = message_of(png_image)
+      lib.png_image_free(png_image)
+      return nil, ("png: failed to encode %s: %s"):format(label, message)
+   end
+   lib.png_image_free(png_image)
+
+   return ffi.string(buffer, tonumber(size[0]) or capacity)
 end
 
 return M

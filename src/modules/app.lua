@@ -69,6 +69,9 @@ local function init_common_state(self, context, scope_label)
    self.pixel_height = 0
    self.fullscreen_enabled = config.fullscreen == true
    self.vsync_enabled = config.vsync ~= false
+   self.focused = true
+   self.mouse_grab_requested = false
+   self.mouse_grab_enabled = false
    self.frame_profiler = create_frame_profiler(config.frame_profiler)
    self.frame_profiler_enabled = self.frame_profiler ~= nil
    self.font_faces = {}
@@ -87,6 +90,11 @@ local function init_common_state(self, context, scope_label)
 end
 
 local function release_common_state(self)
+   if self.mouse_grab_requested or self.mouse_grab_enabled then
+      self.mouse_grab_requested = false
+      self:apply_mouse_grab()
+   end
+
    if self.owned_resources ~= nil then
       if not self._owned_resources_adopted then
          local errors = self.owned_resources:release()
@@ -170,6 +178,42 @@ end
 
 local function toggle_vsync_common(self)
    return self:set_vsync(not self.vsync_enabled)
+end
+
+local function can_mouse_grab_common(self)
+   local window = self.window
+   return window ~= nil and type(window.set_relative_mouse_mode) == "function"
+end
+
+local function apply_mouse_grab_common(self)
+   if not self:can_mouse_grab() then
+      self.mouse_grab_enabled = false
+      return false
+   end
+
+   local enabled = self.mouse_grab_requested and self.focused ~= false
+   self.window:set_relative_mouse_mode(enabled)
+   if type(self.window.set_mouse_grab) == "function" then
+      self.window:set_mouse_grab(enabled)
+   end
+   self.mouse_grab_enabled = enabled
+   return enabled
+end
+
+local function set_mouse_grab_common(self, enabled)
+   if type(enabled) ~= "boolean" then
+      rig.raise(
+         "%s.App:set_mouse_grab expects enabled to be a boolean",
+         app_name(self)
+      )
+   end
+
+   self.mouse_grab_requested = enabled
+   return self:apply_mouse_grab()
+end
+
+local function toggle_mouse_grab_common(self)
+   return self:set_mouse_grab(not self.mouse_grab_requested)
 end
 
 local function set_fullscreen_common(self, enabled)
@@ -310,6 +354,10 @@ App.after_frame = after_frame_common
 App.invoke_render = invoke_render_common
 App.set_vsync = set_vsync_common
 App.toggle_vsync = toggle_vsync_common
+App.can_mouse_grab = can_mouse_grab_common
+App.apply_mouse_grab = apply_mouse_grab_common
+App.set_mouse_grab = set_mouse_grab_common
+App.toggle_mouse_grab = toggle_mouse_grab_common
 App.set_fullscreen = set_fullscreen_common
 App.toggle_fullscreen = toggle_fullscreen_common
 App.set_frame_profiler_enabled = set_frame_profiler_enabled_common

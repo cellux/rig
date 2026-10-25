@@ -22,6 +22,9 @@ Instances expose:
 - `pixel_height`
 - `fullscreen_enabled`
 - `vsync_enabled`
+- `focused`
+- `mouse_grab_requested`
+- `mouse_grab_enabled`
 - `frame_profiler`
 - `frame_profiler_enabled`
 - `font_faces`
@@ -31,6 +34,11 @@ Methods:
 
 - `app:set_vsync(enabled)` / `app:toggle_vsync()`
 - `app:set_fullscreen(enabled)` / `app:toggle_fullscreen()`
+- `app:can_mouse_grab()` — whether the active window supports relative mouse mode
+- `app:set_mouse_grab(enabled)` / `app:toggle_mouse_grab()` — set or toggle
+  relative mouse mode and mouse grab together; returns the applied state
+- `app:apply_mouse_grab()` — re-applies the requested state, taking focus into
+  account (grab is active only while `focused` is true)
 - `app:set_frame_profiler_enabled(enabled)` / `app:toggle_frame_profiler()`
 - `app:own(resource, release_fn)`
 - `app:replace_owned(key, resource, release_fn)`
@@ -52,6 +60,10 @@ Lifecycle hooks (also usable by subclasses):
 
 `set_vsync` uses `graphics.set_vsync` or `graphics.set_swap_interval` when present.
 `set_fullscreen` uses `window:set_fullscreen(enabled)` and `window:sync()`.
+`set_mouse_grab` uses `window:set_relative_mouse_mode(enabled)` and, when
+available, `window:set_mouse_grab(enabled)`. Releasing focus clears the actual
+grab while preserving the requested state; gaining focus reapplies it. Shutdown
+releases the grab before the window is destroyed.
 
 Subclasses may override `app_name` (used in error messages), `config_namespace`
 (config table key under `context.options`), and `scope_label`.

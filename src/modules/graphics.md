@@ -49,6 +49,10 @@ A `graphics.context` provider exposes at least:
   - Presents a frame. `renderer` and `gl` call `render_fn()` then present/swap; `gpu`
     acquires a command buffer and swapchain texture, calls
     `render_fn(command_buffer, swapchain_texture, width, height)`, then submits.
+- `submit_frame()`
+  - GPU contexts submit the current frame's command buffer at most once. A screenshot
+    provider may call this early when it must wait for a GPU readback; the frame loop
+    then skips its own submit. Other contexts do not need it.
 - `release()`
 
 Backends are selected through capability properties, so consumers require a specific

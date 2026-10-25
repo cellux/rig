@@ -1,5 +1,6 @@
 local M = ... or {}
 
+local color = require("color")
 local mathx = require("mathx")
 local rig = require("rig")
 local runtime = require("runtime")
@@ -44,7 +45,7 @@ end
 
 function Entity:draw_node(surface, world, frame)
    mathx.mat4_multiply(self.mvp, world, surface:view_projection())
-   self.backend:draw(surface, self.mvp)
+   self.backend:draw(surface, self.mvp, world, frame)
 end
 
 function Entity:release()
@@ -150,15 +151,110 @@ local function normalize_material_texture(value)
    rig.raise("render.material texture must be a render.texture, a render.target, or a decoded image")
 end
 
+local function normalize_texture_scale(value, label)
+   if value == nil then
+      return 1.0, 1.0
+   end
+   if type(value) == "number" then
+      local scale = tonumber(value)
+      if scale == nil or scale <= 0.0 then
+         rig.raise(label .. " must be positive")
+      end
+      return scale, scale
+   end
+   if type(value) ~= "table" or #value < 2 then
+      rig.raise(label .. " must be a positive number or a {u, v} pair")
+   end
+   local u = tonumber(value[1])
+   local v = tonumber(value[2])
+   if u == nil or v == nil or u <= 0.0 or v <= 0.0 then
+      rig.raise(label .. " must be a positive number or a {u, v} pair")
+   end
+   return u, v
+end
+
+local function validate_color(value, default, label)
+   if value == nil then
+      return default
+   end
+   if not color.is(value) then
+      rig.raise(label .. " must be a Color value")
+   end
+   return value
+end
+
+local function normalize3(x, y, z, label)
+   local length = math.sqrt(x * x + y * y + z * z)
+   if length < 1e-12 then
+      rig.raise(label .. " must not be a zero-length vector")
+   end
+   local inv = 1.0 / length
+   return x * inv, y * inv, z * inv
+end
+
+local DEFAULT_ALBEDO = color.rgbf(1.0, 1.0, 1.0)
+local DEFAULT_EMISSIVE = color.rgbf(0.0, 0.0, 0.0)
+local DEFAULT_AMBIENT = color.rgbf(0.16, 0.17, 0.19)
+local DEFAULT_SUN_COLOR = color.rgbf(1.0, 0.94, 0.84)
+
+local VALID_CULL_MODES = {
+   none = true,
+   back = true,
+   front = true,
+   front_and_back = true,
+}
+
+local VALID_ALPHA_MODES = {
+   opaque = true,
+   blend = true,
+   cutout = true,
+}
+
+local function normalize_cull_mode(value)
+   local mode = value or "none"
+   if not VALID_CULL_MODES[mode] then
+      rig.raise("render.material cull_mode must be 'none', 'back', 'front', or 'front_and_back'")
+   end
+   return mode
+end
+
+local function normalize_alpha_mode(value, opacity)
+   local mode = value
+   if mode == nil then
+      mode = opacity < 1.0 and "blend" or "opaque"
+   end
+   if not VALID_ALPHA_MODES[mode] then
+      rig.raise("render.material alpha_mode must be 'opaque', 'blend', or 'cutout'")
+   end
+   return mode
+end
+
 -- A material selects the shader used to draw a mesh. Passing no material (nil)
--- selects the backend's built-in unlit position/color material. Custom materials
--- supply GLSL `vertex` and `fragment` sources that consume the same
--- `u_mvp`/camera uniform contract as the built-in material.
+-- selects the backend's built-in unlit position/color material. Setting
+-- `shading = "lit"` selects the backend's built-in lit material; it requires a
+-- mesh with normals, and a normal-mapped material additionally requires
+-- tangents. Custom `vertex`/`fragment` sources take precedence over both.
 --
--- A material may also carry a `texture` (a `render.texture` or a decoded image).
--- When it does, the backend binds it to texture/sampler slot 0 and, for the
--- built-in textured material, samples it through a `u_texture` uniform using the
--- mesh's UV attribute. Custom shaders receive the same binding contract.
+-- Material fields (explicit defaults):
+--   albedo       Color, default white
+--   roughness    0..1, default 0.7
+--   specular     0..1, default 0.1
+--   emissive     Color, default black
+--   opacity      0..1, default 1
+--   alpha_mode   "opaque" | "blend" | "cutout"; defaults to "blend" when
+--                opacity < 1, otherwise "opaque"
+--   alpha_cutoff cutoff for "cutout", default 0.5
+--   depth_test   boolean, default true
+--   depth_write  boolean, default true
+--   cull_mode    "none" | "back" | "front" | "front_and_back", default "none"
+--   texture_scale positive number or {u, v}, default 1
+--   reflection_strength 0..1, default 0.25 when a reflection map is present
+--   environment_strength 0..1, default 0
+--
+-- `texture` is the base-colour map and `normal_texture` the optional tangent-
+-- space normal/detail map. `reflection_texture` is an optional planar reflection
+-- map sampled in screen space. All three accept a `render.texture`, a
+-- `render.target`, an already-created backend texture handle, or a decoded image.
 function M.material(options)
    options = options or {}
 
@@ -172,30 +268,104 @@ function M.material(options)
    end
 
    local texture = normalize_material_texture(options.texture)
-   if vertex == nil and texture == nil then
-      rig.raise("render.material requires vertex and fragment GLSL sources or a texture")
+   local normal_texture = normalize_material_texture(options.normal_texture)
+   local reflection_texture = normalize_material_texture(options.reflection_texture)
+   local texture_scale_u, texture_scale_v = normalize_texture_scale(
+      options.texture_scale,
+      "render.material texture_scale"
+   )
+   local shading = options.shading or "unlit"
+   if shading ~= "unlit" and shading ~= "lit" then
+      rig.raise("render.material shading must be 'unlit' or 'lit'")
+   end
+   if vertex == nil and texture == nil and shading ~= "lit" then
+      rig.raise(
+         "render.material requires vertex and fragment GLSL sources, a texture, or shading = 'lit'"
+      )
+   end
+
+   local roughness = tonumber(options.roughness)
+   if roughness == nil then
+      roughness = 0.7
+   end
+   if roughness < 0.0 or roughness > 1.0 then
+      rig.raise("render.material roughness must be between 0 and 1")
+   end
+
+   local specular = tonumber(options.specular)
+   if specular == nil then
+      specular = 0.1
+   end
+   if specular < 0.0 or specular > 1.0 then
+      rig.raise("render.material specular must be between 0 and 1")
+   end
+
+   local opacity = tonumber(options.opacity)
+   if opacity == nil then
+      opacity = 1.0
+   end
+   if opacity < 0.0 or opacity > 1.0 then
+      rig.raise("render.material opacity must be between 0 and 1")
+   end
+
+   local reflection_strength = tonumber(options.reflection_strength)
+   if reflection_strength == nil then
+      reflection_strength = reflection_texture ~= nil and 0.25 or 0.0
+   end
+   if reflection_strength < 0.0 or reflection_strength > 1.0 then
+      rig.raise("render.material reflection_strength must be between 0 and 1")
+   end
+
+   local environment_strength = tonumber(options.environment_strength)
+   if environment_strength == nil then
+      environment_strength = 0.0
+   end
+   if environment_strength < 0.0 or environment_strength > 1.0 then
+      rig.raise("render.material environment_strength must be between 0 and 1")
+   end
+
+   local alpha_cutoff = tonumber(options.alpha_cutoff)
+   if alpha_cutoff == nil then
+      alpha_cutoff = 0.5
+   end
+   if alpha_cutoff < 0.0 or alpha_cutoff > 1.0 then
+      rig.raise("render.material alpha_cutoff must be between 0 and 1")
    end
 
    return {
       kind = "render.material",
       name = options.name,
       language = options.language or "glsl",
+      shading = shading,
       vertex = vertex,
       fragment = fragment,
       texture = texture,
+      normal_texture = normal_texture,
+      reflection_texture = reflection_texture,
+      texture_scale = { texture_scale_u, texture_scale_v },
+      reflection_strength = reflection_strength,
+      environment_strength = environment_strength,
+      albedo = validate_color(options.albedo, DEFAULT_ALBEDO, "render.material albedo"),
+      roughness = roughness,
+      specular = specular,
+      emissive = validate_color(
+         options.emissive,
+         DEFAULT_EMISSIVE,
+         "render.material emissive"
+      ),
+      opacity = opacity,
+      alpha_mode = normalize_alpha_mode(options.alpha_mode, opacity),
+      alpha_cutoff = alpha_cutoff,
+      depth_test = options.depth_test ~= false,
+      depth_write = options.depth_write ~= false,
+      cull_mode = normalize_cull_mode(options.cull_mode),
    }
 end
 
--- Resolves a material's `texture` into a backend texture handle. It accepts a
--- `render.texture` value (uploaded by the texture factory), a `render.target`
--- value (whose color surface is already a texture handle), or an already-created
--- backend handle. Returns nil when the material has no texture.
-function M.resolve_material_texture(material, texture_factory, target_factory)
-   if material == nil or material.texture == nil then
+local function resolve_texture_spec(spec, texture_factory, target_factory)
+   if spec == nil then
       return nil
    end
-
-   local spec = material.texture
    if spec.kind == "render.texture" then
       if texture_factory == nil then
          rig.raise("textured material requires a render.texture provider")
@@ -208,20 +378,70 @@ function M.resolve_material_texture(material, texture_factory, target_factory)
       end
       return target_factory.create(spec).texture
    end
-
    return spec
 end
 
+-- Resolves a material's `texture` into a backend texture handle. It accepts a
+-- `render.texture` value (uploaded by the texture factory), a `render.target`
+-- value (whose color surface is already a texture handle), or an already-created
+-- backend handle. Returns nil when the material has no texture.
+function M.resolve_material_texture(material, texture_factory, target_factory)
+   if material == nil then
+      return nil
+   end
+   return resolve_texture_spec(material.texture, texture_factory, target_factory)
+end
+
+-- Resolves a material's optional `normal_texture` into a backend texture handle.
+function M.resolve_material_normal_texture(material, texture_factory, target_factory)
+   if material == nil then
+      return nil
+   end
+   return resolve_texture_spec(material.normal_texture, texture_factory, target_factory)
+end
+
+-- Resolves a material's optional planar `reflection_texture` into a backend
+-- texture handle. Planar reflection maps are usually `render.target` values.
+function M.resolve_material_reflection_texture(material, texture_factory, target_factory)
+   if material == nil then
+      return nil
+   end
+   return resolve_texture_spec(
+      material.reflection_texture,
+      texture_factory,
+      target_factory
+   )
+end
+
 -- Selects the vertex/fragment sources and resource label for a mesh drawable.
--- A custom material supplies its own sources; otherwise the backend's built-in
--- unlit or textured sources are used. `builtin` supplies both pairs:
+-- A custom material supplies its own sources. Otherwise `shading = "lit"`
+-- selects `builtin.lit`; the unlit path selects `builtin.textured` or
+-- `builtin.unlit`. `builtin` supplies:
 --   builtin.unlit    = { vertex = ..., fragment = ... }
 --   builtin.textured = { vertex = ..., fragment = ... }
--- A built-in textured material requires a mesh with UVs.
+--   builtin.lit      = { vertex = ..., fragment = ... }  (optional per backend)
+-- A built-in textured material requires a mesh with UVs. A built-in lit material
+-- requires normals, and a normal-mapped lit material requires tangents.
 function M.material_sources(mesh, material, has_texture, builtin)
    if material ~= nil and material.vertex ~= nil then
       return material.vertex, material.fragment,
          "rig.render.material." .. (material.name or "unnamed")
+   end
+   if material ~= nil and material.shading == "lit" then
+      if builtin.lit == nil then
+         rig.raise("lit materials are not implemented for this render backend")
+      end
+      if mesh.attribute_offsets.normal == nil then
+         rig.raise("the built-in lit material requires a mesh with normals")
+      end
+      if (has_texture or material.normal_texture ~= nil)
+         and mesh.attribute_offsets.uv == nil then
+         rig.raise("a textured lit material requires a mesh with UVs")
+      end
+      if material.normal_texture ~= nil and mesh.attribute_offsets.tangent == nil then
+         rig.raise("a normal-mapped lit material requires a mesh with tangents")
+      end
+      return builtin.lit.vertex, builtin.lit.fragment, "rig.render.mesh.lit"
    end
    if has_texture then
       if mesh.attribute_offsets.uv == nil then
@@ -234,6 +454,104 @@ function M.material_sources(mesh, material, has_texture, builtin)
    end
    return builtin.unlit.vertex, builtin.unlit.fragment, "rig.render.mesh"
 end
+
+M.MAX_LOCAL_LIGHTS = 4
+
+-- Backend-neutral scene lighting for the built-in lit material. `directional`
+-- is the main daylight; local lights are point lights with a finite range.
+-- Direction points from the surface toward the light. Colors are `color.Color`
+-- values. `exposure` multiplies the linear-lit result before the display curve.
+function M.lighting(options)
+   options = options or {}
+
+   local directional = options.directional or {}
+   local direction = directional.direction or { 0.35, 0.8, -0.45 }
+   if type(direction) ~= "table" or #direction < 3 then
+      rig.raise("render.lighting directional.direction must have three components")
+   end
+   local dx, dy, dz = normalize3(
+      tonumber(direction[1]) or 0.0,
+      tonumber(direction[2]) or 0.0,
+      tonumber(direction[3]) or 0.0,
+      "render.lighting directional.direction"
+   )
+
+   local directional_intensity = tonumber(directional.intensity)
+   if directional_intensity == nil then
+      directional_intensity = 1.3
+   end
+   if directional_intensity < 0.0 then
+      rig.raise("render.lighting directional.intensity must not be negative")
+   end
+
+   local local_lights = {}
+   for i, light in ipairs(options.local_lights or {}) do
+      if i > M.MAX_LOCAL_LIGHTS then
+         rig.raise(
+            "render.lighting supports at most %d local lights",
+            M.MAX_LOCAL_LIGHTS
+         )
+      end
+      local position = light.position
+      if type(position) ~= "table" or #position < 3 then
+         rig.raise("render.lighting local light %d needs a three-component position", i)
+      end
+      local intensity = tonumber(light.intensity)
+      if intensity == nil then
+         intensity = 1.0
+      end
+      if intensity < 0.0 then
+         rig.raise("render.lighting local light %d intensity must not be negative", i)
+      end
+      local range = tonumber(light.range)
+      if range == nil then
+         range = 8.0
+      end
+      if range <= 0.0 then
+         rig.raise("render.lighting local light %d range must be positive", i)
+      end
+      local_lights[i] = {
+         position = {
+            tonumber(position[1]) or 0.0,
+            tonumber(position[2]) or 0.0,
+            tonumber(position[3]) or 0.0,
+         },
+         color = validate_color(
+            light.color,
+            DEFAULT_SUN_COLOR,
+            "render.lighting local light color"
+         ),
+         intensity = intensity,
+         range = range,
+      }
+   end
+
+   local exposure = tonumber(options.exposure)
+   if exposure == nil then
+      exposure = 1.0
+   end
+   if exposure <= 0.0 then
+      rig.raise("render.lighting exposure must be positive")
+   end
+
+   return {
+      kind = "render.lighting",
+      ambient = validate_color(options.ambient, DEFAULT_AMBIENT, "render.lighting ambient"),
+      directional = {
+         direction = { dx, dy, dz },
+         color = validate_color(
+            directional.color,
+            DEFAULT_SUN_COLOR,
+            "render.lighting directional.color"
+         ),
+         intensity = directional_intensity,
+      },
+      local_lights = local_lights,
+      exposure = exposure,
+   }
+end
+
+M.default_lighting = M.lighting()
 
 M.plugin = function(spec)
    spec = spec or {}

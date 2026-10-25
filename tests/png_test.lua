@@ -25,3 +25,24 @@ test.case("png.decode reports malformed input", function()
    test.equal(image, nil)
    test.truthy(type(err) == "string")
 end)
+test.case("png.encode round-trips RGBA pixels", function()
+   local pixels = string.char(
+      255, 0, 0, 255,
+      0, 255, 0, 255,
+      0, 0, 255, 255,
+      255, 255, 0, 128
+   )
+   local bytes = png.encode({
+      width = 2,
+      height = 2,
+      pixels = pixels,
+   }, "roundtrip")
+
+   test.truthy(type(bytes) == "string")
+   test.truthy(#bytes > 0)
+
+   local image = png.decode(bytes, "roundtrip")
+   test.equal(image.width, 2)
+   test.equal(image.height, 2)
+   test.equal(image.pixels, pixels)
+end)

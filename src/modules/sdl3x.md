@@ -247,6 +247,8 @@ Methods:
 - `window:get_size()`
 - `window:get_size_in_pixels()`
 - `window:set_fullscreen(enabled)`
+- `window:set_relative_mouse_mode(enabled)` / `window:get_relative_mouse_mode()`
+- `window:set_mouse_grab(enabled)` / `window:get_mouse_grab()`
 - `window:sync()`
 - `window:release()`
 
@@ -341,6 +343,9 @@ Each graphics context implements `render_frame(render_fn)`:
 - renderer/OpenGL call `render_fn()` then present/swap;
 - GPU acquires a command buffer and swapchain texture, calls
   `render_fn(command_buffer, swapchain_texture, width, height)`, then submits.
+  `graphics:submit_frame()` submits the current frame at most once; a screenshot
+  provider may submit early when it must wait for a GPU readback, and the frame loop
+  then skips its own submit.
 
 ## Scene Implementation
 
@@ -364,6 +369,25 @@ The `bundle_sdl3_gl` and `bundle_sdl3_gpu` bundles add the matching implementati
 an application using `scene.container_component` gets the right scene shape without
 naming it.
 
+## Screenshot Providers
+
+`sdl3x` provides the `screenshot.capture` capability for each graphics backend:
+
+- `sdl3x.gl_screenshot_component(plugin, options)` — `properties = { backend = "gl" }`;
+  requires the GL graphics context and `gl.resolver`. It reads the current framebuffer
+  with `gl.ReadPixels` and flips rows to top-down.
+- `sdl3x.renderer_screenshot_component(plugin, options)` — `properties =
+  { backend = "renderer" }`; requires the renderer graphics context. It reads through
+  `SDL_RenderReadPixels` into `SDL_PIXELFORMAT_RGBA32`.
+- `sdl3x.gpu_screenshot_component(plugin, options)` — `properties =
+  { backend = "gpu" }`; requires the GPU graphics context. It ends the scene pass,
+  downloads the swapchain texture into a transfer buffer, submits and waits, then
+  swizzles BGRA swapchains to RGBA. One readback is shared by multiple requests in
+  the same frame.
+
+The SDL bundles add the matching provider automatically. The consumer side is
+`screenshot.component`; see `screenshot.md`.
+
 ## Mesh Factories
 
 `sdl3x` provides the `render.mesh` factories consumed by `render.entity_component`:
@@ -371,17 +395,31 @@ naming it.
 - `sdl3x.gl_mesh_component(plugin, options)` — `properties = { backend = "gl" }`;
   requires the GL graphics context, `gl.resolver`, `shader.stage`, and (optionally)
   `render.texture`. Its factory compiles the built-in GLSL colored-mesh shaders into
-  a `glx.Program` and owns a `glx.Buffer`/`glx.VertexArray` pair per mesh.
+  a `glx.Program` and owns a `glx.Buffer`/`glx.VertexArray` pair per mesh, plus an
+  element-array buffer when the mesh is indexed.
 - `sdl3x.gpu_mesh_component(plugin, options)` — `properties = { backend = "gpu" }`;
   requires the GPU graphics context, `shader.stage`, `mesh.vertex_input`, and
   (optionally) `render.texture`. Its factory compiles the built-in GLSL shaders to
-  SPIR-V, builds a graphics pipeline, and uploads each mesh into a GPU vertex buffer.
+  SPIR-V, builds a graphics pipeline, and uploads each mesh into a GPU vertex buffer,
+  plus a GPU index buffer when the mesh is indexed.
+
+Both factories build vertex attributes from `mesh.layouts`, so normals and tangents
+are available to custom materials without backend-specific layout code. Indexed
+meshes use `glDrawElements` or `SDL_DrawGPUIndexedPrimitives`; non-indexed meshes
+keep using array draws.
+
+The GL factory also implements the built-in lit material described in `render.md`,
+including base/normal/reflection maps, UV scaling, directional daylight, local point
+lights, exposure, the analytic environment response, and material
+depth/blend/culling state. The SDL GPU factory currently rejects built-in lit
+materials with a clear error; unlit and textured materials remain available.
 
 Both factories adopt their resources into the runtime ownership graph, so a partially
 created mesh rolls back cleanly. When a material carries a texture, the factory
 resolves the `render.texture` provider, shares one backend texture per value, and
 binds it to fragment sampler slot 0 at draw time (sampling `u_texture` for the
-built-in textured material).
+built-in textured material). A lit material's normal map binds to slot 1 and its
+planar reflection target to slot 2.
 
 ## Texture Factories
 
@@ -425,14 +463,16 @@ Bundles attach their own plugin and add components explicitly; `:use` alone neve
 changes behavior.
 
 - `sdl3x.bundle_sdl3(builder, options)` — subsystem, window, input, renderer graphics
-  context, renderer scene implementation, renderer font provider, renderer draw
-  provider, frame loop.
+  context, renderer scene implementation, renderer screenshot provider, renderer
+  font provider, renderer draw provider, frame loop.
 - `sdl3x.bundle_sdl3_gl(builder, options)` — subsystem, OpenGL window, input, GL
   context, GL font provider, GL draw provider, GL resolver, GL shader stage, GL scene
-  implementation, GL texture factory, GL target factory, GL mesh factory, frame loop.
+  implementation, GL screenshot provider, GL texture factory, GL target factory, GL
+  mesh factory, frame loop.
 - `sdl3x.bundle_sdl3_gpu(builder, options)` — subsystem, window, input, GPU context,
   GPU mesh provider, GPU shader stage, GPU font provider, GPU draw provider, GPU scene
-  implementation, GPU texture factory, GPU target factory, GPU mesh factory, frame loop.
+  implementation, GPU screenshot provider, GPU texture factory, GPU target factory, GPU
+  mesh factory, frame loop.
 
 Common options: `init_flags`, `window_props`, `render`, `frame_profiler`; GL adds
 `gl_attributes`/`swap_interval`; GPU adds `shader_formats`/`debug_mode`/`backend_name`.
